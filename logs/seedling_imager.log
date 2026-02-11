@@ -1,0 +1,38 @@
+===== Seedling Imager start: Sun Feb  1 03:25:43 PM CST 2026 =====
+[0:23:25.256081765] [2025] [1;32m INFO [1;37mCamera [1;34mcamera_manager.cpp:340 [0mlibcamera v0.6.0+rpt20251202
+[0:23:25.265108404] [2031] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:720 [0mlibpisp version 1.3.0
+[0:23:25.265822035] [2031] [1;33m WARN [1;37mCameraSensorProperties [1;34mcamera_sensor_properties.cpp:548 [0mNo static properties available for 'imx708_noir'
+[0:23:25.265831017] [2031] [1;33m WARN [1;37mCameraSensorProperties [1;34mcamera_sensor_properties.cpp:550 [0mPlease consider updating the camera sensor properties database
+[0:23:25.267639819] [2031] [1;32m INFO [1;37mIPAProxy [1;34mipa_proxy.cpp:180 [0mUsing tuning file /usr/share/libcamera/ipa/rpi/pisp/imx708_noir.json
+[0:23:25.274288931] [2031] [1;33m WARN [1;37mCameraSensor [1;34mcamera_sensor_legacy.cpp:502 [0;32m'imx708_noir': [0mNo sensor delays found in static properties. Assuming unverified defaults.
+[0:23:25.274693099] [2031] [1;32m INFO [1;37mCamera [1;34mcamera_manager.cpp:223 [0mAdding camera '/base/axi/pcie@1000120000/rp1/i2c@88000/imx708@1a' for pipeline handler rpi/pisp
+[0:23:25.274700451] [2031] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:1181 [0mRegistered camera /base/axi/pcie@1000120000/rp1/i2c@88000/imx708@1a to CFE device /dev/media0 and ISP device /dev/media2 using PiSP variant BCM2712_D0
+[0:23:25.283163143] [2025] [1;32m INFO [1;37mCamera [1;34mcamera.cpp:1215 [0mconfiguring streams: (0) 4608x2592-RGB888/sRGB (1) 640x360-RGB888/sRGB (2) 4608x2592-BGGR_PISP_COMP1/RAW
+[0:23:25.284097980] [2031] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:1485 [0mSensor: /base/axi/pcie@1000120000/rp1/i2c@88000/imx708@1a - Selected sensor format: 4608x2592-SBGGR10_1X10/RAW - Selected CFE format: 4608x2592-PC1B/RAW
+apply_settings error: Control HdrEnable is not advertised by libcamera
+===== Seedling Imager start: Sun Feb  1 03:34:08 PM CST 2026 =====
+Using python: /home/sybednar/Seedling_Imager/bin/python
+[0:31:49.860495108] [2068] [1;32m INFO [1;37mCamera [1;34mcamera_manager.cpp:340 [0mlibcamera v0.6.0+rpt20251202
+[0:31:49.873229369] [2074] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:720 [0mlibpisp version 1.3.0
+[0:31:49.873946853] [2074] [1;33m WARN [1;37mCameraSensorProperties [1;34mcamera_sensor_properties.cpp:548 [0mNo static properties available for 'imx708_noir'
+[0:31:49.873957686] [2074] [1;33m WARN [1;37mCameraSensorProperties [1;34mcamera_sensor_properties.cpp:550 [0mPlease consider updating the camera sensor properties database
+[0:31:49.875665154] [2074] [1;32m INFO [1;37mIPAProxy [1;34mipa_proxy.cpp:180 [0mUsing tuning file /usr/share/libcamera/ipa/rpi/pisp/imx708_noir.json
+[0:31:49.882084637] [2074] [1;33m WARN [1;37mCameraSensor [1;34mcamera_sensor_legacy.cpp:502 [0;32m'imx708_noir': [0mNo sensor delays found in static properties. Assuming unverified defaults.
+[0:31:49.882484934] [2074] [1;32m INFO [1;37mCamera [1;34mcamera_manager.cpp:223 [0mAdding camera '/base/axi/pcie@1000120000/rp1/i2c@88000/imx708@1a' for pipeline handler rpi/pisp
+[0:31:49.882494749] [2074] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:1181 [0mRegistered camera /base/axi/pcie@1000120000/rp1/i2c@88000/imx708@1a to CFE device /dev/media0 and ISP device /dev/media2 using PiSP variant BCM2712_D0
+[0:31:49.894980176] [2068] [1;32m INFO [1;37mCamera [1;34mcamera.cpp:1215 [0mconfiguring streams: (0) 4608x2592-RGB888/sRGB (1) 640x360-RGB888/sRGB (2) 4608x2592-BGGR_PISP_COMP1/RAW
+[0:31:49.895084898] [2074] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:1485 [0mSensor: /base/axi/pcie@1000120000/rp1/i2c@88000/imx708@1a - Selected sensor format: 4608x2592-SBGGR10_1X10/RAW - Selected CFE format: 4608x2592-PC1B/RAW
+apply_settings error: Control HdrEnable is not advertised by libcamera
+===== Seedling Imager start: Sun Feb  1 05:14:55 PM CST 2026 =====
+Using python: /home/sybednar/Seedling_Imager/bin/python
+[2:12:37.198366833] [3288] [1;32m INFO [1;37mCamera [1;34mcamera_manager.cpp:340 [0mlibcamera v0.6.0+rpt20251202
+[2:12:37.211469755] [3294] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:720 [0mlibpisp version 1.3.0
+[2:12:37.212213200] [3294] [1;33m WARN [1;37mCameraSensorProperties [1;34mcamera_sensor_properties.cpp:548 [0mNo static properties available for 'imx708_noir'
+[2:12:37.212229478] [3294] [1;33m WARN [1;37mCameraSensorProperties [1;34mcamera_sensor_properties.cpp:550 [0mPlease consider updating the camera sensor properties database
+[2:12:37.213980996] [3294] [1;32m INFO [1;37mIPAProxy [1;34mipa_proxy.cpp:180 [0mUsing tuning file /usr/share/libcamera/ipa/rpi/pisp/imx708_noir.json
+[2:12:37.220615346] [3294] [1;33m WARN [1;37mCameraSensor [1;34mcamera_sensor_legacy.cpp:502 [0;32m'imx708_noir': [0mNo sensor delays found in static properties. Assuming unverified defaults.
+[2:12:37.221042420] [3294] [1;32m INFO [1;37mCamera [1;34mcamera_manager.cpp:223 [0mAdding camera '/base/axi/pcie@1000120000/rp1/i2c@88000/imx708@1a' for pipeline handler rpi/pisp
+[2:12:37.221052179] [3294] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:1181 [0mRegistered camera /base/axi/pcie@1000120000/rp1/i2c@88000/imx708@1a to CFE device /dev/media0 and ISP device /dev/media2 using PiSP variant BCM2712_D0
+[2:12:37.225007289] [3288] [1;32m INFO [1;37mCamera [1;34mcamera.cpp:1215 [0mconfiguring streams: (0) 4608x2592-RGB888/sRGB (1) 640x360-RGB888/sRGB (2) 4608x2592-BGGR_PISP_COMP1/RAW
+[2:12:37.225121937] [3294] [1;32m INFO [1;37mRPI [1;34mpisp.cpp:1485 [0mSensor: /base/axi/pcie@1000120000/rp1/i2c@88000/imx708@1a - Selected sensor format: 4608x2592-SBGGR10_1X10/RAW - Selected CFE format: 4608x2592-PC1B/RAW
+apply_settings error: Control HdrEnable is not advertised by libcamera

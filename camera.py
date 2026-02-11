@@ -6,6 +6,7 @@ import numpy as np
 import cv2
 from pathlib import Path
 import json
+import threading
 
 # Try to import tifffile for TIFF saving (optional but recommended)
 try:
@@ -47,16 +48,135 @@ def save_settings(settings: dict) -> bool:
     except Exception:
         return False
 
+
+# =============================================================================
+# IR "Quant" preset helpers (temporary overlay; does NOT persist to JSON)
+# =============================================================================
+
+IR_QUANT_PRESET = {
+    # Reduce chroma artifacts / false color in IR
+    "Saturation": 0.0,
+
+    # Stabilize IR imaging (prevents channel-gain drift)
+    "AwbEnable": False,
+
+    # For quantitative work: avoid temporal smoothing
+    "NoiseReductionMode": 0,
+
+    # Conservative tuning for roots on translucent agar
+    "Contrast": 1.10,
+    "Sharpness": 1.15,
+    "Brightness": 0.0,
+
+    # Keep AE enabled for settling; runner will lock AE per plate
+    "AeEnable": True,
+}
+
+def apply_ir_quant_preset(base: dict | None) -> dict:
+    """
+    Return a non-persistent settings dict for IR root imaging.
+    This function does NOT write camera_settings.json.
+    """
+    s = dict(base) if base else {}
+    s.update(IR_QUANT_PRESET)
+    return s
+
+def set_manual_exposure_gain(exposure_us: int, gain: float) -> None:
+    """
+    Explicitly pin exposure and gain (use after AE settling for repeatability).
+    """
+    try:
+        picam.set_controls({
+            "AeEnable": False,
+            "ExposureTime": int(exposure_us),
+            "AnalogueGain": float(gain),
+        })
+    except Exception as e:
+        print(f"set_manual_exposure_gain error: {e}", flush=True)
+
+
+# --- Live-view boost state (module-level) ---
+_liveview_boost_active = False
+_liveview_saved_controls = None
+
+def enable_liveview_boost_for_ir(target_gain: float = 8.0, target_exposure_us: int = 20000) -> None:
+    """
+    Temporarily brighten the IR live view by pushing AnalogueGain and (optionally)
+    ExposureTime. This should only be used in Live View and must be cleared with
+    disable_liveview_boost() before starting an experiment.
+    """
+    global _liveview_boost_active, _liveview_saved_controls
+
+    if _liveview_boost_active:
+        return  # already active
+
+    try:
+        # Read current controls so we can restore later
+        md = get_metadata() or {}
+        _liveview_saved_controls = {
+            "AeEnable": md.get("AeEnable", True),
+            "ExposureTime": md.get("ExposureTime", None),
+            "AnalogueGain": md.get("AnalogueGain", None),
+            "AwbEnable": md.get("AwbEnable", True),
+        }
+
+        # Let AE run briefly (helps sensor settle) — best-effort
+        try:
+            set_auto_exposure(True)
+        except Exception:
+            pass
+
+        # Apply a bright live-view baseline; AE can still run unless you prefer to lock
+        # For IR preview clarity, many users prefer AE on + floor gain; if you want to
+        # force it, set AeEnable False and pin both values.
+        controls = {
+            "AnalogueGain": float(target_gain),  # floor the gain upwards
+            "ExposureTime": int(target_exposure_us),  # ~20 ms is a good starting point
+            "AeEnable": True,  # keep AE on during preview; change to False to hard lock
+            "AwbEnable": False  # no effect in mono IR but avoids oscillation
+        }
+        set_controls(controls)
+        _liveview_boost_active = True
+        print("[camera] Live-view IR boost enabled", flush=True)
+    except Exception as e:
+        print(f"[camera] liveview boost error: {e}", flush=True)
+
+def disable_liveview_boost() -> None:
+    """
+    Restore controls saved by enable_liveview_boost_for_ir(). Safe to call multiple times.
+    """
+    global _liveview_boost_active, _liveview_saved_controls
+    if not _liveview_boost_active:
+        return
+    try:
+        if isinstance(_liveview_saved_controls, dict):
+            # Restore previous state (best-effort)
+            set_controls({
+                "AeEnable": bool(_liveview_saved_controls.get("AeEnable", True)),
+                "AwbEnable": bool(_liveview_saved_controls.get("AwbEnable", True)),
+            })
+            # If previous capture was manual, restore exact exposure/gain
+            prev_exp = _liveview_saved_controls.get("ExposureTime", None)
+            prev_gain = _liveview_saved_controls.get("AnalogueGain", None)
+            if prev_exp is not None and prev_gain is not None and not _liveview_saved_controls.get("AeEnable", True):
+                set_controls({"ExposureTime": int(prev_exp), "AnalogueGain": float(prev_gain)})
+        _liveview_boost_active = False
+        _liveview_saved_controls = None
+        print("[camera] Live-view IR boost disabled (restored controls)", flush=True)
+    except Exception as e:
+        print(f"[camera] liveview boost restore error: {e}", flush=True)
+
 # =============================================================================
 # Picamera2 dual-stream setup
 # =============================================================================
 picam = Picamera2()
+_cam_lock = threading.Lock()
 
 # Full-res still (main) + low-res preview (lores).
 # Adjust 'main' size if your sensor reports a different maximum.
 preview_and_still_cfg = picam.create_still_configuration(
     main={"size": (4608, 2592), "format": "RGB888"},   # full-resolution for saving
-    lores={"size": (640, 360), "format": "RGB888"}     # 16:9 preview for Live View
+    lores={"size": (1280, 720), "format": "RGB888"}     # 16:9 preview for Live View
 )
 picam.configure(preview_and_still_cfg)
 
@@ -76,8 +196,8 @@ def apply_settings(settings: dict = None) -> None:
         "Brightness":        float(settings.get("Brightness", 0.0)),
         "Saturation":        float(settings.get("Saturation", 1.0)),
         "Sharpness":         float(settings.get("Sharpness", 1.0)),
-        "NoiseReductionMode":int(settings.get("NoiseReductionMode", 0)),
-        "HdrEnable":         bool(settings.get("HdrEnable", False)),
+        "NoiseReductionMode":int(settings.get("NoiseReductionMode", 0))
+        #"HdrEnable":         bool(settings.get("HdrEnable", False)),
     }
     # Apply manual exposure only if AE is off
     if not ctrl["AeEnable"]:
@@ -168,7 +288,8 @@ def get_frame() -> QImage:
     Return a QImage (RGB888) for the preview label using the lores stream.
     """
     try:
-        arr = picam.capture_array("lores")  # 640x360; fast preview
+        with _cam_lock:
+            arr = picam.capture_array("lores")  # 640x360; fast preview
     except Exception as e:
         print(f"get_frame error: {e}", flush=True)
         return QImage()
@@ -185,30 +306,45 @@ def get_frame() -> QImage:
 # =============================================================================
 _last_saved_shape: tuple[int, int] | None = None  # (height, width) of last saved image
 
-def save_image(path: str) -> bool:
+def save_image(path: str, grayscale: bool = False) -> bool:
     """
     Capture the current full-resolution frame from 'main' and save to 'path'.
-      - If '.tif' or '.tiff' and tifffile is installed → write TIFF (lossless zlib).
-      - Otherwise → OpenCV (PNG/JPEG depending on extension).
+
+    - If grayscale=True: save single-channel grayscale (best for IR quant).
+    - If '.tif' or '.tiff' and tifffile is installed → write TIFF (lossless zlib).
+    - Otherwise → OpenCV (PNG/JPEG depending on extension).
+
     Records the last saved shape for downstream CSV logging.
     """
     try:
-        arr = picam.capture_array("main")  # full-res RGB
-        rgb = _to_rgb(arr)
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        global _last_saved_shape  # <-- declare ONCE, before any assignment
 
-        # Record last saved shape (height, width)
-        global _last_saved_shape
+        with _cam_lock:
+            arr = picam.capture_array("main")  # full-res
+        rgb = _to_rgb(arr)
+
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        ext = Path(path).suffix.lower()
+
+        if grayscale:
+            gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+            h, w = gray.shape[:2]
+            _last_saved_shape = (h, w)
+
+            if ext in (".tif", ".tiff") and tiff is not None:
+                tiff.imwrite(path, gray, photometric="minisblack", compression="zlib")
+                return True
+
+            return cv2.imwrite(path, gray)
+
+        # RGB save
         h, w = rgb.shape[:2]
         _last_saved_shape = (h, w)
 
-        ext = Path(path).suffix.lower()
         if ext in (".tif", ".tiff") and tiff is not None:
-            # Lossless TIFF with RGB photometric
             tiff.imwrite(path, rgb, photometric="rgb", compression="zlib")
             return True
 
-        # Fallback to OpenCV for non-TIFF paths
         bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
         return cv2.imwrite(path, bgr)
 
@@ -227,12 +363,20 @@ def get_metadata() -> dict:
     """
     out = {}
     try:
-        md = picam.capture_metadata()  # Picamera2 metadata dict
+        with _cam_lock:
+            md = picam.capture_metadata()  # Picamera2 metadata dict
         # Normalize common fields (add more here if you need them)
         out["AeEnable"]      = md.get("AeEnable", None)
         out["ExposureTime"]  = md.get("ExposureTime", None)   # microseconds
         out["AnalogueGain"]  = md.get("AnalogueGain", None)
         out["AwbEnable"]     = md.get("AwbEnable", None)
+        
+        
+        # NEW: focus / autofocus diagnostics (may be absent on some builds)
+        out["LensPosition"] = md.get("LensPosition", None)
+        out["AfState"] = md.get("AfState", None)
+        out["FocusFoM"] = md.get("FocusFoM", None)
+
     except Exception as e:
         print(f"get_metadata error: {e}", flush=True)
     return out

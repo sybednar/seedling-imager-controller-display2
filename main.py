@@ -6,7 +6,7 @@ from gui import SeedlingImagerGUI
 def start_gui():
     app = QApplication(sys.argv)
     window = SeedlingImagerGUI()
-    window.show()
+    window.showFullScreen()  # dedicated touchscreen kiosk-style fullscreen (changed from window.show())
     sys.exit(app.exec())
 
 if __name__ == "__main__":

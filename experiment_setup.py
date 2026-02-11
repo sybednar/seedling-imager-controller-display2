@@ -15,15 +15,19 @@ ILLUM_IR = "Infrared"
 SEA_FOAM_GREEN = "#26A69A"
 DEEP_RED = "#B71C1C"
 
-# ---- NEW: constants for storage estimate ----
+# ---- constants for storage estimate ----
 IMAGES_ROOT = Path("/home/sybednar/Seedling_Imager/images").expanduser()
-AVG_IMAGE_MB = 15.0  # Adjust if your TIFF files average larger/smaller
+AVG_IMAGE_MB_GREEN_RGB = 45.0
+AVG_IMAGE_MB_IR_GRAY = 10.0
+
 
 class ExperimentSetupDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Experiment Setup")
-        self.setMinimumWidth(580)
+        # Bigger dialog for Touch Display 2 / longer storage text
+        self.setMinimumWidth(870)   # ~1.5× of 580
+        self.setMinimumHeight(520)  # give vertical room so label doesn't crowd buttons
         self.setStyleSheet(dark_style)
 
         self.selected_illum = ILLUM_GREEN
@@ -114,10 +118,11 @@ class ExperimentSetupDialog(QDialog):
                 h.addWidget(cb)
             main_layout.addLayout(h)
 
-        # ---- NEW: storage estimate label ----
+        # ---- storage estimate label ----
         self.storage_label = QLabel("")
         self.storage_label.setAlignment(Qt.AlignCenter)
-        self.storage_label.setStyleSheet("font-size: 16px; color: #CCCCCC;")
+        self.storage_label.setWordWrap(True)  # NEW: allow multi-line text
+        self.storage_label.setStyleSheet("font-size: 15px; color: #CCCCCC;")  # slight reduction helps fit
         main_layout.addWidget(self.storage_label)
 
         # Buttons
@@ -154,6 +159,7 @@ class ExperimentSetupDialog(QDialog):
         self.selected_illum = ILLUM_IR if self.selected_illum == ILLUM_GREEN else ILLUM_GREEN
         self.illum_toggle.setText(self.selected_illum)
         self.apply_illum_style()
+        self.update_storage_estimate()   # refresh estimate when illumination changes
 
     def adjust_value(self, line_edit, step, min_val, max_val):
         try:
@@ -178,8 +184,11 @@ class ExperimentSetupDialog(QDialog):
         n_plates = len(selected)
 
         cycles = int((duration_days * 24 * 60) / max(1, frequency_minutes))
-        images = n_plates * cycles
-        est_gb = (images * AVG_IMAGE_MB) / 1024.0
+        images = n_plates * cycles      
+        # Choose estimated per-image size based on illumination mode
+        avg_mb = AVG_IMAGE_MB_IR_GRAY if self.selected_illum == ILLUM_IR else AVG_IMAGE_MB_GREEN_RGB
+        est_gb = (images * avg_mb) / 1024.0
+
 
         # disk free
         try:
@@ -192,7 +201,9 @@ class ExperimentSetupDialog(QDialog):
             msg = "No plates selected — storage estimate unavailable."
             style = "font-size: 16px; color: #CCCCCC;"
         else:
-            msg = f"Estimated storage: ~{est_gb:.1f} GB  ({images} images over {cycles} cycles)"
+            mode_label = "IR grayscale" if self.selected_illum == ILLUM_IR else "Green RGB"
+            msg = f"Estimated storage: ~{est_gb:.1f} GB ({images} images over {cycles} cycles, {mode_label} ~{avg_mb:.0f} MB/img)"
+
             if free_gb is not None:
                 msg += f"  |  Free: {free_gb:.1f} GB"
                 style = "font-size: 16px; color: #43A047;" if est_gb <= free_gb else "font-size: 16px; color: #E53935;"

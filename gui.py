@@ -1,7 +1,10 @@
 #gui.py
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QDialog
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QTextEdit, QDialog, QSizePolicy
+)
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
-from PySide6.QtGui import QPixmap
+from PySide6.QtGui import QPixmap, QGuiApplication
 from styles import dark_style
 from experiment_setup import ExperimentSetupDialog, ILLUM_GREEN, ILLUM_IR
 from experiment_runner import ExperimentRunner
@@ -37,10 +40,27 @@ except Exception as e:
 class SeedlingImagerGUI(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Arabidopsis Seedling Imager")
-        self.setFixedSize(800, 480)
+        self.setWindowTitle("Time_Lapse Seedling Imager")
         self.setStyleSheet(dark_style)
 
+        # Adapt to actual display geometry (handles portrait/landscape without hard-coding)
+        screen = QGuiApplication.primaryScreen()
+        geom = screen.availableGeometry() if screen else None
+        if geom:
+            self.setGeometry(geom)
+        else:
+            self.resize(1280, 720)  # safe fallback for Touch Display 2 landscape
+      
+        # --- UI scaling based on screen size (relative to original 800px-wide design) ---
+        s = (geom.width() / 800.0) if geom else 1.6
+        s = max(1.0, s)
+
+        # Left column sizing
+        button_width = int(250 * s)
+        base_btn_h = 30
+        height_scale  = 1.25
+        button_height = int(base_btn_h * height_scale * s)  # ~1.5x taller touch targets
+      
         self.threads = []
         self.experiment_thread = None
         self.homing_worker = None  # <-- abortable homing worker
@@ -48,78 +68,157 @@ class SeedlingImagerGUI(QWidget):
 
         main_layout = QHBoxLayout()
 
-        # Left: buttons
+        # Left: buttons (EXACT-FILL balanced column)
         button_layout = QVBoxLayout()
-        button_layout.setSpacing(15)
-        button_layout.setAlignment(Qt.AlignTop)
-        button_width = 250
+        button_layout.setSpacing(0)
+        button_layout.setContentsMargins(0, 0, 0, 0)
+        # NOTE: do NOT set AlignTop when using stretches for exact fill.
 
-        self.live_view_btn = QPushButton("Live View")
-        self.live_view_btn.setFixedWidth(button_width)
-        self.live_view_btn.setStyleSheet(dark_style + " QPushButton { background-color: #FFD600; color: black; }")
+
+        def style_and_size(btn, *, full_width=True):
+            """Apply consistent sizing for touchscreen use."""
+            if full_width:
+                btn.setFixedWidth(button_width)
+            btn.setFixedHeight(button_height)
+            return btn
+
+        # --- Buttons (same as before, but now height-controlled) ---
+
+        # Live View toggle button (text reflects current state)
+        self.live_view_btn = QPushButton("Turn Live View On")
+        #self.live_view_btn.setFixedWidth(button_width)
+        style_and_size(self.live_view_btn)
+        self.live_view_btn.setStyleSheet(
+            dark_style + " QPushButton { background-color: #FFD600; color: black; font-weight: bold; }"
+        )
         self.live_view_btn.clicked.connect(self.toggle_live_view)
-        button_layout.addWidget(self.live_view_btn)
+        #button_layout.addWidget(self.live_view_btn)
+
 
         self.illum_toggle_btn = QPushButton(f"Illum: {self.active_illum_mode}")
-        self.illum_toggle_btn.setFixedWidth(button_width)
+        style_and_size(self.illum_toggle_btn)
         self.apply_main_illum_style()
         self.illum_toggle_btn.clicked.connect(self.toggle_illumination_mode)
-        button_layout.addWidget(self.illum_toggle_btn)
 
+        # Home + Advance row (layout preserved)
         ha_layout = QHBoxLayout()
-        self.home_btn = QPushButton("Home");    self.home_btn.setFixedWidth(button_width // 2 - 5)
-        self.home_btn.setObjectName("homeBtn")  # precise styling when in STOP state
-        self.advance_btn = QPushButton("Advance"); self.advance_btn.setFixedWidth(button_width // 2 - 5)
-        ha_layout.addWidget(self.home_btn); ha_layout.addWidget(self.advance_btn)
+        ha_layout.setSpacing(max(6,int(10 * s)))
+        ha_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Stateful home/stop behavior
+        self.home_btn = QPushButton("Home")
+        self.home_btn.setObjectName("homeBtn")
+        self.home_btn.setFixedWidth(button_width // 2 - 5)
+        self.home_btn.setFixedHeight(button_height)
         self.home_btn.clicked.connect(self.on_home_clicked)
-        # Keep MotorWorker for "advance" only
+
+        self.advance_btn = QPushButton("Advance")
+        self.advance_btn.setFixedWidth(button_width // 2 - 5)
+        self.advance_btn.setFixedHeight(button_height)
         self.advance_btn.clicked.connect(lambda: self.run_motor_action("advance"))
-        button_layout.addLayout(ha_layout)
+
+        ha_layout.addWidget(self.home_btn)
+        ha_layout.addWidget(self.advance_btn)
 
         self.experiment_btn = QPushButton("Experiment Setup")
-        self.experiment_btn.setFixedWidth(button_width)
+        style_and_size(self.experiment_btn)
         self.experiment_btn.setStyleSheet(dark_style + " QPushButton { background-color: #8E24AA; color: white; }")
         self.experiment_btn.clicked.connect(self.open_experiment_setup)
-        button_layout.addWidget(self.experiment_btn)
 
         self.end_experiment_btn = QPushButton("End Experiment")
-        self.end_experiment_btn.setFixedWidth(button_width)
+        style_and_size(self.end_experiment_btn)
         self.end_experiment_btn.setStyleSheet(dark_style + " QPushButton { background-color: #E53935; color: white; }")
         self.end_experiment_btn.clicked.connect(self.end_experiment)
-        button_layout.addWidget(self.end_experiment_btn)
 
-        # Camera Config button
         self.camera_config_btn = QPushButton("Camera Config")
-        self.camera_config_btn.setFixedWidth(button_width)
+        style_and_size(self.camera_config_btn)
         self.camera_config_btn.setStyleSheet(dark_style + " QPushButton { background-color: #546E7A; color: white; }")
         self.camera_config_btn.clicked.connect(self.open_camera_config)
-        button_layout.addWidget(self.camera_config_btn)
 
         self.file_manager_btn = QPushButton("File Manager")
-        self.file_manager_btn.setFixedWidth(button_width)
-        self.file_manager_btn.setStyleSheet(
-            dark_style + " QPushButton { background-color: #455A64; color: white; }"
-        )
+        style_and_size(self.file_manager_btn)
+        self.file_manager_btn.setStyleSheet(dark_style + " QPushButton { background-color: #455A64; color: white; }")
         self.file_manager_btn.clicked.connect(self.open_file_manager)
-        button_layout.addWidget(self.file_manager_btn)
 
-        main_layout.addLayout(button_layout)
+        # Fullscreen toggle button (touch-friendly)
+        # (Assumes you already added toggle_fullscreen() + update_fullscreen_button_text() methods)
+        self.fullscreen_btn = QPushButton("")
+        style_and_size(self.fullscreen_btn)
+        self.fullscreen_btn.setStyleSheet(
+            dark_style + " QPushButton { background-color: #607D8B; color: white; font-weight: bold; }"
+        )
+        self.fullscreen_btn.clicked.connect(self.toggle_fullscreen)
+
+        # If you ALSO added an "Exit to Desktop" button previously, include it here:
+        # self.exit_btn = QPushButton("Exit to Desktop")
+        # style_and_size(self.exit_btn)
+        # self.exit_btn.setStyleSheet(dark_style + " QPushButton { background-color: #D32F2F; color: white; font-weight: bold; }")
+        # self.exit_btn.clicked.connect(self.exit_to_desktop)
+
+        # --- Add groups + stretches (THIS achieves EXACT FILL) ---
+
+        # Optional top stretch to center the whole stack vertically:
+        button_layout.addStretch(2)
+
+        # Group 1: View / Illumination
+        button_layout.addWidget(self.live_view_btn)
+        button_layout.addSpacing(int(6 * s))
+        button_layout.addWidget(self.illum_toggle_btn)
+
+        button_layout.addStretch(1)
+
+        # Group 2: Motion
+        button_layout.addLayout(ha_layout)
+
+        button_layout.addStretch(1)
+
+        # Group 3: Experiment
+        button_layout.addWidget(self.experiment_btn)
+        button_layout.addSpacing(int(6 * s))
+        button_layout.addWidget(self.end_experiment_btn)
+
+        button_layout.addStretch(1)
+
+        # Group 4: Management
+        button_layout.addWidget(self.camera_config_btn)
+        button_layout.addSpacing(int(6 * s))
+        button_layout.addWidget(self.file_manager_btn)
+        button_layout.addSpacing(int(6 * s))
+        button_layout.addWidget(self.fullscreen_btn)
+
+        # If Exit button exists:
+        # button_layout.addSpacing(int(6 * s))
+        # button_layout.addWidget(self.exit_btn)
+
+        # Optional bottom stretch to balance the top stretch:
+        button_layout.addStretch(1)
+
+        # Add the left column to the main layout (keep your stretch setup)
+        main_layout.addLayout(button_layout, stretch=0)
+
+        # Ensure the fullscreen button text matches current state
+        self.update_fullscreen_button_text()
 
         # Right: status + camera + log
         right_layout = QVBoxLayout()
         self.status_label = QLabel("Status: Ready"); self.status_label.setAlignment(Qt.AlignCenter)
-        right_layout.addWidget(self.status_label)
+        #right_layout.addWidget(self.status_label)
 
-        self.camera_label = QLabel("Camera Preview"); self.camera_label.setAlignment(Qt.AlignCenter)
-        self.camera_label.setFixedSize(512, 288)
-        right_layout.addWidget(self.camera_label, alignment=Qt.AlignRight)
+        self.camera_label = QLabel("Camera Preview")
+        self.camera_label.setAlignment(Qt.AlignCenter)
 
-        self.log_panel = QTextEdit(); self.log_panel.setReadOnly(True)
-        right_layout.addWidget(self.log_panel)
+        # Let preview expand to fill available space on Touch Display 2
+        self.camera_label.setMinimumSize(640, 360)
+        self.camera_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-        main_layout.addLayout(right_layout)
+        self.log_panel = QTextEdit()
+        self.log_panel.setReadOnly(True)
+
+        # Keep right-side stack but give preview more space than log
+        right_layout.addWidget(self.status_label, stretch=0)
+        right_layout.addWidget(self.camera_label, stretch=3)
+        right_layout.addWidget(self.log_panel, stretch=2)
+
+        main_layout.addLayout(right_layout, stretch=1)
         self.setLayout(main_layout)
 
         self.timer = QTimer(); self.timer.timeout.connect(self.update_camera_frame)
@@ -128,7 +227,12 @@ class SeedlingImagerGUI(QWidget):
         self.update_controls_for_experiment(False)
 
         # Apply persisted camera settings at startup
-        camera.apply_settings()
+        camera.apply_settings()      
+        
+        # Ensure the Live View button text/style matches the current state at startup
+        self._update_live_view_button()
+        QTimer.singleShot(200, lambda: self.set_live_view(True))
+
 
     # ---------- Illumination ----------
     def apply_main_illum_style(self):
@@ -151,7 +255,31 @@ class SeedlingImagerGUI(QWidget):
             else:
                 led_request.set_value(LED_GREEN_PIN, Value.INACTIVE)
                 led_request.set_value(LED_IR_PIN, Value.ACTIVE)
+            
+            self.apply_liveview_camera_profile()   
+                
         self.update_status(f"Illumination set to {self.active_illum_mode}")
+
+# --- Live-view boost for IR preview (enable for IR, disable for Green) ---
+        try:
+            if self.active_illum_mode == ILLUM_IR:
+                camera.enable_liveview_boost_for_ir(target_gain=8.0, target_exposure_us=20000)
+            else:
+                camera.disable_liveview_boost()
+        except Exception as e:
+            print(f"[gui] liveview boost toggle error: {e}", flush=True)
+
+    def apply_liveview_camera_profile(self):
+        """
+        Apply a temporary camera profile for Live View depending on illumination mode.
+        - Infrared: IR Quant preset (grayscale-like, AWB off, conservative sharpness/contrast)
+        - Green: baseline persisted settings
+        """
+        base = camera.get_current_settings()
+        if self.active_illum_mode == ILLUM_IR:
+            base = camera.apply_ir_quant_preset(base)
+        camera.apply_settings(base)
+
 
     # ---------- Home/Stop logic (manual use via Home button) ----------
     def on_home_clicked(self):
@@ -290,11 +418,14 @@ class SeedlingImagerGUI(QWidget):
 
         # Create the runner, passing perform_homing flag inverse of skip_initial_homing
         self.experiment_thread = ExperimentRunner(
-            plates, days, freq, illum, self.set_led, perform_homing=(not skip_initial_homing)
+            plates, days, freq, illum,
+            self.set_led,
+            perform_homing=(not skip_initial_homing)
         )
         self.experiment_thread.status_signal.connect(self.update_status)
         self.experiment_thread.image_saved_signal.connect(lambda p: self.log_panel.append(f"Image saved: {p}"))
         self.experiment_thread.plate_signal.connect(lambda idx: self.status_label.setText(f"Plate #{idx}"))
+        self.experiment_thread.settling_started.connect(self.show_experiment_snapshot)
         self.experiment_thread.finished_signal.connect(self.on_experiment_finished)
         self.update_controls_for_experiment(True)
         self.experiment_thread.start()
@@ -328,14 +459,109 @@ class SeedlingImagerGUI(QWidget):
         self.status_label.setText(text)
         self.log_panel.append(text)
 
-    def toggle_live_view(self):
-        if not self.live_view_active:
+
+    def apply_liveview_camera_profile(self):
+            """
+            Apply a temporary camera profile for Live View based on illumination mode.
+
+            - If illumination is Infrared: apply IR quant preset (Saturation=0, AWB off, etc.)
+            - If illumination is Green: apply baseline persisted settings
+
+            This does NOT modify camera_settings.json; it only sets active controls.
+            """
+            try:
+                base = camera.get_current_settings()  # persisted settings from JSON
+                if self.active_illum_mode == ILLUM_IR:
+                    base = camera.apply_ir_quant_preset(base)  # temporary overlay
+                camera.apply_settings(base)
+            except Exception as e:
+                print(f"apply_liveview_camera_profile error: {e}", flush=True)
+
+
+    def run_motor_action(self, action: str):
+        """
+        Start a motor action (currently only 'advance') in a background thread.
+        Keeps a reference to the thread so it isn't garbage-collected.
+        """
+        # Don't allow advance during homing or experiment runs
+        if self.experiment_thread and self.experiment_thread.isRunning():
+            self.update_status("Motor action blocked: experiment is running.")
+            return
+        if self.homing_worker and self.homing_worker.isRunning():
+            self.update_status("Motor action blocked: homing is running.")
+            return
+
+        # Disable the advance button while the action runs to prevent double-clicks
+        if action == "advance":
+            self.advance_btn.setEnabled(False)
+
+        worker = MotorWorker(action)
+        worker.status_signal.connect(self.update_status)
+
+        # Re-enable controls when done and drop the reference
+        def _cleanup():
+            if action == "advance":
+                self.advance_btn.setEnabled(True)
+            try:
+                self.threads.remove(worker)
+            except ValueError:
+                pass
+
+        worker.finished.connect(_cleanup)
+
+        # Keep reference alive
+        self.threads.append(worker)
+        worker.start()
+
+
+    def _update_live_view_button(self):
+        """Update Live View button text + style to reflect current state."""
+        if self.live_view_active:
+            self.live_view_btn.setText("Turn Live View Off")
+            self.live_view_btn.setStyleSheet(
+                dark_style + " QPushButton { background-color: #43A047; color: white; font-weight: bold; }"
+            )
+        else:
+            self.live_view_btn.setText("Turn Live View On")
+            self.live_view_btn.setStyleSheet(
+                dark_style + " QPushButton { background-color: #FFD600; color: black; font-weight: bold; }"
+            )
+
+    def set_live_view(self, enable: bool):
+        """
+        Explicitly enable/disable Live View (idempotent).
+        """
+        # No-op if already in desired state
+        if enable and self.live_view_active:
+            return
+        if (not enable) and (not self.live_view_active):
+            return
+
+        if enable:
             camera.start_camera()
+            # Re-apply settings after pipeline starts (more reliable)
+            # NEW: Apply IR quant preset automatically when illumination is Infrared
+            self.apply_liveview_camera_profile()
+            
+                # --- If Live View is IR, brighten the preview with a temporary boost ---
+            if self.active_illum_mode == ILLUM_IR:
+                try:
+                    camera.enable_liveview_boost_for_ir(target_gain=8.0, target_exposure_us=20000)
+                except Exception as e:
+                    print(f"[gui] enable IR liveview boost error: {e}", flush=True)
+            else:
+                # Ensure no leftover boost if we re-enter Live View in Green
+                try:
+                    camera.disable_liveview_boost()
+                except Exception:
+                    pass
+            
             camera.set_af_mode(2)  # Continuous AF for preview
+
             self.timer.start(100)
             self.live_view_active = True
-            self.live_view_btn.setStyleSheet(dark_style + " QPushButton { background-color: #43A047; color: white; }")
-            self.update_status(f"Live View started. {self.active_illum_mode} LED ON.")
+            self._update_live_view_button()
+
             # Turn ON selected illumination
             if led_request:
                 from gpiod.line import Value
@@ -345,22 +571,73 @@ class SeedlingImagerGUI(QWidget):
                 else:
                     led_request.set_value(LED_GREEN_PIN, Value.INACTIVE)
                     led_request.set_value(LED_IR_PIN, Value.ACTIVE)
+
+            self.update_status(f"Live View started. {self.active_illum_mode} LED ON.")
+
         else:
-            self.timer.stop()
+            self.timer.stop()               
+            # --- Always clear any preview boost when leaving Live View ---
+            try:
+                camera.disable_liveview_boost()
+            except Exception:
+                pass
+            
             camera.stop_camera()
             self.live_view_active = False
-            self.live_view_btn.setStyleSheet(dark_style + " QPushButton { background-color: #FFD600; color: black; }")
-            self.update_status("Live View stopped.")
+            self._update_live_view_button()
+
             # Turn OFF both LEDs
             if led_request:
                 from gpiod.line import Value
                 led_request.set_value(LED_GREEN_PIN, Value.INACTIVE)
                 led_request.set_value(LED_IR_PIN, Value.INACTIVE)
 
+            self.update_status("Live View stopped.")
+
+    def toggle_live_view(self):
+        """UI button handler: toggle live view on/off."""
+        self.set_live_view(not self.live_view_active)
+
+    def show_experiment_snapshot(self, plate_idx: int):
+        """
+        During an experiment, show a single low-res snapshot (lores) at the start
+        of each plate's settling window so users can see the carousel cycling.
+        """
+        # If live view is active, snapshots are redundant (and Live View is usually off during runs)
+        if self.live_view_active:
+            return
+
+        frame = camera.get_frame()
+        if frame.isNull():
+            return
+
+        pixmap = QPixmap.fromImage(frame)
+
+        # Fill the preview widget area; crop overflow (center-crop) while preserving aspect ratio
+        scaled = pixmap.scaled(
+            self.camera_label.size(),
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation
+        )
+        self.camera_label.setPixmap(scaled)
+
+        # Optional: make it explicit what the user is seeing
+        self.status_label.setText(f"Plate #{plate_idx} (snapshot)")
+
     def update_camera_frame(self):
         frame = camera.get_frame()
+        if frame.isNull():
+            return
+
         pixmap = QPixmap.fromImage(frame)
-        self.camera_label.setPixmap(pixmap.scaled(self.camera_label.size(), Qt.KeepAspectRatio))
+
+        # Fill the entire preview widget; crop overflow (center crop) while keeping aspect ratio
+        scaled = pixmap.scaled(
+            self.camera_label.size(),
+            Qt.KeepAspectRatioByExpanding,
+            Qt.SmoothTransformation
+        )
+        self.camera_label.setPixmap(scaled)
 
     def open_camera_config(self):
         if self.live_view_active:
@@ -390,7 +667,40 @@ class SeedlingImagerGUI(QWidget):
         if self.live_view_active:
             self.toggle_live_view()
         dlg = FileManagerDialog(self)
+        dlg.showMaximized()   # maximize for usability on Touch Display 2
         dlg.exec()
+
+    def update_fullscreen_button_text(self):
+        """Update the on-screen toggle button text based on window state."""
+        if hasattr(self, "fullscreen_btn") and self.fullscreen_btn:
+            self.fullscreen_btn.setText("Exit Full Screen" if self.isFullScreen() else "Full Screen")
+
+    def set_fullscreen(self, enabled: bool):
+        """Enter/exit fullscreen (kiosk) mode."""
+        if enabled:
+            self.showFullScreen()
+        else:
+            self.showNormal()
+            # Optional: if you prefer exiting fullscreen -> maximized instead of normal:
+            # self.showMaximized()
+
+        self.update_fullscreen_button_text()
+
+    def toggle_fullscreen(self):
+        """Toggle fullscreen state."""
+        self.set_fullscreen(not self.isFullScreen())
+
+    def keyPressEvent(self, event):
+        """Keyboard fallbacks for testing/maintenance."""
+        if event.key() == Qt.Key_Escape and self.isFullScreen():
+            self.set_fullscreen(False)
+            event.accept()
+            return
+        if event.key() == Qt.Key_F11:
+            self.toggle_fullscreen()
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def closeEvent(self, event):
         # Graceful shutdown
