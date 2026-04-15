@@ -1,0 +1,124 @@
+# Camera Configuration — User Guide
+
+## Overview
+
+The **Camera Config** button opens a dialog that controls how the camera captures images. Settings are organised into four tabs. You do not need to change anything to run a normal experiment — the defaults are tuned for the 940 nm IR filter and the ~13 cm plate-to-lens distance. Use this dialog when you want to fine-tune image quality or troubleshoot focus.
+
+---
+
+## How to open it
+
+1. Make sure **Live View is ON** (green "Turn Live View Off" button). The Focus tab's "Read from Camera" button only works while the camera is running.
+2. Press **Camera Config**. The dialog opens without interrupting the live preview.
+3. When you are done, press **Apply** to save your changes, then **Close**.
+
+> **Tip:** After pressing Apply, watch the live preview on the right side of the screen. Changes take effect immediately so you can judge the result before closing the dialog.
+
+---
+
+## The four tabs
+
+### General
+
+Controls that apply globally to every capture regardless of illumination mode.
+
+| Setting | What it does | When to change it |
+|---|---|---|
+| **Auto Exposure (AE)** | When checked, the camera automatically picks exposure time and gain. | Leave checked for general use. The IR-mode tabs override this for actual captures. |
+| **Exposure Time** | How long the sensor collects light (µs). Only active when AE is off. | Grayed out while AE is on. |
+| **Analogue Gain** | Electronic amplification of the sensor signal. Higher = brighter but noisier. | Grayed out while AE is on. |
+| **AWB** | Auto White Balance. For IR imaging this should be **off** (the IR tabs enforce this automatically). | Leave unchecked. |
+| **Contrast / Brightness / Saturation / Sharpness** | Image tone controls. | The IR tabs set these per mode; changing them here affects only the live preview's baseline. |
+| **Noise Reduction Mode** | 0 = off, 1 = fast, 2 = high quality. | Leave at 0 for time-lapse (speed matters more than NR). |
+| **HDR** | Combines multiple exposures. Only works on 3 MP mode. | Leave unchecked for standard use. |
+
+---
+
+### Focus
+
+Controls whether the camera uses manual or automatic focus. **Manual focus is required** whenever the 940 nm bandpass filter is installed, because the camera's phase-detect autofocus (PDAF) does not work through that filter.
+
+**Step-by-step: setting manual focus**
+
+1. Check **"Use manual focus"**.
+2. The **Lens Position** spinbox becomes active. The value is in *diopters* (1 ÷ distance in metres). A plate at 13 cm from the lens = 7.589 diopters, which is the preset default.
+3. If you want to confirm or refine the value:
+   - Make sure Live View is on.
+   - Press **"Read Current Position from Camera"**.
+   - The status line below the button will show the captured value in green (e.g. *"Captured: 7.589 D (≈ 13 cm)"*).
+   - Adjust the spinbox if needed.
+4. Press **Apply**.
+
+> **Reference values**
+> - 0.0 D = infinity (far away)
+> - 4.0 D ≈ 25 cm
+> - 7.589 D ≈ 13 cm ← default for this system
+> - 10.0 D ≈ 10 cm
+
+**What the focus label on the main screen means**
+
+Below the Camera Config button you will see a small label:
+
+- **Yellow text "MF: 7.589 D (13 cm)"** — manual focus is active at that position. This is what you want during normal experiments.
+- **Grey text "Focus: Auto"** — the camera is using autofocus. Images may be blurry when the 940 nm filter is installed.
+
+---
+
+### Front IR  *(Reflectance imaging)*
+
+These settings are applied automatically whenever the illumination mode is set to **Front IR** or **Combined IR** — i.e. when the front LED panel is on and light bounces off the plate surface toward the camera.
+
+| Setting | Default | Purpose |
+|---|---|---|
+| **AE** | On | Let the camera choose exposure for each plate. Suitable for reflectance where brightness varies plate-to-plate. |
+| **Exposure** | 20 000 µs | Used only when AE is off. |
+| **Contrast** | 1.10 | Slight boost to separate seedling from agar background. |
+| **Sharpness** | 1.15 | Mild sharpening for leaf edges. |
+| **Brightness** | 0.00 | No offset needed for reflectance. |
+
+**When to adjust:** If reflectance images look consistently over- or under-exposed, try turning AE off and reducing or increasing Exposure. If seedlings look washed out against bright agar, lower Brightness slightly.
+
+---
+
+### Rear IR  *(Transmission imaging)*
+
+These settings are applied automatically whenever the illumination mode is set to **Rear IR** or **Combined IR** when the rear panel is active — i.e. when light passes through the agar and the seedling casts a silhouette toward the camera.
+
+| Setting | Default | Purpose |
+|---|---|---|
+| **AE** | **Off** | Fixed exposure prevents the camera from chasing brightness as seedlings grow and block more light over days. |
+| **Exposure** | 9 000 µs | Tuned to keep the bright agar background below saturation. |
+| **Gain** | 1.0 | Minimum gain to keep noise low in the brighter transmission image. |
+| **Contrast** | 1.50 | Stronger boost to separate dark seedling silhouette from bright agar. |
+| **Sharpness** | 1.40 | Higher sharpening to define thin hypocotyl and root edges. |
+| **Brightness** | −0.05 | Small negative offset to prevent agar background from clipping to pure white. |
+
+**When to adjust:** If the agar background looks pure white with no texture (overexposed), reduce Exposure by 1 000–2 000 µs. If seedlings are hard to see (underexposed), increase Exposure. Do not increase Gain above 2.0 — it adds noise that interferes with downstream image analysis.
+
+> **Important:** Keep AE **off** for transmission. If you turn it on, the camera will gradually increase exposure as more seedlings fill the plate, making images from day 1 and day 5 incomparable.
+
+---
+
+## How to know which settings are currently active
+
+The **Illum** button on the main screen (the large coloured button below "Turn Live View On/Off") tells you which illumination mode — and therefore which set of camera settings — is currently in use:
+
+| Button colour | Mode | Camera settings used |
+|---|---|---|
+| **Red — "Illum: Front IR"** | Front LED on only | Front IR tab values |
+| **Blue — "Illum: Rear IR"** | Rear LED on only | Rear IR tab values |
+| **Purple — "Illum: Combined IR"** | Both LEDs on | Rear IR tab values (transmission profile) |
+
+The status bar at the top of the preview also confirms the active mode each time Live View starts, for example: *"Live View started. Front IR LED(s) ON."*
+
+During an experiment, the mode is set when you press **Experiment Setup** and choose an illumination option. The correct preset is applied automatically before each plate is captured — you do not need to do anything manually.
+
+---
+
+## Quick-reference checklist before running an experiment
+
+- [ ] Focus tab: **"Use manual focus"** is checked and Lens Position reads **7.589 D** (or your calibrated value).
+- [ ] The focus label on the main screen shows yellow **MF: 7.589 D**.
+- [ ] Front IR tab: AE is **on** (unless you have a reason to pin exposure for reflectance).
+- [ ] Rear IR tab: AE is **off**; Exposure is set to a value that keeps agar background below saturation in your test image.
+- [ ] Press **Apply**, then **Close**.

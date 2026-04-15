@@ -9,7 +9,7 @@
 #   -r   Skip auto-rebase (by default we rebase onto origin/<branch> before push)
 #
 # Notes:
-# - Script runs inside /home/sybednar/Seedling_Imager/seedling_imager_controller
+# - Script runs inside /home/sybednar/projects/seedling_imager
 # - It prints status, untracked files, and staged changes summary.
 # - If rebase hits conflicts, the script exits with guidance.
 
@@ -52,7 +52,7 @@ if [[ -z "$commit_message" ]]; then
     usage
 fi
 
-REPO_DIR="/home/sybednar/Seedling_Imager/seedling_imager_controller"
+REPO_DIR="/home/sybednar/projects/seedling_imager"
 
 if [[ ! -d "$REPO_DIR/.git" ]]; then
     echo "Error: $REPO_DIR is not a Git repository."

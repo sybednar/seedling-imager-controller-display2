@@ -1,0 +1,13 @@
+Recommended workflow for the user
+The intended usage flow is:
+
+Remove the 940nm bandpass filter temporarily
+Turn on Live View — the camera will run continuous AF (AfMode=2) since ManualFocusEnable is still False
+Wait a few seconds for AF to settle on the petri plate in position 1
+Open Camera Config (Live View stays running in the background)
+Press "Read Current Position from Camera" — the spinbox populates with the measured value (should be ~7.5 diopters) and the hint label shows the equivalent distance in cm as a sanity check
+Check "Use manual focus"
+Press Apply — this immediately calls set_manual_focus() so you can verify sharpness in the live view before closing
+Press Close
+Replace the bandpass filter
+Verify the live view is still sharp — it should be, since the lens position is now pinned and start_camera() will restore it on every subsequent pipeline restart

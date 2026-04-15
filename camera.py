@@ -27,7 +27,31 @@ DEFAULTS = {
     "Saturation": 1.0,
     "Sharpness": 1.0,
     "NoiseReductionMode": 0,   # 0=off (preferred for scientific imaging)
-    "HdrEnable": False         # keep HDR off for full-res work
+    "HdrEnable": False,        # keep HDR off for full-res work
+    "ManualFocusEnable":   False,   # ADDED 041426
+    "ManualFocusPosition": 7.589,   # ADDED — diopters measured 14 April 2026
+    
+        # --- NEW: Front IR (reflectance) overrides ---
+    "FrontIR_Saturation":  0.0,
+    "FrontIR_AwbEnable":   False,
+    "FrontIR_Contrast":    1.10,
+    "FrontIR_Sharpness":   1.15,
+    "FrontIR_Brightness":  0.0,
+    "FrontIR_AeEnable":    True,
+    "FrontIR_ExposureTime": 20000,
+    "FrontIR_Gain":        1.0,
+
+    # --- NEW: Rear IR (transmission) overrides ---
+    "RearIR_Saturation":   0.0,
+    "RearIR_AwbEnable":    False,
+    "RearIR_Contrast":     1.5,
+    "RearIR_Sharpness":    1.4,
+    "RearIR_Brightness":  -0.05,
+    "RearIR_AeEnable":     False,
+    "RearIR_ExposureTime": 9000,
+    "RearIR_Gain":         1.0,
+    
+    
 }
 SETTINGS_PATH = Path("camera_settings.json")
 
@@ -48,37 +72,45 @@ def save_settings(settings: dict) -> bool:
     except Exception:
         return False
 
-
-# =============================================================================
-# IR "Quant" preset helpers (temporary overlay; does NOT persist to JSON)
-# =============================================================================
-
-IR_QUANT_PRESET = {
-    # Reduce chroma artifacts / false color in IR
-    "Saturation": 0.0,
-
-    # Stabilize IR imaging (prevents channel-gain drift)
-    "AwbEnable": False,
-
-    # For quantitative work: avoid temporal smoothing
-    "NoiseReductionMode": 0,
-
-    # Conservative tuning for roots on translucent agar
-    "Contrast": 1.10,
-    "Sharpness": 1.15,
-    "Brightness": 0.0,
-
-    # Keep AE enabled for settling; runner will lock AE per plate
-    "AeEnable": True,
-}
-
 def apply_ir_quant_preset(base: dict | None) -> dict:
     """
-    Return a non-persistent settings dict for IR root imaging.
-    This function does NOT write camera_settings.json.
+    Build Front IR (reflectance) runtime settings by merging FrontIR_* overrides
+    from persisted settings onto the base dict.
+    Does NOT write camera_settings.json.
     """
-    s = dict(base) if base else {}
-    s.update(IR_QUANT_PRESET)
+    s = dict(base) if base else load_settings()
+    saved = load_settings()
+    s["Saturation"]  = 0.0    # always 0 for IR — no useful chroma information
+    s["AwbEnable"]   = False  # always off — prevents channel drift on 940 nm source
+    s["NoiseReductionMode"] = 0
+    s["Contrast"]    = float(saved.get("FrontIR_Contrast",   1.10))
+    s["Sharpness"]   = float(saved.get("FrontIR_Sharpness",  1.15))
+    s["Brightness"]  = float(saved.get("FrontIR_Brightness", 0.0))
+    s["AeEnable"]    = bool(saved.get("FrontIR_AeEnable",    True))
+    if not s["AeEnable"]:
+        s["ExposureTime"]  = int(saved.get("FrontIR_ExposureTime", 20000))
+        s["AnalogueGain"]  = float(saved.get("FrontIR_Gain",       1.0))
+    return s
+
+
+def apply_ir_transmission_preset(base: dict | None) -> dict:
+    """
+    Build Rear IR (transmission) runtime settings by merging RearIR_* overrides
+    from persisted settings onto the base dict.
+    Does NOT write camera_settings.json.
+    """
+    s = dict(base) if base else load_settings()
+    saved = load_settings()
+    s["Saturation"]  = 0.0    # always 0 for IR
+    s["AwbEnable"]   = False  # always off
+    s["NoiseReductionMode"] = 0
+    s["Contrast"]    = float(saved.get("RearIR_Contrast",    1.5))
+    s["Sharpness"]   = float(saved.get("RearIR_Sharpness",   1.4))
+    s["Brightness"]  = float(saved.get("RearIR_Brightness", -0.05))
+    s["AeEnable"]    = bool(saved.get("RearIR_AeEnable",     False))
+    if not s["AeEnable"]:
+        s["ExposureTime"]  = int(saved.get("RearIR_ExposureTime", 9000))
+        s["AnalogueGain"]  = float(saved.get("RearIR_Gain",        1.0))
     return s
 
 def set_manual_exposure_gain(exposure_us: int, gain: float) -> None:
@@ -99,45 +131,73 @@ def set_manual_exposure_gain(exposure_us: int, gain: float) -> None:
 _liveview_boost_active = False
 _liveview_saved_controls = None
 
-def enable_liveview_boost_for_ir(target_gain: float = 8.0, target_exposure_us: int = 20000) -> None:
+def enable_liveview_boost_for_ir(
+    target_gain: float = 8.0,
+    target_exposure_us: int = 20000,
+    mode: str = "Front IR"
+) -> None:
     """
-    Temporarily brighten the IR live view by pushing AnalogueGain and (optionally)
-    ExposureTime. This should only be used in Live View and must be cleared with
-    disable_liveview_boost() before starting an experiment.
+    Temporarily brighten the IR live view by pushing AnalogueGain and ExposureTime.
+    Should only be called during Live View; must be cleared with disable_liveview_boost()
+    before starting an experiment.
+
+    mode: one of "Front IR" (reflectance), "Rear IR" (transmission), "Combined IR".
+      - Rear IR and Combined IR illuminate the sensor with far more photons than front
+        reflectance, so the gain and exposure ceilings are lowered automatically to
+        avoid saturation of the agar background.
+      - Front IR (reflectance) uses the full target_gain / target_exposure_us as passed.
     """
     global _liveview_boost_active, _liveview_saved_controls
 
     if _liveview_boost_active:
-        return  # already active
+        return  # already active; caller must disable before re-calling with new mode
+
+    # --- Adjust boost parameters for transmission geometries ---
+    # Rear and combined panels produce a bright-field signal that is typically
+    # 5–20× stronger than front reflectance.  Cap gain and exposure to prevent
+    # the agar background from clipping while still giving a usable preview.
+    if mode in ("Rear IR", "Combined IR"):
+        target_gain        = min(target_gain, 1.0)    # was 2.0
+        target_exposure_us = min(target_exposure_us, 500)  # ~8 ms ceiling change from 8000
+    # Front IR: use the caller-supplied values unchanged (default 8.0 gain / 20 ms)
 
     try:
-        # Read current controls so we can restore later
+        # Snapshot current controls so disable_liveview_boost() can restore them exactly
         md = get_metadata() or {}
         _liveview_saved_controls = {
-            "AeEnable": md.get("AeEnable", True),
+            "AeEnable":    md.get("AeEnable",    True),
             "ExposureTime": md.get("ExposureTime", None),
             "AnalogueGain": md.get("AnalogueGain", None),
-            "AwbEnable": md.get("AwbEnable", True),
+            "AwbEnable":   md.get("AwbEnable",   True),
         }
 
-        # Let AE run briefly (helps sensor settle) — best-effort
+        # Let AE settle briefly before we apply the floor — helps the sensor
+        # start from a reasonable operating point rather than from cold defaults
         try:
             set_auto_exposure(True)
         except Exception:
             pass
 
-        # Apply a bright live-view baseline; AE can still run unless you prefer to lock
-        # For IR preview clarity, many users prefer AE on + floor gain; if you want to
-        # force it, set AeEnable False and pin both values.
         controls = {
-            "AnalogueGain": float(target_gain),  # floor the gain upwards
-            "ExposureTime": int(target_exposure_us),  # ~20 ms is a good starting point
-            "AeEnable": True,  # keep AE on during preview; change to False to hard lock
-            "AwbEnable": False  # no effect in mono IR but avoids oscillation
+            # Keep AE active during preview so it can hunt around the floor;
+            # set AeEnable=False here if you prefer a hard-locked preview instead.
+            "AeEnable":     True,
+            # Floor the gain so preview stays bright even if AE wants to go lower
+            "AnalogueGain": float(target_gain),
+            # Provide an exposure starting point; AE will adjust from here
+            "ExposureTime": int(target_exposure_us),
+            # AWB has no useful effect on a near-monochromatic 940 nm signal and
+            # can cause channel-gain oscillation — keep it off for all IR modes
+            "AwbEnable":    False,
         }
-        set_controls(controls)
+        picam.set_controls(controls)
         _liveview_boost_active = True
-        print("[camera] Live-view IR boost enabled", flush=True)
+        print(
+            f"[camera] Live-view IR boost enabled: mode={mode}, "
+            f"gain_floor={target_gain}, exposure_floor={target_exposure_us}µs",
+            flush=True
+        )
+
     except Exception as e:
         print(f"[camera] liveview boost error: {e}", flush=True)
 
@@ -151,7 +211,7 @@ def disable_liveview_boost() -> None:
     try:
         if isinstance(_liveview_saved_controls, dict):
             # Restore previous state (best-effort)
-            set_controls({
+            picam.set_controls({
                 "AeEnable": bool(_liveview_saved_controls.get("AeEnable", True)),
                 "AwbEnable": bool(_liveview_saved_controls.get("AwbEnable", True)),
             })
@@ -159,7 +219,7 @@ def disable_liveview_boost() -> None:
             prev_exp = _liveview_saved_controls.get("ExposureTime", None)
             prev_gain = _liveview_saved_controls.get("AnalogueGain", None)
             if prev_exp is not None and prev_gain is not None and not _liveview_saved_controls.get("AeEnable", True):
-                set_controls({"ExposureTime": int(prev_exp), "AnalogueGain": float(prev_gain)})
+                picam.set_controls({"ExposureTime": int(prev_exp), "AnalogueGain": float(prev_gain)})
         _liveview_boost_active = False
         _liveview_saved_controls = None
         print("[camera] Live-view IR boost disabled (restored controls)", flush=True)
@@ -216,13 +276,17 @@ def get_current_settings() -> dict:
 # Start/stop camera
 # =============================================================================
 def start_camera() -> None:
-    """Start Picamera2 pipeline (idempotent). Also enable Continuous AF for Live View."""
+    """Start Picamera2 pipeline (idempotent). Apply focus mode immediately."""
     try:
         picam.start()
-        set_af_mode(2)  # Continuous AF for preview comfort
     except Exception:
-        # ignore if already started
-        pass
+        pass  # ignore if already started
+
+    settings = load_settings()
+    if settings.get("ManualFocusEnable", False):
+        set_manual_focus()              # lock to saved diopter value
+    else:
+        set_af_mode(2)                  # continuous AF for live preview
 
 def stop_camera() -> None:
     """Stop Picamera2 pipeline."""
@@ -240,6 +304,24 @@ def set_auto_exposure(enabled: bool) -> None:
         picam.set_controls({"AeEnable": bool(enabled)})
     except Exception as e:
         print(f"set_auto_exposure error: {e}", flush=True)
+
+def set_manual_focus(position: float = None) -> None:
+    """
+    Lock the lens to a fixed diopter position.
+    If position is None, reads ManualFocusPosition from the persisted settings file.
+    Call this after every start_camera() when ManualFocusEnable is True —
+    the lens does NOT hold its position across pipeline restarts.
+    """
+    if position is None:
+        position = float(load_settings().get("ManualFocusPosition", 7.589))
+    try:
+        picam.set_controls({
+            "AfMode":       0,                 # 0 = manual; disables PDAF/CDAF
+            "LensPosition": float(position),
+        })
+        print(f"[camera] Manual focus locked: {position:.3f} diopters", flush=True)
+    except Exception as e:
+        print(f"[camera] set_manual_focus error: {e}", flush=True)
 
 def set_af_mode(mode: int = 2) -> None:
     """

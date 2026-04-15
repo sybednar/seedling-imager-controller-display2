@@ -32,12 +32,12 @@ SLOW_DELAY = 0.0025
 FAST_DELAY  = 0.0010
 
 # ---------------- options ----------------
-DIR_INVERT = False        # flip if motion direction looks reversed
+DIR_INVERT = True        # set to false for gear drive/True for belt drive
 DEBUG_VERBOSE = True
 
 # Calibrated landing point will be (W//2 - CENTER_BACKOFF) µsteps CW from the re-validated leading edge.
 # tuned initially to 6; adjust ±1 if you ever need a tiny nudge.
-CENTER_BACKOFF = 12
+CENTER_BACKOFF = 5
 
 # Keep trim at 0 so we do NOT re-add CW after backoff (avoid double-application).
 FINE_CENTER_TRIM = 0      # leave 0 unless you intentionally want an extra CW nudge

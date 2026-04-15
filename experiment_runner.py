@@ -21,6 +21,7 @@ import os
 import motor_control
 import camera
 from camera_config import load_settings
+from experiment_setup import ILLUM_FRONT_IR, ILLUM_REAR_IR, ILLUM_COMBINED
 
 # -------- Re-home cadence (edit as you like) --------
 REHOME_EVERY_N = 1   # 1 = every cycle; 10 = every 10 cycles; 0/None to disable
@@ -323,11 +324,15 @@ class ExperimentRunner(QThread):
                 self.finished_signal.emit()
                 return
 
-        # Start camera & apply settings for the acquisition phase
+        # Start camera & apply the correct IR preset for the chosen mode  # REVISED
         try:
             camera.start_camera()
             active_settings = dict(self.cam_settings)
-            if self.illumination_mode == "Infrared":
+            if self.illumination_mode == ILLUM_REAR_IR:
+                # Transmission geometry: brighter signal, softer contrast preset
+                active_settings = camera.apply_ir_transmission_preset(active_settings)
+            else:
+                # Front IR (reflectance) or Combined: use existing quant preset
                 active_settings = camera.apply_ir_quant_preset(active_settings)
             camera.apply_settings(active_settings)
         except Exception as e:
@@ -335,25 +340,25 @@ class ExperimentRunner(QThread):
             self.finished_signal.emit()
             return
 
-        # --- Global pre-warm once per run (especially important for IR) ---
+        # --- Global pre-warm once per run ---                               # REVISED
+        # All three modes are IR; turn on whatever panel(s) the mode requires
+        # so AE converges under actual illumination conditions.
         try:
-            # Turn on the appropriate LED for warm-up so AE converges with actual illumination
-            if self.illumination_mode == "Infrared":
-                if self.led_control_fn:
-                    self.led_control_fn(True, self.illumination_mode)
-            # Ensure AE is on during pre-warm
+            if self.led_control_fn:
+                self.led_control_fn(True, self.illumination_mode)
             camera.set_auto_exposure(True)
             self._log("Global pre-warm: letting AE settle for 2.5s before the first cycle...")
-            self._sleep_with_abort(2.5)  # adjust 2.0–3.0s if needed
+            self._sleep_with_abort(2.5)
         finally:
-            # Turn LED back off before entering the cycle loop; per-plate logic will manage LEDs
+            # LEDs off before entering the cycle loop; per-plate logic manages them
             if self.led_control_fn:
                 self.led_control_fn(False, self.illumination_mode)
 
         self._open_csv()
         self._log(
             f"Experiment started: {self.duration_days} day(s), "
-            f"every {self.frequency_minutes} min. Illumination: {self.illumination_mode}. "
+            f"every {self.frequency_minutes} min. "
+            f"Illumination: {self.illumination_mode}. "                     # REVISED: no hardcoded "Infrared"
             f"Re-home: full, every {int(REHOME_EVERY_N) if REHOME_EVERY_N else 0} cycle(s)."
         )
 
@@ -378,14 +383,17 @@ class ExperimentRunner(QThread):
                     # AE settle
                     camera.set_auto_exposure(True)
 
-                    # Autofocus once per plate (optional; uses metadata FoM if available)
-                    try:
-                        camera.set_af_mode(1)  # single
-                        camera.trigger_autofocus()
-                    except Exception as e:
-                        self._log(f"AF trigger warning (ignored): {e}")
+                    # Autofocus — skip entirely when manual focus is enabled,
+                    # since PDAF does not function through the 940 nm bandpass filter.
+                    _manual_focus = self.cam_settings.get("ManualFocusEnable", False)
 
-                    self.settling_started.emit(plate_idx)
+                    if not _manual_focus:
+                        try:
+                            camera.set_af_mode(1)
+                            camera.trigger_autofocus()
+                        except Exception as e:
+                            self._log(f"AF trigger warning (ignored): {e}")
+
                     self._log(f"Plate #{plate_idx}: waiting {self.wait_seconds_for_camera}s...")
                     self._sleep_with_abort(self.wait_seconds_for_camera)
                     self.settling_finished.emit(plate_idx)
@@ -393,28 +401,34 @@ class ExperimentRunner(QThread):
                     if self._abort:
                         break
 
-                    # AF + FoM retry; then lock focus
-                    best_fom, md_focus, attempts = self._autofocus_with_retry(
-                        threshold=500.0, timeout_s=3.0, poll_s=0.2
-                    )
-                    if best_fom is None:
-                        self._log(f"Plate #{plate_idx}: FocusFoM unavailable; locking focus anyway.")
+                    if _manual_focus:
+                        # Focus is already locked from start_camera(); nothing to do.
+                        best_fom = None
+                        md_focus = camera.get_metadata()
+                        attempts = 0
                     else:
-                        self._log(
-                            f"Plate #{plate_idx}: FocusFoM best={best_fom:.0f} "
-                            f"(threshold=500, attempts={attempts}), locking focus."
+                        best_fom, md_focus, attempts = self._autofocus_with_retry(
+                            threshold=500.0, timeout_s=3.0, poll_s=0.2
                         )
-                    try:
-                        camera.set_af_mode(0)  # lock focus
-                    except Exception as e:
-                        self._log(f"AF lock warning (ignored): {e}")
+                        if best_fom is None:
+                            self._log(f"Plate #{plate_idx}: FocusFoM unavailable; locking focus anyway.")
+                        else:
+                            self._log(
+                                f"Plate #{plate_idx}: FocusFoM best={best_fom:.0f} "
+                                f"(threshold=500, attempts={attempts}), locking focus."
+                            )
+                        try:
+                            camera.set_af_mode(0)
+                        except Exception as e:
+                            self._log(f"AF lock warning (ignored): {e}")
+                                               
 
-                    # --- (A) One-time warm-up ONLY for the first Plate #1 of the run ---
+                    # (A) One-time warm-up ONLY for the first Plate #1 of the run
                     if self.cycle_count == 1 and plate_idx == 1 and FIRST_PLATE_WARMUP_S > 0:
                         self._log(f"First Plate #1 warm-up: extra {FIRST_PLATE_WARMUP_S:.1f}s AE settle")
                         self._sleep_with_abort(FIRST_PLATE_WARMUP_S)
 
-                    # --- (B) AE stability gate for every plate before we pin AE ---
+                    # (B) AE stability gate for every plate before we pin AE
                     stable, md_stable = self._ae_stability_gate(
                         max_wait_s=AE_GATE_MAX_WAIT_S,
                         poll_s=AE_GATE_POLL_S,
@@ -426,41 +440,45 @@ class ExperimentRunner(QThread):
                     else:
                         self._log("AE stability: not fully stable at timeout; pinning latest values.")
 
-                    # Choose the best metadata available at this point
+                    # Choose the best metadata snapshot available at this point
                     md_pin = md_stable if md_stable else (md_focus if md_focus else camera.get_metadata())
 
-                    # Extract values for CSV logging (keep variable names used later)
                     settled_exp  = md_pin.get("ExposureTime", None)
                     settled_gain = md_pin.get("AnalogueGain", None)
                     lens_pos     = md_pin.get("LensPosition", None)
                     af_state     = md_pin.get("AfState", None)
                     focus_fom    = md_pin.get("FocusFoM", None)
 
-                    # --- Pin AE and set manual controls ---
+                    # Pin AE and set manual controls
                     camera.set_auto_exposure(False)
                     if settled_exp is not None and settled_gain is not None:
                         camera.set_manual_exposure_gain(settled_exp, settled_gain)
                     else:
-                        # Fallback if metadata missing (rare): leave AE on for this frame
                         self._log("AE pin: missing ExposureTime/AnalogueGain; leaving AE enabled for this capture.")
 
+                    # Give controls one frame to take effect on the still stream
+                    self._sleep_with_abort(0.20)
+                    
+                    self.settling_started.emit(plate_idx)
 
-                    # Give controls one frame to take effect on the still stream (Picamera2 is async)
-                    self._sleep_with_abort(0.20)  # 200 ms is usually enough; 100–250 ms fine
-
-
-                    # Capture (if selected)
+                    # Capture (if this plate is selected)                   # REVISED
                     if plate_idx in self.selected_plates:
                         ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                        if self.illumination_mode == "Infrared":
-                            img_name = f"plate{plate_idx}_{ts_str}_gray.tif"
-                            grayscale = True
-                        else:
-                            img_name = f"plate{plate_idx}_{ts_str}.tif"
-                            grayscale = False
+
+                        # All IR modes save as grayscale TIFF.
+                        # A mode tag in the filename distinguishes front/rear/combined
+                        # if you later want to run both modes in the same experiment session.
+                        mode_tag = {
+                            ILLUM_FRONT_IR:  "front",
+                            ILLUM_REAR_IR:   "rear",
+                            ILLUM_COMBINED:  "combined",
+                        }.get(self.illumination_mode, "ir")
+
+                        img_name = f"plate{plate_idx}_{ts_str}_{mode_tag}_gray.tif"
                         img_path = str(self.run_dir / f"plate{plate_idx}" / img_name)
 
-                        saved = camera.save_image(img_path, grayscale=grayscale)
+                        saved = camera.save_image(img_path, grayscale=True)  # always grayscale for IR
+
                         if saved:
                             width = height = None
                             shape = camera.get_last_saved_shape()
@@ -472,33 +490,31 @@ class ExperimentRunner(QThread):
                                 file_size = None
 
                             md = camera.get_metadata()
-                            AeEnable = md.get("AeEnable", None)
+                            AeEnable     = md.get("AeEnable",    None)
                             ExposureTime = md.get("ExposureTime", None)
                             AnalogueGain = md.get("AnalogueGain", None)
-                            AwbEnable = md.get("AwbEnable", None)
+                            AwbEnable    = md.get("AwbEnable",   None)
 
                             if self.csv_writer:
-                                self.csv_writer.writerow(
-                                    [
-                                        datetime.now().isoformat(timespec="seconds"),
-                                        self.cycle_count,
-                                        plate_idx,
-                                        self.illumination_mode,
-                                        img_path,
-                                        width,
-                                        height,
-                                        file_size,
-                                        AeEnable,
-                                        ExposureTime,
-                                        AnalogueGain,
-                                        AwbEnable,
-                                        settled_exp,
-                                        settled_gain,
-                                        lens_pos,
-                                        af_state,
-                                        focus_fom,
-                                    ]
-                                )
+                                self.csv_writer.writerow([
+                                    datetime.now().isoformat(timespec="seconds"),
+                                    self.cycle_count,
+                                    plate_idx,
+                                    self.illumination_mode,
+                                    img_path,
+                                    width,
+                                    height,
+                                    file_size,
+                                    AeEnable,
+                                    ExposureTime,
+                                    AnalogueGain,
+                                    AwbEnable,
+                                    settled_exp,
+                                    settled_gain,
+                                    lens_pos,
+                                    af_state,
+                                    focus_fom,
+                                ])
                             self.image_saved_signal.emit(img_path)
                             self._log(f"Saved: {img_path}")
                         else:
@@ -506,23 +522,21 @@ class ExperimentRunner(QThread):
                     else:
                         self._log(f"Plate #{plate_idx}: skipped.")
 
-                    # LED OFF, prep for next plate
+                    # LED OFF, re-enable AE, prep for next plate
                     if self.led_control_fn:
                         self.led_control_fn(False, self.illumination_mode)
                     camera.set_auto_exposure(True)
 
-                    # Step to next plate — BUT NOT after plate 6
+                    # Step to next plate — but NOT after plate 6
                     if plate_idx < 6:
                         motor_control.advance(status_callback=self.status_signal.emit)
                         self.plate_signal.emit(plate_idx + 1)
 
                 # ---- End of a full 1..6 cycle ----
                 if not self._abort:
-                    # Full re-home at cycle boundary (no advance occurred after plate 6)
                     if REHOME_EVERY_N and (self.cycle_count % int(REHOME_EVERY_N) == 0):
                         self._rehome_at_cycle_boundary()
                     else:
-                        # Even if re-home skipped, ensure we present Plate #1 for the next cycle
                         motor_control.goto_plate(1, status_callback=self.status_signal.emit)
                         self.plate_signal.emit(1)
 
@@ -532,7 +546,7 @@ class ExperimentRunner(QThread):
         finally:
             self._log("Experiment finished." if not self._abort else "Experiment aborted.")
             try:
-                camera.apply_settings(self.cam_settings)  # restore baseline
+                camera.apply_settings(self.cam_settings)  # restore baseline settings
             except Exception:
                 pass
             try:

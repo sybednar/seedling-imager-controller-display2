@@ -1,4 +1,3 @@
-
 # experiment_setup.py
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QMessageBox,
@@ -9,16 +8,23 @@ from styles import dark_style
 import shutil
 from pathlib import Path
 
-ILLUM_GREEN = "Green"
-ILLUM_IR = "Infrared"
+ILLUM_FRONT_IR   = "Front IR"      # reflectance, GPIO13
+ILLUM_REAR_IR    = "Rear IR"       # transmission, GPIO12
+ILLUM_COMBINED   = "Combined IR"   # both panels, GPIO12 + GPIO13
 
-SEA_FOAM_GREEN = "#26A69A"
-DEEP_RED = "#B71C1C"
 
-# ---- constants for storage estimate ----
-IMAGES_ROOT = Path("/home/sybednar/Seedling_Imager/images").expanduser()
-AVG_IMAGE_MB_GREEN_RGB = 45.0
+# Color map for the toggle button:
+ILLUM_COLORS = {
+    ILLUM_FRONT_IR:  "#B71C1C",   # deep red
+    ILLUM_REAR_IR:   "#1565C0",   # deep blue (distinct)
+    ILLUM_COMBINED:  "#6A1B9A",   # purple = front+rear
+}
+
+# Storage estimates (all IR grayscale now)
 AVG_IMAGE_MB_IR_GRAY = 10.0
+AVG_IMAGE_MB_FRONT_IR  = 10.0
+AVG_IMAGE_MB_REAR_IR   = 10.0
+AVG_IMAGE_MB_COMBINED  = 10.0   # same file size; two captures per plate if sequential
 
 
 class ExperimentSetupDialog(QDialog):
@@ -30,7 +36,7 @@ class ExperimentSetupDialog(QDialog):
         self.setMinimumHeight(520)  # give vertical room so label doesn't crowd buttons
         self.setStyleSheet(dark_style)
 
-        self.selected_illum = ILLUM_GREEN
+        self.selected_illum = ILLUM_FRONT_IR
 
         main_layout = QVBoxLayout()
 
@@ -144,22 +150,20 @@ class ExperimentSetupDialog(QDialog):
         # Initial compute
         self.update_storage_estimate()
 
-    # --- existing helpers (illumination & adjust_value) unchanged ---
-    def apply_illum_style(self):
-        if self.selected_illum == ILLUM_GREEN:
-            self.illum_toggle.setStyleSheet(
-                f"background-color: {SEA_FOAM_GREEN}; color: white; font-size: 18px; font-weight: bold; border-radius: 8px;"
-            )
-        else:
-            self.illum_toggle.setStyleSheet(
-                f"background-color: {DEEP_RED}; color: white; font-size: 18px; font-weight: bold; border-radius: 8px;"
-            )
-
+    # ---  helpers (illumination & adjust_value) ---
     def toggle_illum(self):
-        self.selected_illum = ILLUM_IR if self.selected_illum == ILLUM_GREEN else ILLUM_GREEN
+        order = [ILLUM_FRONT_IR, ILLUM_REAR_IR, ILLUM_COMBINED]
+        idx = order.index(self.selected_illum)
+        self.selected_illum = order[(idx + 1) % len(order)]
         self.illum_toggle.setText(self.selected_illum)
         self.apply_illum_style()
-        self.update_storage_estimate()   # refresh estimate when illumination changes
+        self.update_storage_estimate()
+
+    def apply_illum_style(self):
+        color = ILLUM_COLORS.get(self.selected_illum, "#B71C1C")
+        self.illum_toggle.setStyleSheet(
+            f"background-color: {color}; color: white; font-size: 18px; font-weight: bold; border-radius: 8px;"
+        )
 
     def adjust_value(self, line_edit, step, min_val, max_val):
         try:
@@ -171,47 +175,52 @@ class ExperimentSetupDialog(QDialog):
         # recompute after button presses
         self.update_storage_estimate()
 
-    # ---- NEW: storage estimate computation ----
+    # ---- storage estimate computation ----
     def update_storage_estimate(self):
-        try:
-            duration_days = int(self.duration_value.text())
-            frequency_minutes = int(self.freq_value.text())
-        except ValueError:
-            duration_days = 1
-            frequency_minutes = 30
+            try:
+                duration_days      = int(self.duration_value.text())
+                frequency_minutes  = int(self.freq_value.text())
+            except ValueError:
+                duration_days, frequency_minutes = 1, 30
 
-        selected = [name for name, cb in self.plate_checkboxes.items() if cb.isChecked()]
-        n_plates = len(selected)
+            selected = [name for name, cb in self.plate_checkboxes.items() if cb.isChecked()]
+            n_plates = len(selected)
 
-        cycles = int((duration_days * 24 * 60) / max(1, frequency_minutes))
-        images = n_plates * cycles      
-        # Choose estimated per-image size based on illumination mode
-        avg_mb = AVG_IMAGE_MB_IR_GRAY if self.selected_illum == ILLUM_IR else AVG_IMAGE_MB_GREEN_RGB
-        est_gb = (images * avg_mb) / 1024.0
+            cycles    = int((duration_days * 24 * 60) / max(1, frequency_minutes))
+            images    = n_plates * cycles
 
+            # All modes are IR grayscale — use a single per-image size estimate
+            avg_mb    = AVG_IMAGE_MB_IR_GRAY
+            est_gb    = (images * avg_mb) / 1024.0
 
-        # disk free
-        try:
-            total, used, free = shutil.disk_usage(IMAGES_ROOT)
-            free_gb = free / (1024 ** 3)
-        except Exception:
-            free_gb = None
+            mode_label = {
+                ILLUM_FRONT_IR:  "front IR gray",
+                ILLUM_REAR_IR:   "rear IR gray",
+                ILLUM_COMBINED:  "combined IR gray",
+            }.get(self.selected_illum, "IR gray")
 
-        if n_plates == 0:
-            msg = "No plates selected — storage estimate unavailable."
-            style = "font-size: 16px; color: #CCCCCC;"
-        else:
-            mode_label = "IR grayscale" if self.selected_illum == ILLUM_IR else "Green RGB"
-            msg = f"Estimated storage: ~{est_gb:.1f} GB ({images} images over {cycles} cycles, {mode_label} ~{avg_mb:.0f} MB/img)"
+            try:
+                total, used, free = shutil.disk_usage(IMAGES_ROOT)
+                free_gb = free / (1024 ** 3)
+            except Exception:
+                free_gb = None
 
-            if free_gb is not None:
-                msg += f"  |  Free: {free_gb:.1f} GB"
-                style = "font-size: 16px; color: #43A047;" if est_gb <= free_gb else "font-size: 16px; color: #E53935;"
-            else:
+            if n_plates == 0:
+                msg   = "No plates selected — storage estimate unavailable."
                 style = "font-size: 16px; color: #CCCCCC;"
+            else:
+                msg = (
+                    f"Estimated storage: ~{est_gb:.1f} GB "
+                    f"({images} images over {cycles} cycles, {mode_label} ~{avg_mb:.0f} MB/img)"
+                )
+                if free_gb is not None:
+                    msg += f"  |  Free: {free_gb:.1f} GB"
+                    style = "font-size: 16px; color: #43A047;" if est_gb <= free_gb else "font-size: 16px; color: #E53935;"
+                else:
+                    style = "font-size: 16px; color: #CCCCCC;"
 
-        self.storage_label.setText(msg)
-        self.storage_label.setStyleSheet(style)
+            self.storage_label.setText(msg)
+            self.storage_label.setStyleSheet(style)
 
     def validate_and_start(self):
         selected = [name for name, cb in self.plate_checkboxes.items() if cb.isChecked()]

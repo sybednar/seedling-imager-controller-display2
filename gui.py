@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QPixmap, QGuiApplication
 from styles import dark_style
-from experiment_setup import ExperimentSetupDialog, ILLUM_GREEN, ILLUM_IR
+from experiment_setup import ExperimentSetupDialog, ILLUM_FRONT_IR, ILLUM_REAR_IR, ILLUM_COMBINED
 from experiment_runner import ExperimentRunner
 from camera_config import CameraConfigDialog
 from file_manager import FileManagerDialog
@@ -17,19 +17,19 @@ import camera
 SEA_FOAM_GREEN = "#26A69A"  # Green mode button color
 DEEP_RED = "#B71C1C"        # Infrared mode button color
 
-# LED GPIO setup (best-effort)
+# LED GPIO setup block
 try:
     import gpiod
     from gpiod.line import Value, Direction
-    LED_GREEN_PIN = 12
-    LED_IR_PIN = 13
+    LED_REAR_IR_PIN  = 12    # was LED_GREEN_PIN; now rear IR panel
+    LED_FRONT_IR_PIN = 13    # front IR panel (unchanged)
     chip = "/dev/gpiochip0"
     led_request = gpiod.request_lines(
         chip,
         consumer="seedling_leds",
         config={
-            LED_GREEN_PIN: gpiod.LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE),
-            LED_IR_PIN: gpiod.LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE),
+            LED_REAR_IR_PIN:  gpiod.LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE),
+            LED_FRONT_IR_PIN: gpiod.LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE),
         }
     )
 except Exception as e:
@@ -64,7 +64,7 @@ class SeedlingImagerGUI(QWidget):
         self.threads = []
         self.experiment_thread = None
         self.homing_worker = None  # <-- abortable homing worker
-        self.active_illum_mode = ILLUM_GREEN
+        self.active_illum_mode = ILLUM_FRONT_IR
 
         main_layout = QHBoxLayout()
 
@@ -133,28 +133,28 @@ class SeedlingImagerGUI(QWidget):
         style_and_size(self.camera_config_btn)
         self.camera_config_btn.setStyleSheet(dark_style + " QPushButton { background-color: #546E7A; color: white; }")
         self.camera_config_btn.clicked.connect(self.open_camera_config)
+        
+        # Focus mode indicator — updates on startup and after Camera Config Apply
+        self.focus_mode_label = QLabel()
+        self.focus_mode_label.setAlignment(Qt.AlignCenter)
+        self.focus_mode_label.setFixedWidth(button_width)
+        self.focus_mode_label.setStyleSheet("font-size: 14px;")
+        self._update_focus_mode_label()          # set text at startup
 
         self.file_manager_btn = QPushButton("File Manager")
         style_and_size(self.file_manager_btn)
         self.file_manager_btn.setStyleSheet(dark_style + " QPushButton { background-color: #455A64; color: white; }")
         self.file_manager_btn.clicked.connect(self.open_file_manager)
 
-        # Fullscreen toggle button (touch-friendly)
-        # (Assumes you already added toggle_fullscreen() + update_fullscreen_button_text() methods)
-        self.fullscreen_btn = QPushButton("")
-        style_and_size(self.fullscreen_btn)
-        self.fullscreen_btn.setStyleSheet(
-            dark_style + " QPushButton { background-color: #607D8B; color: white; font-weight: bold; }"
+
+        # Exit to Desktop (touch-friendly)
+        self.exit_btn = QPushButton("Exit to Desktop")
+        style_and_size(self.exit_btn)
+        self.exit_btn.setStyleSheet(
+            dark_style + " QPushButton { background-color: #D32F2F; color: white; font-weight: bold; }"
         )
-        self.fullscreen_btn.clicked.connect(self.toggle_fullscreen)
+        self.exit_btn.clicked.connect(self.close)
 
-        # If you ALSO added an "Exit to Desktop" button previously, include it here:
-        # self.exit_btn = QPushButton("Exit to Desktop")
-        # style_and_size(self.exit_btn)
-        # self.exit_btn.setStyleSheet(dark_style + " QPushButton { background-color: #D32F2F; color: white; font-weight: bold; }")
-        # self.exit_btn.clicked.connect(self.exit_to_desktop)
-
-        # --- Add groups + stretches (THIS achieves EXACT FILL) ---
 
         # Optional top stretch to center the whole stack vertically:
         button_layout.addStretch(2)
@@ -180,10 +180,12 @@ class SeedlingImagerGUI(QWidget):
 
         # Group 4: Management
         button_layout.addWidget(self.camera_config_btn)
+        button_layout.addWidget(self.focus_mode_label)
         button_layout.addSpacing(int(6 * s))
         button_layout.addWidget(self.file_manager_btn)
         button_layout.addSpacing(int(6 * s))
-        button_layout.addWidget(self.fullscreen_btn)
+        button_layout.addWidget(self.exit_btn)
+        
 
         # If Exit button exists:
         # button_layout.addSpacing(int(6 * s))
@@ -194,9 +196,6 @@ class SeedlingImagerGUI(QWidget):
 
         # Add the left column to the main layout (keep your stretch setup)
         main_layout.addLayout(button_layout, stretch=0)
-
-        # Ensure the fullscreen button text matches current state
-        self.update_fullscreen_button_text()
 
         # Right: status + camera + log
         right_layout = QVBoxLayout()
@@ -236,50 +235,52 @@ class SeedlingImagerGUI(QWidget):
 
     # ---------- Illumination ----------
     def apply_main_illum_style(self):
-        color = "#26A69A" if self.active_illum_mode == ILLUM_GREEN else "#B71C1C"
+        from experiment_setup import ILLUM_COLORS
+        color = ILLUM_COLORS.get(self.active_illum_mode, "#B71C1C")
         self.illum_toggle_btn.setStyleSheet(
             dark_style + f" QPushButton {{ background-color: {color}; color: white; font-weight: bold; }}"
         )
 
+
+    def _apply_leds(self, mode: str, on: bool = True):
+        """Turn on/off LEDs according to illumination mode."""
+        from gpiod.line import Value
+        from experiment_setup import ILLUM_FRONT_IR, ILLUM_REAR_IR, ILLUM_COMBINED
+        if not led_request:
+            return
+        if not on:
+            led_request.set_value(LED_REAR_IR_PIN,  Value.INACTIVE)
+            led_request.set_value(LED_FRONT_IR_PIN, Value.INACTIVE)
+            return
+        if mode == ILLUM_FRONT_IR:
+            led_request.set_value(LED_FRONT_IR_PIN, Value.ACTIVE)
+            led_request.set_value(LED_REAR_IR_PIN,  Value.INACTIVE)
+        elif mode == ILLUM_REAR_IR:
+            led_request.set_value(LED_REAR_IR_PIN,  Value.ACTIVE)
+            led_request.set_value(LED_FRONT_IR_PIN, Value.INACTIVE)
+        else:  # COMBINED
+            led_request.set_value(LED_FRONT_IR_PIN, Value.ACTIVE)
+            led_request.set_value(LED_REAR_IR_PIN,  Value.ACTIVE)
+
     def toggle_illumination_mode(self):
-        """Switch between Green and Infrared illumination; update button style."""
-        self.active_illum_mode = ILLUM_IR if self.active_illum_mode == ILLUM_GREEN else ILLUM_GREEN
-        self.illum_toggle_btn.setText(f"Illum: {self.active_illum_mode}")
-        self.apply_main_illum_style()
-        # If live view is active, apply the new illumination immediately
-        if self.live_view_active and led_request:
-            from gpiod.line import Value  # import only when needed
-            if self.active_illum_mode == ILLUM_GREEN:
-                led_request.set_value(LED_GREEN_PIN, Value.ACTIVE)
-                led_request.set_value(LED_IR_PIN, Value.INACTIVE)
-            else:
-                led_request.set_value(LED_GREEN_PIN, Value.INACTIVE)
-                led_request.set_value(LED_IR_PIN, Value.ACTIVE)
-            
-            self.apply_liveview_camera_profile()   
-                
-        self.update_status(f"Illumination set to {self.active_illum_mode}")
-
-# --- Live-view boost for IR preview (enable for IR, disable for Green) ---
-        try:
-            if self.active_illum_mode == ILLUM_IR:
-                camera.enable_liveview_boost_for_ir(target_gain=8.0, target_exposure_us=20000)
-            else:
-                camera.disable_liveview_boost()
-        except Exception as e:
-            print(f"[gui] liveview boost toggle error: {e}", flush=True)
-
-    def apply_liveview_camera_profile(self):
-        """
-        Apply a temporary camera profile for Live View depending on illumination mode.
-        - Infrared: IR Quant preset (grayscale-like, AWB off, conservative sharpness/contrast)
-        - Green: baseline persisted settings
-        """
-        base = camera.get_current_settings()
-        if self.active_illum_mode == ILLUM_IR:
-            base = camera.apply_ir_quant_preset(base)
-        camera.apply_settings(base)
-
+            from experiment_setup import ILLUM_FRONT_IR, ILLUM_REAR_IR, ILLUM_COMBINED
+            order = [ILLUM_FRONT_IR, ILLUM_REAR_IR, ILLUM_COMBINED]
+            idx = order.index(self.active_illum_mode) if self.active_illum_mode in order else 0
+            self.active_illum_mode = order[(idx + 1) % len(order)]
+            self.illum_toggle_btn.setText(f"Illum: {self.active_illum_mode}")
+            self.apply_main_illum_style()
+            if self.live_view_active:
+                self._apply_leds(self.active_illum_mode, on=True)
+                self.apply_liveview_camera_profile()
+                try:
+                    camera.enable_liveview_boost_for_ir(
+                        target_gain=8.0,
+                        target_exposure_us=20000,
+                        mode=self.active_illum_mode
+                    )
+                except Exception as e:
+                    print(f"[gui] liveview boost toggle error: {e}", flush=True)
+            self.update_status(f"Illumination set to {self.active_illum_mode}")
 
     # ---------- Home/Stop logic (manual use via Home button) ----------
     def on_home_clicked(self):
@@ -461,21 +462,14 @@ class SeedlingImagerGUI(QWidget):
 
 
     def apply_liveview_camera_profile(self):
-            """
-            Apply a temporary camera profile for Live View based on illumination mode.
-
-            - If illumination is Infrared: apply IR quant preset (Saturation=0, AWB off, etc.)
-            - If illumination is Green: apply baseline persisted settings
-
-            This does NOT modify camera_settings.json; it only sets active controls.
-            """
-            try:
-                base = camera.get_current_settings()  # persisted settings from JSON
-                if self.active_illum_mode == ILLUM_IR:
-                    base = camera.apply_ir_quant_preset(base)  # temporary overlay
-                camera.apply_settings(base)
-            except Exception as e:
-                print(f"apply_liveview_camera_profile error: {e}", flush=True)
+        from experiment_setup import ILLUM_REAR_IR, ILLUM_COMBINED
+        base = camera.get_current_settings()
+        if self.active_illum_mode == ILLUM_REAR_IR:
+            base = camera.apply_ir_transmission_preset(base)
+        else:
+            # Front IR or Combined: use existing reflectance quant preset
+            base = camera.apply_ir_quant_preset(base)
+        camera.apply_settings(base)
 
 
     def run_motor_action(self, action: str):
@@ -530,6 +524,8 @@ class SeedlingImagerGUI(QWidget):
     def set_live_view(self, enable: bool):
         """
         Explicitly enable/disable Live View (idempotent).
+        All illumination modes are now IR, so the liveview boost is always applied.
+        LEDs are managed via _apply_leds().
         """
         # No-op if already in desired state
         if enable and self.live_view_active:
@@ -539,58 +535,49 @@ class SeedlingImagerGUI(QWidget):
 
         if enable:
             camera.start_camera()
-            # Re-apply settings after pipeline starts (more reliable)
-            # NEW: Apply IR quant preset automatically when illumination is Infrared
+
+            # Apply the correct camera profile for the current IR mode
+            # (front IR uses quant preset; rear IR uses transmission preset)
             self.apply_liveview_camera_profile()
-            
-                # --- If Live View is IR, brighten the preview with a temporary boost ---
-            if self.active_illum_mode == ILLUM_IR:
-                try:
-                    camera.enable_liveview_boost_for_ir(target_gain=8.0, target_exposure_us=20000)
-                except Exception as e:
-                    print(f"[gui] enable IR liveview boost error: {e}", flush=True)
-            else:
-                # Ensure no leftover boost if we re-enter Live View in Green
-                try:
-                    camera.disable_liveview_boost()
-                except Exception:
-                    pass
-            
+
+            # All modes are IR — always apply the live-view brightness boost.
+            # Pass the current mode so rear/combined gets a lower gain ceiling
+            # (transmission is brighter than reflectance).
+            try:
+                camera.enable_liveview_boost_for_ir(
+                    target_gain=8.0,
+                    target_exposure_us=20000,
+                    mode=self.active_illum_mode
+                )
+            except Exception as e:
+                print(f"[gui] enable IR liveview boost error: {e}", flush=True)
+
             camera.set_af_mode(2)  # Continuous AF for preview
 
             self.timer.start(100)
             self.live_view_active = True
             self._update_live_view_button()
 
-            # Turn ON selected illumination
-            if led_request:
-                from gpiod.line import Value
-                if self.active_illum_mode == ILLUM_GREEN:
-                    led_request.set_value(LED_GREEN_PIN, Value.ACTIVE)
-                    led_request.set_value(LED_IR_PIN, Value.INACTIVE)
-                else:
-                    led_request.set_value(LED_GREEN_PIN, Value.INACTIVE)
-                    led_request.set_value(LED_IR_PIN, Value.ACTIVE)
+            # Turn ON the correct LED panel(s) for the active mode
+            self._apply_leds(self.active_illum_mode, on=True)
 
-            self.update_status(f"Live View started. {self.active_illum_mode} LED ON.")
+            self.update_status(f"Live View started. {self.active_illum_mode} LED(s) ON.")
 
         else:
-            self.timer.stop()               
-            # --- Always clear any preview boost when leaving Live View ---
+            self.timer.stop()
+
+            # Always clear any preview boost when leaving Live View
             try:
                 camera.disable_liveview_boost()
             except Exception:
                 pass
-            
+
             camera.stop_camera()
             self.live_view_active = False
             self._update_live_view_button()
 
-            # Turn OFF both LEDs
-            if led_request:
-                from gpiod.line import Value
-                led_request.set_value(LED_GREEN_PIN, Value.INACTIVE)
-                led_request.set_value(LED_IR_PIN, Value.INACTIVE)
+            # Turn OFF all LED panels
+            self._apply_leds(self.active_illum_mode, on=False)
 
             self.update_status("Live View stopped.")
 
@@ -640,27 +627,56 @@ class SeedlingImagerGUI(QWidget):
         self.camera_label.setPixmap(scaled)
 
     def open_camera_config(self):
-        if self.live_view_active:
-            self.toggle_live_view()  # Stop live preview while changing settings
+        # Camera pipeline stays running while the dialog is open so that:
+        #   (a) "Read Current Position from Camera" can query live metadata, and
+        #   (b) pressing Apply immediately shows the effect in the Live View preview.
+        # The _cam_lock in camera.py protects concurrent access between the
+        # live-view timer and any set_controls() calls made by the dialog.
+
         dialog = CameraConfigDialog(current_settings=camera.get_current_settings(), parent=self)
         if dialog.exec() == QDialog.Accepted:
-            # Dialog saves settings to JSON internally
-            camera.apply_settings(dialog.settings)
-            self.update_status("Camera settings applied.")
-            # Optionally restart Live View so user can see effect immediately
-            # self.toggle_live_view()  # Uncomment if desired
+            self.setCursor(Qt.WaitCursor)
+            self.update_status("Applying camera settings...")
+            worker = SettingsApplier(dialog.settings, preview_was_active=self.live_view_active)
+            worker.done.connect(
+                lambda ok, msg: self._on_settings_applied(ok, msg, self.live_view_active, worker)
+            )
+            if not hasattr(self, "_settings_workers"):
+                self._settings_workers = []
+            self._settings_workers.append(worker)
+            worker.start()
+        # No else branch needed — if the user cancels, camera state is unchanged.
+
+    def _update_focus_mode_label(self):
+        """Refresh the focus mode indicator from persisted settings."""
+        from camera_config import load_settings
+        s = load_settings()
+        if s.get("ManualFocusEnable", False):
+            pos = float(s.get("ManualFocusPosition", 0.0))
+            dist_cm = (1.0 / pos * 100) if pos > 0 else 0
+            self.focus_mode_label.setText(f"MF: {pos:.2f} D  ({dist_cm:.0f} cm)")
+            self.focus_mode_label.setStyleSheet("font-size: 14px; color: #FFD600;")  # yellow = manual
+        else:
+            self.focus_mode_label.setText("Focus: Auto")
+            self.focus_mode_label.setStyleSheet("font-size: 14px; color: #AAAAAA;")  # grey = auto
+    
+    def _on_settings_applied(self, ok: bool, msg: str, was_live: bool, worker: QThread):
+        # Restore cursor
+        self.unsetCursor()
+        # Drop the worker reference
+        try:
+            self._settings_workers.remove(worker)
+        except Exception:
+            pass
+        # Report to user
+        self.update_status(msg)
+        self._update_focus_mode_label()
+        # If the preview was previously active, turn it back on so the user sees the effect
+        if was_live and not self.live_view_active:
+            self.toggle_live_view()
 
     def set_led(self, on: bool, mode: str):
-        """LED control helper passed to ExperimentRunner."""
-        if not led_request:
-            return
-        from gpiod.line import Value
-        if mode == ILLUM_GREEN:
-            led_request.set_value(LED_GREEN_PIN, Value.ACTIVE if on else Value.INACTIVE)
-            led_request.set_value(LED_IR_PIN, Value.INACTIVE)
-        else:
-            led_request.set_value(LED_GREEN_PIN, Value.INACTIVE)
-            led_request.set_value(LED_IR_PIN, Value.ACTIVE if on else Value.INACTIVE)
+        self._apply_leds(mode, on=on)
 
     def open_file_manager(self):
         # Stop Live View to avoid racing the camera while user manages files (optional)
@@ -670,37 +686,16 @@ class SeedlingImagerGUI(QWidget):
         dlg.showMaximized()   # maximize for usability on Touch Display 2
         dlg.exec()
 
-    def update_fullscreen_button_text(self):
-        """Update the on-screen toggle button text based on window state."""
-        if hasattr(self, "fullscreen_btn") and self.fullscreen_btn:
-            self.fullscreen_btn.setText("Exit Full Screen" if self.isFullScreen() else "Full Screen")
 
-    def set_fullscreen(self, enabled: bool):
-        """Enter/exit fullscreen (kiosk) mode."""
-        if enabled:
-            self.showFullScreen()
-        else:
-            self.showNormal()
-            # Optional: if you prefer exiting fullscreen -> maximized instead of normal:
-            # self.showMaximized()
-
-        self.update_fullscreen_button_text()
-
-    def toggle_fullscreen(self):
-        """Toggle fullscreen state."""
-        self.set_fullscreen(not self.isFullScreen())
 
     def keyPressEvent(self, event):
-        """Keyboard fallbacks for testing/maintenance."""
-        if event.key() == Qt.Key_Escape and self.isFullScreen():
-            self.set_fullscreen(False)
-            event.accept()
-            return
-        if event.key() == Qt.Key_F11:
-            self.toggle_fullscreen()
+        # Backdoor exit: ESC closes the app
+        if event.key() == Qt.Key_Escape:
+            self.close()
             event.accept()
             return
         super().keyPressEvent(event)
+
 
     def closeEvent(self, event):
         # Graceful shutdown
@@ -770,3 +765,31 @@ class MotorWorker(QThread):
                     self.status_signal.emit("Homing failed")
         except Exception as e:
             self.status_signal.emit(f"Error: {e}")
+
+# ---- SettingsApplier: apply camera settings off the GUI thread ----
+class SettingsApplier(QThread):
+    done = Signal(bool, str)  # (success, message)
+
+    def __init__(self, settings: dict, preview_was_active: bool):
+        super().__init__()
+        self.settings = dict(settings) if settings else {}
+        self.preview_was_active = bool(preview_was_active)
+
+    def run(self):
+        try:
+            # Ensure a running pipeline before setting controls; many controls are safer then
+            camera.start_camera()
+            camera.apply_settings(self.settings)
+            ok = True
+            msg = "Camera settings applied."
+        except Exception as e:
+            ok = False
+            msg = f"Camera settings error: {e}"
+        finally:
+            # If Live View was not previously active, stop again so we leave state as we found it
+            if not self.preview_was_active:
+                try:
+                    camera.stop_camera()
+                except Exception:
+                    pass
+        self.done.emit(ok, msg)
