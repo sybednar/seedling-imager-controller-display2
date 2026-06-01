@@ -100,6 +100,7 @@ class CameraConfigDialog(QDialog):
 
         self.exp_spin = QSpinBox()
         self.exp_spin.setRange(100, 200000)
+        self.exp_spin.setSingleStep(500)          # 500 µs per click
         self.exp_spin.setValue(int(self.settings["ExposureTime"]))
         gen.addRow(QLabel("Exposure Time (µs):"), self.exp_spin)
 
@@ -200,7 +201,9 @@ class CameraConfigDialog(QDialog):
         self.fir_ae_chk.setChecked(bool(self.settings.get("FrontIR_AeEnable", True)))
         fir.addRow(QLabel("AE:"), self.fir_ae_chk)
 
-        self.fir_exp = QSpinBox(); self.fir_exp.setRange(100, 200000)
+        self.fir_exp = QSpinBox()
+        self.fir_exp.setRange(100, 200000)
+        self.fir_exp.setSingleStep(500)           # 500 µs per click
         self.fir_exp.setValue(int(self.settings.get("FrontIR_ExposureTime", 20000)))
         fir.addRow(QLabel("Exposure (µs):"), self.fir_exp)
 
@@ -237,7 +240,9 @@ class CameraConfigDialog(QDialog):
         self.rir_ae_chk.setChecked(bool(self.settings.get("RearIR_AeEnable", False)))
         rir.addRow(QLabel("AE:"), self.rir_ae_chk)
 
-        self.rir_exp = QSpinBox(); self.rir_exp.setRange(100, 200000)
+        self.rir_exp = QSpinBox()
+        self.rir_exp.setRange(100, 200000)
+        self.rir_exp.setSingleStep(500)           # 500 µs per click
         self.rir_exp.setValue(int(self.settings.get("RearIR_ExposureTime", 9000)))
         rir.addRow(QLabel("Exposure (µs):"), self.rir_exp)
 

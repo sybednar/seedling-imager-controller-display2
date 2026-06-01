@@ -23,6 +23,12 @@ import camera
 from camera_config import load_settings
 from experiment_setup import ILLUM_FRONT_IR, ILLUM_REAR_IR, ILLUM_COMBINED
 
+# --- Edit 1: import registration corrector ---
+try:
+    from registration import PlateRegistrationCorrector as _PlateRegCorr
+except ImportError:
+    _PlateRegCorr = None
+
 # -------- Re-home cadence (edit as you like) --------
 REHOME_EVERY_N = 1   # 1 = every cycle; 10 = every 10 cycles; 0/None to disable
 
@@ -33,7 +39,7 @@ FIRST_PLATE_WARMUP_S = 3.0   # set 0.0 to disable
 # AE stability gate (run for every plate): wait until AnalogueGain stabilizes
 AE_GATE_MAX_WAIT_S   = 3.0   # total timeout per plate
 AE_GATE_POLL_S       = 0.10  # poll cadence
-AE_GATE_GAIN_TOL     = 0.05  # <5% relative change considered “stable”
+AE_GATE_GAIN_TOL     = 0.05  # <5% relative change considered "stable"
 AE_GATE_STABLE_READS = 5     # need this many consecutive stable reads
 
 
@@ -96,6 +102,9 @@ class ExperimentRunner(QThread):
         self.csv_file = None
         self.csv_writer = None
 
+        # --- Edit 2: initialise registration corrector ---
+        self._reg = _PlateRegCorr() if _PlateRegCorr is not None else None
+
     # ---------- Public controls ----------
     def abort(self):
         self._abort = True
@@ -143,8 +152,14 @@ class ExperimentRunner(QThread):
                     "LensPosition",
                     "AfState",
                     "FocusFoM",
+                    # registration shift columns
+                    "reg_shift_dy_px",
+                    "reg_shift_dx_px",
                 ]
             )
+            # Reset registration references at the start of each run
+            if self._reg is not None:
+                self._reg.reset()
         except Exception as e:
             self._log(f"CSV open error: {e}")
 
@@ -324,15 +339,13 @@ class ExperimentRunner(QThread):
                 self.finished_signal.emit()
                 return
 
-        # Start camera & apply the correct IR preset for the chosen mode  # REVISED
+        # Start camera & apply the correct IR preset for the chosen mode
         try:
             camera.start_camera()
             active_settings = dict(self.cam_settings)
             if self.illumination_mode == ILLUM_REAR_IR:
-                # Transmission geometry: brighter signal, softer contrast preset
                 active_settings = camera.apply_ir_transmission_preset(active_settings)
             else:
-                # Front IR (reflectance) or Combined: use existing quant preset
                 active_settings = camera.apply_ir_quant_preset(active_settings)
             camera.apply_settings(active_settings)
         except Exception as e:
@@ -340,9 +353,7 @@ class ExperimentRunner(QThread):
             self.finished_signal.emit()
             return
 
-        # --- Global pre-warm once per run ---                               # REVISED
-        # All three modes are IR; turn on whatever panel(s) the mode requires
-        # so AE converges under actual illumination conditions.
+        # --- Global pre-warm once per run ---
         try:
             if self.led_control_fn:
                 self.led_control_fn(True, self.illumination_mode)
@@ -350,7 +361,6 @@ class ExperimentRunner(QThread):
             self._log("Global pre-warm: letting AE settle for 2.5s before the first cycle...")
             self._sleep_with_abort(2.5)
         finally:
-            # LEDs off before entering the cycle loop; per-plate logic manages them
             if self.led_control_fn:
                 self.led_control_fn(False, self.illumination_mode)
 
@@ -358,7 +368,7 @@ class ExperimentRunner(QThread):
         self._log(
             f"Experiment started: {self.duration_days} day(s), "
             f"every {self.frequency_minutes} min. "
-            f"Illumination: {self.illumination_mode}. "                     # REVISED: no hardcoded "Infrared"
+            f"Illumination: {self.illumination_mode}. "
             f"Re-home: full, every {int(REHOME_EVERY_N) if REHOME_EVERY_N else 0} cycle(s)."
         )
 
@@ -383,8 +393,7 @@ class ExperimentRunner(QThread):
                     # AE settle
                     camera.set_auto_exposure(True)
 
-                    # Autofocus — skip entirely when manual focus is enabled,
-                    # since PDAF does not function through the 940 nm bandpass filter.
+                    # Autofocus — skip entirely when manual focus is enabled
                     _manual_focus = self.cam_settings.get("ManualFocusEnable", False)
 
                     if not _manual_focus:
@@ -402,7 +411,6 @@ class ExperimentRunner(QThread):
                         break
 
                     if _manual_focus:
-                        # Focus is already locked from start_camera(); nothing to do.
                         best_fom = None
                         md_focus = camera.get_metadata()
                         attempts = 0
@@ -421,7 +429,6 @@ class ExperimentRunner(QThread):
                             camera.set_af_mode(0)
                         except Exception as e:
                             self._log(f"AF lock warning (ignored): {e}")
-                                               
 
                     # (A) One-time warm-up ONLY for the first Plate #1 of the run
                     if self.cycle_count == 1 and plate_idx == 1 and FIRST_PLATE_WARMUP_S > 0:
@@ -440,7 +447,6 @@ class ExperimentRunner(QThread):
                     else:
                         self._log("AE stability: not fully stable at timeout; pinning latest values.")
 
-                    # Choose the best metadata snapshot available at this point
                     md_pin = md_stable if md_stable else (md_focus if md_focus else camera.get_metadata())
 
                     settled_exp  = md_pin.get("ExposureTime", None)
@@ -456,18 +462,14 @@ class ExperimentRunner(QThread):
                     else:
                         self._log("AE pin: missing ExposureTime/AnalogueGain; leaving AE enabled for this capture.")
 
-                    # Give controls one frame to take effect on the still stream
                     self._sleep_with_abort(0.20)
-                    
+
                     self.settling_started.emit(plate_idx)
 
-                    # Capture (if this plate is selected)                   # REVISED
+                    # Capture (if this plate is selected)
                     if plate_idx in self.selected_plates:
                         ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-                        # All IR modes save as grayscale TIFF.
-                        # A mode tag in the filename distinguishes front/rear/combined
-                        # if you later want to run both modes in the same experiment session.
                         mode_tag = {
                             ILLUM_FRONT_IR:  "front",
                             ILLUM_REAR_IR:   "rear",
@@ -477,7 +479,7 @@ class ExperimentRunner(QThread):
                         img_name = f"plate{plate_idx}_{ts_str}_{mode_tag}_gray.tif"
                         img_path = str(self.run_dir / f"plate{plate_idx}" / img_name)
 
-                        saved = camera.save_image(img_path, grayscale=True)  # always grayscale for IR
+                        saved = camera.save_image(img_path, grayscale=True)
 
                         if saved:
                             width = height = None
@@ -494,6 +496,23 @@ class ExperimentRunner(QThread):
                             ExposureTime = md.get("ExposureTime", None)
                             AnalogueGain = md.get("AnalogueGain", None)
                             AwbEnable    = md.get("AwbEnable",   None)
+
+                            # --- Edit 4: compute registration shift and log ---
+                            reg_dy, reg_dx = 0.0, 0.0
+                            if self._reg is not None:
+                                try:
+                                    reg_dy, reg_dx = self._reg.register(plate_idx, img_path)
+                                    if self.cycle_count == 1:
+                                        self._log(
+                                            f"Plate #{plate_idx}: registration reference set (cycle 1)."
+                                        )
+                                    else:
+                                        self._log(
+                                            f"Plate #{plate_idx}: reg shift dy={reg_dy:+.2f}px "
+                                            f"dx={reg_dx:+.2f}px"
+                                        )
+                                except Exception as reg_e:
+                                    self._log(f"Registration error plate {plate_idx}: {reg_e}")
 
                             if self.csv_writer:
                                 self.csv_writer.writerow([
@@ -514,6 +533,8 @@ class ExperimentRunner(QThread):
                                     lens_pos,
                                     af_state,
                                     focus_fom,
+                                    reg_dy,
+                                    reg_dx,
                                 ])
                             self.image_saved_signal.emit(img_path)
                             self._log(f"Saved: {img_path}")
@@ -546,7 +567,7 @@ class ExperimentRunner(QThread):
         finally:
             self._log("Experiment finished." if not self._abort else "Experiment aborted.")
             try:
-                camera.apply_settings(self.cam_settings)  # restore baseline settings
+                camera.apply_settings(self.cam_settings)
             except Exception:
                 pass
             try:

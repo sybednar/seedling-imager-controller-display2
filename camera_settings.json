@@ -10,16 +10,16 @@
   "NoiseReductionMode": 0,
   "HdrEnable": false,
   "ManualFocusEnable": true,
-  "ManualFocusPosition": 7.589,
+  "ManualFocusPosition": 8.4,
   "FrontIR_AeEnable": true,
   "FrontIR_ExposureTime": 20000,
   "FrontIR_Contrast": 1.1,
   "FrontIR_Sharpness": 1.15,
   "FrontIR_Brightness": 0.0,
-  "RearIR_AeEnable": false,
+  "RearIR_AeEnable": true,
   "RearIR_ExposureTime": 10000,
   "RearIR_Gain": 1.0,
-  "RearIR_Contrast": 1.6500000000000001,
+  "RearIR_Contrast": 1.65,
   "RearIR_Sharpness": 1.4,
-  "RearIR_Brightness": -0.15000000000000002
+  "RearIR_Brightness": -0.15
 }

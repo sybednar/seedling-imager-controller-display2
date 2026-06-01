@@ -1,8 +1,8 @@
 {
-  "opt_window_width": 21,
-  "opt_center_from_leading": 10,
-  "hall_to_leading": 386,
-  "hall_to_center": 396,
+  "opt_window_width": 25,
+  "opt_center_from_leading": 12,
+  "hall_to_leading": 388,
+  "hall_to_center": 400,
   "steps_per_plate": 800,
   "hall_to_opt_steps_mean": 414
 }
