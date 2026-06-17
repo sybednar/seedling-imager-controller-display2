@@ -31,7 +31,7 @@ reproducibility for quantitative time-lapse growth analysis.
 |------|-------------|
 | `imager_assembly.step.zip` | Full assembly in neutral STEP format (zipped). Opens in any CAD package (FreeCAD, SolidWorks, Onshape, etc.). Unzip before opening. |
 | `imager_assembly.f3z` | Native Autodesk Fusion archive of the complete assembly, with all components and joints. For users who want to edit the design in Fusion. |
-| `BOM.csv` | Bill of materials — parts, quantities, suppliers, and approximate cost. |
+| `TO BE ADDED___BOM.csv` | Bill of materials — parts, quantities, suppliers, and approximate cost. |
 | `LICENSE-CERN-OHL-S-v2.txt` | Hardware license (see Licensing below). |
 | `NOTICE.txt` | Required CERN-OHL-S copyright/license notice. |
 | *(individual part STEP/STL files — to be added)* | Per-part files for 3D printing / fabrication. |
@@ -75,7 +75,7 @@ If you use this hardware or software, please cite the archived release:
 
 > Bednarek, S. Y., Yong, C. W. J., Hoey, E. A. and Murua, K. (2026). *seedling-imager-controller-display2: control and image-acquisition
 > software and hardware design files for an open-source six-plate infrared seedling imaging
-> robot* (v1.1) [Software and hardware design files]. Zenodo. https://doi.org/10.5281/zenodo.XXXXXXX
+> robot* (v1.1) [Software and hardware design files]. Zenodo. https://doi.org/10.5281/zenodo.20738657
 
 *(Replace with the DOI minted when you archive the GitHub release on Zenodo.)*
 
