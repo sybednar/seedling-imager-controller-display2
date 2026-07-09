@@ -1,0 +1,17 @@
+# Seedling Imager Controller — pip requirements
+#
+# These packages are installed with pip INSIDE the project virtual environment.
+# The venv must be created with --system-site-packages so it can also see the
+# apt-installed system packages (python3-picamera2, python3-pyside6,
+# python3-numpy, python3-opencv) that provide the compiled Raspberry Pi camera
+# and Qt bindings. See README.md "Install system (apt) dependencies" and
+# install_dependencies.sh, which does both steps automatically.
+#
+# Do NOT pip-install picamera2, PySide6, numpy, or opencv-python here —
+# on Raspberry Pi OS these must come from apt so they are built against the
+# system's libcamera / Qt6 / GPU libraries. Installing pip wheels for these
+# instead commonly causes "Qt platform plugin" errors or a picamera2 that
+# cannot see the camera.
+
+tifffile>=2024.1.1
+gpiod>=2.0
