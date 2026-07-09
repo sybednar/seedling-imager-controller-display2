@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Restart Seedling Imager
+Comment=Stop and relaunch the Seedling Imager Controller without rebooting
+Exec=/home/sybednar/Seedling_Imager/seedling_imager_controller/restart_seedling_imager.sh
+Icon=view-refresh
+Terminal=false
+Categories=Utility;
