@@ -1,29 +1,39 @@
 #!/usr/bin/env bash
+# start_seedling_imager.sh
+#
+# Launch wrapper for the Seedling Imager Controller. This is the ONE script
+# that both the systemd service and the XDG autostart fallback call — so
+# the environment variables below (XDG_RUNTIME_DIR, QT_QPA_PLATFORM) are
+# guaranteed to be set correctly no matter which trigger mechanism starts it.
+#
+# It can also be run by hand from a terminal for a manual test:
+#     ./start_seedling_imager.sh
+#
 set -euo pipefail
 
-# Log stdout/stderr to diagnose autostart behavior
-exec >> /home/sybednar/projects/seedling_imager/autostart.log 2>&1
-echo "=== $(date) Seedling Imager autostart begin ==="
+PROJECT_DIR="/home/sybednar/Seedling_Imager/seedling_imager_controller"
+LOG_FILE="$PROJECT_DIR/autostart.log"
 
-# Show environment (for troubleshooting)
-env | sort
-echo "---"
+# Send all stdout/stderr to a log file so autostart failures are debuggable
+# (view with: tail -f "$LOG_FILE")
+exec >> "$LOG_FILE" 2>&1
+echo "=== $(date) Seedling Imager launch begin ==="
 
-# Let the session settle
+# Let the desktop session finish settling before we grab the display
 sleep 3
 
-# Ensure XDG runtime dir exists in graphical-session context
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 
-# Choose Qt platform (Wayland is typical on Pi 5; use xcb if Wayland proves fussy)
+# Raspberry Pi OS Bookworm/Trixie use Wayland (labwc) by default on Pi 5.
+# If the touchscreen shows a black screen or the app fails to open a window,
+# comment the Wayland line and uncomment the xcb (X11) line instead, then
+# re-run this script by hand to confirm which one works before re-enabling
+# autostart.
 export QT_QPA_PLATFORM=wayland
 # export QT_QPA_PLATFORM=xcb
 
-# Activate venv
-source /home/sybednar/Seedling_Imager/bin/activate
+source "$PROJECT_DIR/venv/bin/activate"
 
-# Run the app
-cd /home/sybednar/projects/seedling_imager
-python3 main.py
+python3 "$PROJECT_DIR/main.py"
 
-echo "=== $(date) Seedling Imager autostart end ==="
+echo "=== $(date) Seedling Imager launch end ==="
