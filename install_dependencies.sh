@@ -31,14 +31,19 @@ echo "=================================================================="
 echo
 echo "--> [1/4] Installing system (apt) packages..."
 sudo apt update
+# NOTE: on current Raspberry Pi OS / Debian Trixie there is no single
+# "python3-pyside6" metapackage — PySide6 is split into one apt package per
+# Qt module (python3-pyside6.qtcore, python3-pyside6.qtwidgets, etc).
+# The 'python3-pyside6.*' pattern below installs all of them in one shot so
+# we don't have to hand-pick exactly which submodules the code imports.
 sudo apt install -y \
     python3-picamera2 \
-    python3-pyside6 \
     python3-numpy \
     python3-opencv \
     python3-venv \
     python3-full \
     git
+sudo apt install -y 'python3-pyside6.*'
 
 echo
 echo "--> [2/4] Creating virtual environment at: $PROJECT_DIR/venv"
