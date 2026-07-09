@@ -118,7 +118,9 @@ Seedling_Imager/                          # top-level project folder (NOT the gi
 Installed as **apt system packages** (compiled against Raspberry Pi OS's libcamera/Qt6/GPU libraries — do not pip-install these):
 ```
 python3-picamera2
-python3-pyside6
+python3-pyside6.*    (no single "python3-pyside6" metapackage on current Raspberry Pi OS/Debian
+                       Trixie — PySide6 is split per Qt module; the wildcard installs all of them:
+                       sudo apt install 'python3-pyside6.*')
 python3-numpy
 python3-opencv      (cv2)
 ```
