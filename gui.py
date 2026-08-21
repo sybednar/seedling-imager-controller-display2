@@ -21,15 +21,27 @@ DEEP_RED = "#B71C1C"        # Infrared mode button color
 try:
     import gpiod
     from gpiod.line import Value, Direction
-    LED_REAR_IR_PIN  = 12    # was LED_GREEN_PIN; now rear IR panel
-    LED_FRONT_IR_PIN = 13    # front IR panel (unchanged)
+    LED_REAR_IR_PIN  = 27    # rear IR panel; 081126 changed from 12 to 27
+    LED_FRONT_IR_PIN = 17    # front IR panel; ; 081126 changed from 13 to 17
+
+    # Germination/photomorphogenesis LED strip — 081226 addition.
+    # Driven low-side via 3x IRLZ44N MOSFET on the auxiliary MOSFET board.
+    # GPIO12/13 freed up for this by moving the front/rear IR panels above
+    # to 17/27; GPIO19 freed up by moving motor_control.py's OPTICAL_PIN to 22.
+    LED_GERM_BLUE_PIN   = 12   # 450 nm
+    LED_GERM_RED_PIN    = 13   # 660 nm
+    LED_GERM_FARRED_PIN = 19   # 730 nm
+
     chip = "/dev/gpiochip0"
     led_request = gpiod.request_lines(
         chip,
         consumer="seedling_leds",
         config={
-            LED_REAR_IR_PIN:  gpiod.LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE),
-            LED_FRONT_IR_PIN: gpiod.LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE),
+            LED_REAR_IR_PIN:      gpiod.LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE),
+            LED_FRONT_IR_PIN:     gpiod.LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE),
+            LED_GERM_BLUE_PIN:    gpiod.LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE),
+            LED_GERM_RED_PIN:     gpiod.LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE),
+            LED_GERM_FARRED_PIN:  gpiod.LineSettings(direction=Direction.OUTPUT, output_value=Value.INACTIVE),
         }
     )
 except Exception as e:
@@ -105,7 +117,48 @@ class SeedlingImagerGUI(QWidget):
         style_and_size(self.illum_toggle_btn)
         self.apply_main_illum_style()
         self.illum_toggle_btn.clicked.connect(self.toggle_illumination_mode)
- 
+
+        # Germination/photomorphogenesis LED strip — independent on/off per
+        # channel (Blue 450nm, Red 660nm, FarRed 730nm). Unlike the IR
+        # illum_toggle_btn above, these are NOT part of the imaging
+        # illumination cycle — they run (or not) independently, e.g. to
+        # manipulate red:far-red ratio for a photomorphogenesis experiment
+        # while imaging continues under IR.
+        germ_layout = QHBoxLayout()
+        germ_layout.setSpacing(max(4, int(6 * s)))
+        germ_layout.setContentsMargins(0, 0, 0, 0)
+        germ_btn_w = (button_width - 2 * germ_layout.spacing()) // 3
+
+        self.germ_blue_btn = QPushButton("Blue")
+        self.germ_blue_btn.setCheckable(True)
+        self.germ_blue_btn.setFixedWidth(germ_btn_w)
+        self.germ_blue_btn.setFixedHeight(button_height)
+        self.germ_blue_btn.toggled.connect(
+            lambda checked: self._toggle_germination_led(LED_GERM_BLUE_PIN, checked, self.germ_blue_btn, "#1E88E5", "Blue")
+        )
+
+        self.germ_red_btn = QPushButton("Red")
+        self.germ_red_btn.setCheckable(True)
+        self.germ_red_btn.setFixedWidth(germ_btn_w)
+        self.germ_red_btn.setFixedHeight(button_height)
+        self.germ_red_btn.toggled.connect(
+            lambda checked: self._toggle_germination_led(LED_GERM_RED_PIN, checked, self.germ_red_btn, "#E53935", "Red")
+        )
+
+        self.germ_farred_btn = QPushButton("FarRed")
+        self.germ_farred_btn.setCheckable(True)
+        self.germ_farred_btn.setFixedWidth(germ_btn_w)
+        self.germ_farred_btn.setFixedHeight(button_height)
+        self.germ_farred_btn.toggled.connect(
+            lambda checked: self._toggle_germination_led(LED_GERM_FARRED_PIN, checked, self.germ_farred_btn, "#6A1B9A", "FarRed")
+        )
+
+        for _btn in (self.germ_blue_btn, self.germ_red_btn, self.germ_farred_btn):
+            _btn.setStyleSheet(
+                dark_style(s) + " QPushButton { background-color: #37474F; color: white; }"
+            )
+            germ_layout.addWidget(_btn)
+
         # Home + Advance row (layout preserved)
         ha_layout = QHBoxLayout()
         ha_layout.setSpacing(max(6,int(10 * s)))
@@ -169,7 +222,17 @@ class SeedlingImagerGUI(QWidget):
         button_layout.addWidget(self.live_view_btn)
         button_layout.addSpacing(int(6 * s))
         button_layout.addWidget(self.illum_toggle_btn)
- 
+
+        button_layout.addStretch(1)
+
+        # Group 1b: Germination/photomorphogenesis LEDs (independent of imaging illum)
+        germ_label = QLabel("Germination LEDs:")
+        germ_label.setAlignment(Qt.AlignCenter)
+        germ_label.setStyleSheet(f"color: #90A4AE; font-size: {max(9, int(8.75 * s))}px;")
+        button_layout.addWidget(germ_label)
+        button_layout.addSpacing(int(3 * s))
+        button_layout.addLayout(germ_layout)
+
         button_layout.addStretch(1)
  
         # Group 2: Motion
@@ -273,6 +336,36 @@ class SeedlingImagerGUI(QWidget):
             led_request.set_value(LED_FRONT_IR_PIN, Value.ACTIVE)
             led_request.set_value(LED_REAR_IR_PIN,  Value.ACTIVE)
  
+    # ---------- Germination/photomorphogenesis LEDs ----------
+    def _toggle_germination_led(self, pin: int, checked: bool, btn: "QPushButton", on_color: str, label: str):
+        """
+        Independent on/off for one germination-strip channel. Unlike
+        _apply_leds() above (imaging illumination), these three channels are
+        not coupled to each other or to Live View/experiment state — each
+        button just reflects and drives its own GPIO line directly, so you
+        can hold e.g. Red+FarRed on for a photomorphogenesis treatment while
+        imaging continues independently under IR.
+        """
+        from gpiod.line import Value
+        s = self._s
+        if led_request:
+            try:
+                led_request.set_value(pin, Value.ACTIVE if checked else Value.INACTIVE)
+            except Exception as e:
+                print(f"[germination LED] set_value error on pin {pin}: {e}", flush=True)
+        else:
+            print("[germination LED] led_request unavailable — GPIO not initialized.", flush=True)
+
+        if checked:
+            btn.setStyleSheet(
+                dark_style(s) + f" QPushButton {{ background-color: {on_color}; color: white; font-weight: bold; }}"
+            )
+        else:
+            btn.setStyleSheet(
+                dark_style(s) + " QPushButton { background-color: #37474F; color: white; }"
+            )
+        self.update_status(f"Germination {label} LED: {'ON' if checked else 'OFF'}")
+
     def toggle_illumination_mode(self):
             from experiment_setup import ILLUM_FRONT_IR, ILLUM_REAR_IR, ILLUM_COMBINED
             order = [ILLUM_FRONT_IR, ILLUM_REAR_IR, ILLUM_COMBINED]
@@ -811,3 +904,5 @@ class SettingsApplier(QThread):
                 except Exception:
                     pass
         self.done.emit(ok, msg)
+
+
