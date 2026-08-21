@@ -578,3 +578,4 @@ class ExperimentRunner(QThread):
                 self.led_control_fn(False, self.illumination_mode)
             self._close_csv()
             self.finished_signal.emit()
+
