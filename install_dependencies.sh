@@ -42,6 +42,7 @@ sudo apt install -y \
     python3-opencv \
     python3-venv \
     python3-full \
+    v4l-utils \
     git
 sudo apt install -y 'python3-pyside6.*'
 
@@ -87,3 +88,4 @@ echo " All dependencies installed successfully."
 echo " Activate the environment with:"
 echo "     source \"$PROJECT_DIR/venv/bin/activate\""
 echo "=================================================================="
+
