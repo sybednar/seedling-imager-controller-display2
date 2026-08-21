@@ -1,3 +1,4 @@
+
 # Seedling Imager Controller
 
 ## Overview
@@ -5,7 +6,7 @@ Inspired by the SPIRO (Smart Plate Imaging Robot; Ohlsson et al The Plant Journa
 
 # Seedling Imager Controller — Universal
 
-**v1.1.0** · Raspberry Pi 5 · PySide6 · picamera2 · GT2 belt carousel
+**v1.2.0** · Raspberry Pi 5 · PySide6 · picamera2 (or Arducam USB3) · GT2 belt carousel
 
 A touchscreen controller for automated timelapse imaging of seedling plates using near-infrared (940 nm) transmission and front illumination. A single codebase runs on both supported display configurations without any code changes.
 
@@ -62,8 +63,24 @@ GUI layout, font sizes, button heights, and dialog dimensions all auto-scale via
   - Increase slightly (e.g. 0.05) only if consistent leading-edge drift is observed
 - Log output includes `frac=` and `W=` on every homing for traceability
 
+### Camera Backend (Picamera2 / Arducam USB3)
+- Selectable in Camera Config → General tab: **Raspberry Pi Camera Module 3 (Picamera2)** [default] or **Arducam 20MP AR2020 Mono USB3**
+- Persisted as `CameraBackend` in `camera_settings.json`; **switching requires an application restart** — the backend is fixed for the lifetime of the running process (`camera.py` only imports the selected backend module, since each one claims its physical camera device at import time)
+- `camera.py` is a thin dispatcher: every other module calls `camera.get_frame()`, `camera.save_image()`, etc. unchanged regardless of which backend is active
+- **Arducam backend status: written against the datasheet and standard UVC/V4L2 conventions, not yet validated against physical hardware.** Before relying on it for an experiment:
+  1. `sudo apt install v4l-utils` (already included in `install_dependencies.sh`)
+  2. Connect the camera, then run `python3 -c "import camera_arducam_usb3 as c; c.print_diagnostics()"` — reports the detected `/dev/videoN` device, every resolution/format the driver advertises, and every V4L2 control it exposes
+  3. Compare against the assumptions documented at the top of `camera_arducam_usb3.py` (control names, resolutions, mode-switch timing) and adjust the constants there if they don't match
+- The Arducam is a **fixed physical manual-focus lens** (twist the M12 ring by hand) — there is no AF motor, so `set_manual_focus()`/AF-related calls are safe no-ops on this backend; the Focus tab in Camera Config has no effect when Arducam is selected
+- UVC cameras generally stream one resolution at a time, unlike Picamera2's simultaneous main+lores streams — the Arducam backend runs live preview at a lower resolution continuously and briefly reconfigures to full resolution for each saved image, so expect a short pause per capture that the Picamera2 backend does not have
+
+### Germination / Photomorphogenesis LEDs
+- Independent on/off toggle buttons for **Blue (450 nm)**, **Red (660 nm)**, and **FarRed (730 nm)** — driven low-side via 3× IRLZ44N MOSFETs on the auxiliary MOSFET board
+- Not coupled to the IR imaging illumination cycle — hold any combination on (e.g. Red+FarRed for a red:far-red ratio treatment) while IR imaging continues independently
+- State is not persisted between sessions — all three channels default OFF at startup
+
 ### Camera Config Dialog
-- Tabbed interface: General settings + IR-specific presets
+- Tabbed interface: General settings (incl. Camera Backend selector) + Focus + IR-specific presets
 - Non-blocking "Read Current Position from Camera" button — `_FocusReader(QThread)` worker prevents GUI freeze when Live View is off
 - Button disabled during read, re-enabled on completion or error
 
@@ -88,8 +105,10 @@ Seedling_Imager/                          # top-level project folder (NOT the gi
     ├── main.py                           # Entry point; launches QApplication fullscreen
     ├── gui.py                            # Main window; computes s = screen_width / 800
     ├── styles.py                         # dark_style(s) — parameterized stylesheet
-    ├── camera.py                         # Picamera2 wrapper; manual focus; TIFF save; AE gate
-    ├── camera_config.py                  # Camera Config dialog; _FocusReader QThread
+    ├── camera.py                         # Camera BACKEND DISPATCHER — selects picamera2 vs arducam_usb3
+    ├── camera_picamera2.py               # Picamera2 backend; manual focus; TIFF save; AE gate
+    ├── camera_arducam_usb3.py            # Arducam 20MP AR2020 mono USB3 backend (OpenCV/V4L2)
+    ├── camera_config.py                  # Camera Config dialog; Camera Backend selector; _FocusReader QThread
     ├── motor_control.py                  # Stepper driver; dynamic bracket homing; 1/32 microstepping
     ├── experiment_runner.py              # Timelapse loop; AE settle; settling_started signal
     ├── experiment_setup.py               # Setup dialog; plate/frequency/mode/disk usage
@@ -113,6 +132,29 @@ Seedling_Imager/                          # top-level project folder (NOT the gi
 
 ---
 
+## GPIO Pin Map (as of v1.2.0)
+
+All pins below are on the auxiliary MOSFET board or the motor driver, addressed via `gpiod` against `/dev/gpiochip0`.
+
+| GPIO | Function | Module |
+|---|---|---|
+| 12 | Germination LED — Blue 450 nm | `gui.py` |
+| 13 | Germination LED — Red 660 nm | `gui.py` |
+| 16 | Motor DIR | `motor_control.py` |
+| 17 | Front IR imaging panel (reflectance) | `gui.py` |
+| 19 | Germination LED — FarRed 730 nm | `gui.py` |
+| 20 | Motor STEP | `motor_control.py` |
+| 21 | Motor driver EN | `motor_control.py` |
+| 22 | Optical sensor (reflective stripe) | `motor_control.py` |
+| 23 | *Reserved* — rear IR940 intensity PWM (AO4805 mosfet, not yet implemented) | — |
+| 24 | *Reserved* — rear IR940 intensity PWM (AO4805 mosfet, not yet implemented) | — |
+| 26 | Hall sensor (motor pre-index) | `motor_control.py` |
+| 27 | Rear IR imaging panel (transmission) | `gui.py` |
+
+**v1.2.0 pin reshuffle:** `OPTICAL_PIN` moved 19→22 and the front/rear IR imaging panels moved 13→17 and 12→27, freeing GPIO12/13/19 for the three germination LED channels above. If you're carrying forward calibration or wiring notes from before v1.2.0, update them against this table, not the older pin numbers referenced in earlier Version History entries.
+
+---
+
 ## Dependencies
 
 Installed as **apt system packages** (compiled against Raspberry Pi OS's libcamera/Qt6/GPU libraries — do not pip-install these):
@@ -123,6 +165,7 @@ python3-pyside6.*    (no single "python3-pyside6" metapackage on current Raspber
                        sudo apt install 'python3-pyside6.*')
 python3-numpy
 python3-opencv      (cv2)
+v4l-utils           (provides v4l2-ctl — only needed if using the Arducam USB3 camera backend)
 ```
 
 Installed as **pip packages inside the project virtual environment** (see `requirements.txt`):
@@ -295,6 +338,20 @@ At the top of `motor_control.py`. Default `0.0` places the carousel at exact geo
 
 ## Version History
 
+### v1.2.0 — 2026-08 — Selectable camera backend, germination LEDs, GPIO reshuffle
+
+**Camera**
+- `camera.py` split into a backend dispatcher plus two implementations: `camera_picamera2.py` (existing Picamera2/libcamera code, behavior unchanged) and new `camera_arducam_usb3.py` (OpenCV/V4L2 backend for the Arducam 20MP AR2020 monochrome USB3 camera)
+- Backend selectable in Camera Config → General (`CameraBackend` in `camera_settings.json`); requires an app restart to take effect
+- Arducam backend is **not yet validated against physical hardware** — see Camera Backend notes above and the file header in `camera_arducam_usb3.py` for the diagnostic procedure to run once the camera is connected
+
+**Hardware / GPIO**
+- Added a 3-channel germination/photomorphogenesis LED strip (Blue 450 nm, Red 660 nm, FarRed 730 nm) with independent GUI on/off toggles, driven low-side via IRLZ44N MOSFETs on a new auxiliary MOSFET board
+- Reshuffled GPIO pins to make room: `motor_control.py`'s `OPTICAL_PIN` moved 19→22; `gui.py`'s front/rear IR imaging panel pins moved 13→17 and 12→27. See the GPIO Pin Map above for the full current assignment, including GPIO23/24 reserved for a planned rear-IR940 PWM intensity control (AO4805 mosfet, not yet implemented in software)
+
+**Dependencies**
+- Added `v4l-utils` (apt) for the Arducam backend's `v4l2-ctl`-based exposure/gain control
+
 ### v1.1.0 — 2026-07 — 1/32 microstepping + documentation overhaul
 
 **Motor**
@@ -360,3 +417,4 @@ Residual jitter (2–6 px) is intrinsic GT2 belt backlash and stepper microstepp
 ## License
 
 MIT — see `LICENSE` file.
+
