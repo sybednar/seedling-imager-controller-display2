@@ -47,7 +47,7 @@ EN_PIN      = 21
 STEP_PIN    = 20
 DIR_PIN     = 16
 SWITCH_PIN  = 26   # Hall sensor     (active LOW)
-OPTICAL_PIN = 19   # Reflective opt. (active LOW when stripe is under sensor)
+OPTICAL_PIN = 22   # Reflective opt. (active LOW when stripe is under sensor) (moved from 19 081226: freed for FarRed germination LED)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Motion constants  —  1/32 microstepping
@@ -725,3 +725,4 @@ def get_calibration() -> dict:
     """Return the last persisted calibration dict (W, hall->leading, hall->centre)."""
     _load_cal()
     return dict(_cal)
+
