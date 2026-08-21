@@ -2,14 +2,15 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFormLayout, QCheckBox, QDoubleSpinBox, QSpinBox, QFrame,
-    QTabWidget, QWidget,
+    QTabWidget, QWidget, QComboBox,
 )
 from PySide6.QtCore import Qt
 import json
 from pathlib import Path
-import camera   # needed for "Read from Camera" button
+import camera   # needed for "Read from Camera" button and backend get/set helpers
 
 DEFAULTS = {
+    "CameraBackend":       "picamera2",   # ADDED 081226 — "picamera2" or "arducam_usb3"
     "AeEnable":            True,
     "ExposureTime":        20000,
     "AnalogueGain":        1.0,
@@ -93,6 +94,30 @@ class CameraConfigDialog(QDialog):
         # Tab 1 – General                                                      #
         # ------------------------------------------------------------------ #
         gen_w, gen = _tab_page()
+
+        # --- Camera Backend selector (081226 addition) ---
+        self.backend_combo = QComboBox()
+        self.backend_combo.addItem("Raspberry Pi Camera Module 3 (Picamera2)", userData="picamera2")
+        self.backend_combo.addItem("Arducam 20MP AR2020 Mono USB3", userData="arducam_usb3")
+        _saved_backend = camera.get_camera_backend()
+        _running_backend = camera.get_camera_backend_active_this_process()
+        _idx = self.backend_combo.findData(_saved_backend)
+        self.backend_combo.setCurrentIndex(_idx if _idx >= 0 else 0)
+        gen.addRow(QLabel("Camera Backend:"), self.backend_combo)
+
+        self.backend_status_lbl = QLabel(f"Active this session: {_running_backend}")
+        self.backend_status_lbl.setStyleSheet("color: #90A4AE; font-size: 12px;")
+        gen.addRow(QLabel(""), self.backend_status_lbl)
+
+        backend_note = QLabel(
+            "Changing this takes effect after restarting the application —\n"
+            "the active backend is fixed for the lifetime of the running process."
+        )
+        backend_note.setStyleSheet("color: #90A4AE; font-size: 12px;")
+        gen.addRow(QLabel(""), backend_note)
+
+        sep = QFrame(); sep.setFrameShape(QFrame.HLine); sep.setStyleSheet("color: #455A64;")
+        gen.addRow(sep)
 
         self.ae_chk = QCheckBox("Enable Auto Exposure")
         self.ae_chk.setChecked(bool(self.settings["AeEnable"]))
@@ -325,6 +350,7 @@ class CameraConfigDialog(QDialog):
     # ---------------------------------------------------------------------- #
     def collect(self) -> dict:
         return {
+            "CameraBackend":       self.backend_combo.currentData(),
             "AeEnable":            bool(self.ae_chk.isChecked()),
             "ExposureTime":        int(self.exp_spin.value()),
             "AnalogueGain":        float(self.gain_spin.value()),
@@ -358,9 +384,23 @@ class CameraConfigDialog(QDialog):
     def on_apply(self):
         self.settings = self.collect()
         save_settings(self.settings)
+
+        chosen_backend = self.settings["CameraBackend"]
+        running_backend = camera.get_camera_backend_active_this_process()
+        if chosen_backend != running_backend:
+            self.backend_status_lbl.setText(
+                f"Saved '{chosen_backend}' — restart the application to switch "
+                f"from the currently running '{running_backend}' backend."
+            )
+            self.backend_status_lbl.setStyleSheet("color: #FFD600; font-size: 12px; font-weight: bold;")
+        else:
+            self.backend_status_lbl.setText(f"Active this session: {running_backend}")
+            self.backend_status_lbl.setStyleSheet("color: #90A4AE; font-size: 12px;")
+
         if self.settings["ManualFocusEnable"]:
             try:
                 camera.set_manual_focus(self.settings["ManualFocusPosition"])
             except Exception:
                 pass
         # Dialog stays open so the user can see the effect and fine-tune.
+
