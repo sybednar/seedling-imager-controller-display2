@@ -268,6 +268,16 @@ def _v4l2_exposure_to_us(value):
         return None
     return int(value) * 100
 
+def _gain_to_v4l2(gain: float) -> int:
+    """Device reports gain as raw integer 100-2200; treat as friendly multiplier x100."""
+    return max(100, min(2200, int(round(gain * 100))))
+
+
+def _v4l2_gain_to_friendly(value):
+    if value is None:
+        return None
+    return float(value) / 100.0
+
 
 def _set_auto_exposure(enabled: bool):
     name = _resolve_ctrl("exposure_auto")
