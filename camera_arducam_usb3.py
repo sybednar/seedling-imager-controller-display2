@@ -299,7 +299,7 @@ def set_manual_exposure_gain(exposure_us: int, gain: float) -> None:
     try:
         _set_auto_exposure(False)
         _v4l2_set("exposure", _us_to_v4l2_exposure(int(exposure_us)))
-        _v4l2_set("gain", int(gain))
+        _v4l2_set("gain", _gain_to_v4l2(float(gain)))
     except Exception as e:
         print(f"[arducam] set_manual_exposure_gain error: {e}", flush=True)
 
@@ -325,7 +325,7 @@ def enable_liveview_boost_for_ir(
     try:
         _liveview_saved = dict(get_metadata())
         _set_auto_exposure(False)   # was True — go Manual so exposure writes actually stick
-        _v4l2_set("gain", int(target_gain))
+        _v4l2_set("gain", _gain_to_v4l2(target_gain))
         _v4l2_set("exposure", _us_to_v4l2_exposure(target_exposure_us))
         _liveview_boost_active = True
         print(
@@ -350,7 +350,7 @@ def disable_liveview_boost() -> None:
                 gain = _liveview_saved.get("AnalogueGain")
                 if exp is not None and gain is not None:
                     _v4l2_set("exposure", _us_to_v4l2_exposure(int(exp)))
-                    _v4l2_set("gain", int(gain))
+                    _v4l2_set("gain", _gain_to_v4l2(float(gain)))
         _liveview_boost_active = False
         _liveview_saved = None
         print("[arducam] Live-view IR boost disabled (restored controls)", flush=True)
@@ -417,7 +417,7 @@ def apply_settings(settings: dict = None) -> None:
     _set_auto_exposure(ae)
     if not ae:
         _v4l2_set("exposure", _us_to_v4l2_exposure(int(settings.get("Arducam_ExposureUs", 20000))))
-        _v4l2_set("gain", int(settings.get("Arducam_Gain", 1.0)))
+        _v4l2_set("gain", _gain_to_v4l2(float(settings.get("Arducam_Gain", 1.0))))
 
 
 def get_current_settings() -> dict:
@@ -542,7 +542,7 @@ def get_metadata() -> dict:
         out["ExposureTime"] = _v4l2_exposure_to_us(exp_val)
 
         gain_val = _v4l2_get("gain")
-        out["AnalogueGain"] = float(gain_val) if gain_val is not None else None
+        out["AnalogueGain"] = _v4l2_gain_to_friendly(gain_val)
 
         out["AwbEnable"] = None  # monochrome sensor — no white balance concept
 
