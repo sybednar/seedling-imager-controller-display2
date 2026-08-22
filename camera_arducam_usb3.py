@@ -248,12 +248,15 @@ def _v4l2_get(key: str):
             ["v4l2-ctl", "-d", device, f"--get-ctrl={name}"],
             capture_output=True, text=True, timeout=5, check=True,
         ).stdout
-        # Typical output line: "exposure_absolute: 1000"
-        return int(out.strip().split(":")[-1].strip())
+        # Numeric controls: "exposure_absolute: 1000". Menu controls:
+        # "exposure_auto: 0 (Auto Mode)". Take just the leading numeric token
+        # so both forms parse correctly.
+        val_str = out.strip().split(":")[-1].strip()
+        return int(val_str.split()[0])
     except Exception as e:
         print(f"[arducam] v4l2_get({key}) error: {e}", flush=True)
         return None
-
+        
 
 def _us_to_v4l2_exposure(exposure_us: int) -> int:
     """UVC exposure_absolute is conventionally in 100µs units — verify on real hardware."""
@@ -270,10 +273,10 @@ def _set_auto_exposure(enabled: bool):
     name = _resolve_ctrl("exposure_auto")
     if not name:
         return
-    # UVC menu convention: 3 = Aperture Priority (auto), 1 = Manual Mode.
-    # Some drivers instead use a plain 0/1 boolean for this control —
-    # print_diagnostics() will show the menu values actually reported.
-    value = 3 if enabled else 1
+    # UVC standard menu: 0 = Auto Mode, 1 = Manual Mode, 2 = Shutter Priority,
+    # 3 = Aperture Priority. Confirmed on real hardware (Aug 2026): this
+    # device only supports 0 and 1 — Shutter/Aperture Priority are rejected.
+    value = 0 if enabled else 1
     _v4l2_set("exposure_auto", value)
 
 
@@ -311,13 +314,13 @@ def enable_liveview_boost_for_ir(
         target_exposure_us = min(target_exposure_us, 5000)
     try:
         _liveview_saved = dict(get_metadata())
-        _set_auto_exposure(True)
+        _set_auto_exposure(False)   # was True — go Manual so exposure writes actually stick
         _v4l2_set("gain", int(target_gain))
         _v4l2_set("exposure", _us_to_v4l2_exposure(target_exposure_us))
         _liveview_boost_active = True
         print(
             f"[arducam] Live-view IR boost enabled: mode={mode}, "
-            f"gain_floor={target_gain}, exposure_floor={target_exposure_us}µs",
+            f"gain={target_gain}, exposure={target_exposure_us}µs (manual, pinned)",
             flush=True,
         )
     except Exception as e:
@@ -523,7 +526,7 @@ def get_metadata() -> dict:
     out = {}
     try:
         ae_val = _v4l2_get("exposure_auto")
-        out["AeEnable"] = (ae_val == 3) if ae_val is not None else None
+        out["AeEnable"] = (ae_val == 0) if ae_val is not None else None
 
         exp_val = _v4l2_get("exposure")
         out["ExposureTime"] = _v4l2_exposure_to_us(exp_val)
