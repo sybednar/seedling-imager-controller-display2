@@ -8,9 +8,9 @@ from styles import dark_style
 import shutil
 from pathlib import Path
  
-ILLUM_FRONT_IR   = "Front IR"      # reflectance, GPIO13
-ILLUM_REAR_IR    = "Rear IR"       # transmission, GPIO12
-ILLUM_COMBINED   = "Combined IR"   # both panels, GPIO12 + GPIO13
+ILLUM_FRONT_IR   = "Front IR"      # reflectance, GPIO17
+ILLUM_REAR_IR    = "Rear IR"       # transmission, GPIO27
+ILLUM_COMBINED   = "Combined IR"   # both panels, GPIO27 + GPIO17
  
 IMAGES_ROOT = Path("/home/sybednar/Seedling_Imager/images")  # for disk-usage estimate
  
