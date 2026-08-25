@@ -319,9 +319,8 @@ def enable_liveview_boost_for_ir(
     global _liveview_boost_active, _liveview_saved
     if _liveview_boost_active:
         return
-    if mode in ("Rear IR", "Combined IR"):
-        target_gain = min(target_gain, 4.0)
-        target_exposure_us = min(target_exposure_us, 5000)
+    # Front IR/Combined IR removed from hardware+GUI (Aug 2026) — Rear IR is
+    # the sole imaging illumination
     try:
         _liveview_saved = dict(get_metadata())
         _set_auto_exposure(False)   # was True — go Manual so exposure writes actually stick
