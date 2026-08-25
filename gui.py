@@ -31,7 +31,7 @@ try:
     # free/unused.
     LED_REAR_IR_PIN  = 27    # rear IR panel (transmission imaging illumination)
 
-    # Green LED (GPIO23) — low-photomorphogenic-impact light for setting up
+    # Green LED (GPIO24) — low-photomorphogenic-impact light for setting up
     # dark-grown experiments (loading plates, checking alignment, etc.)
     # without triggering light-dependent germination responses.
     LED_GREEN_PIN = 24
@@ -123,7 +123,7 @@ class SeedlingImagerGUI(QWidget):
         self.live_view_btn.clicked.connect(self.toggle_live_view)
         #button_layout.addWidget(self.live_view_btn)
 
-        # Setup LEDs — Rear IR (GPIO27) and Green (GPIO23). These are
+        # Setup LEDs — Rear IR (GPIO27) and Green (GPIO24). These are
         # independent manual toggles for bench use (same pattern as the
         # germination LEDs below), e.g. to preview transmission lighting or
         # to work under Green light while setting up a dark-grown
@@ -715,11 +715,11 @@ class SeedlingImagerGUI(QWidget):
 
             camera.stop_camera()
             self.live_view_active = False
-            self._sync_rear_ir_button(False)
             self._update_live_view_button()
 
             # Turn OFF Rear IR
             self._set_rear_ir(False)
+            self._sync_rear_ir_button(False)
 
             self.update_status("Live View stopped.")
 
