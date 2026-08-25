@@ -140,9 +140,7 @@ class SeedlingImagerGUI(QWidget):
         self.rear_ir_btn.setCheckable(True)
         self.rear_ir_btn.setFixedWidth(setup_btn_w)
         self.rear_ir_btn.setFixedHeight(button_height)
-        self.rear_ir_btn.toggled.connect(
-            lambda checked: self._toggle_manual_led(LED_REAR_IR_PIN, checked, self.rear_ir_btn, "#1565C0", "Rear IR")
-        )
+        self.rear_ir_btn.toggled.connect(self._on_rear_ir_button_toggled)
 
         self.green_btn = QPushButton("Green")
         self.green_btn.setCheckable(True)
@@ -354,16 +352,32 @@ class SeedlingImagerGUI(QWidget):
 
     # ---------- Imaging illumination (Rear IR — sole imaging source) ----------
     def _set_rear_ir(self, on: bool):
-        """
-        Drive the Rear IR imaging illumination (GPIO27) directly. This is
-        the sole imaging illumination source now (Front IR panel removed;
-        GPIO17 freed). Called automatically by Live View (set_live_view)
-        and by ExperimentRunner's led_control_fn (see set_led) during
-        capture — independent of the manual "Rear IR" setup button above.
-        """
+        """GPIO-only — safe to call from ExperimentRunner's background thread."""
         if not led_request:
             return
         led_request.set_value(LED_REAR_IR_PIN, Value.ACTIVE if on else Value.INACTIVE)
+
+    def _sync_rear_ir_button(self, on: bool):
+        """GUI-thread only: sync the manual button's look to actual GPIO state."""
+        if not hasattr(self, "rear_ir_btn"):
+            return
+        s = self._s
+        self.rear_ir_btn.blockSignals(True)
+        self.rear_ir_btn.setChecked(on)
+        if on:
+            self.rear_ir_btn.setStyleSheet(
+                dark_style(s) + " QPushButton { background-color: #1565C0; color: white; font-weight: bold; }"
+            )
+        else:
+            self.rear_ir_btn.setStyleSheet(
+                dark_style(s) + " QPushButton { background-color: #37474F; color: white; }"
+            )
+        self.rear_ir_btn.blockSignals(False)
+
+    def _on_rear_ir_button_toggled(self, checked: bool):
+        self._set_rear_ir(checked)
+        self._sync_rear_ir_button(checked)
+        self.update_status(f"Rear IR LED: {'ON' if checked else 'OFF'}")
 
     # ---------- Manual/independent LED toggles (setup + germination) ----------
     def _toggle_manual_led(self, pin: int, checked: bool, btn: "QPushButton", on_color: str, label: str):
@@ -671,8 +685,8 @@ class SeedlingImagerGUI(QWidget):
             # Always apply the live-view brightness boost for Rear IR.
             try:
                 camera.enable_liveview_boost_for_ir(
-                    target_gain=8.0,
-                    target_exposure_us=20000,
+                    target_gain=2.0,
+                    target_exposure_us=4000,
                     mode=ILLUM_REAR_IR
                 )
             except Exception as e:
@@ -686,6 +700,7 @@ class SeedlingImagerGUI(QWidget):
 
             # Turn ON Rear IR
             self._set_rear_ir(True)
+            self._sync_rear_ir_button(True)
 
             self.update_status("Live View started. Rear IR LED ON.")
 
@@ -700,6 +715,7 @@ class SeedlingImagerGUI(QWidget):
 
             camera.stop_camera()
             self.live_view_active = False
+            self._sync_rear_ir_button(False)
             self._update_live_view_button()
 
             # Turn OFF Rear IR
