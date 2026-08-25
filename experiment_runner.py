@@ -8,7 +8,21 @@
 #     (dynamic bracket + CENTER_BACKOFF) you tuned in motor_control.py.
 #   • We then emit Plate #1 and wait for the next cycle.
 #
-# Public surface (unchanged): signals, logging, CSV schema, LED callbacks, etc.
+# Growth mode (DAYLIGHT / DARK):
+#   • DAYLIGHT: FarRed/Red/Blue germination LEDs are set once, statically,
+#     at the start of the run and left alone for its full duration.
+#   • DARK: FarRed/Red/Blue germination LEDs are OFF until a configured
+#     elapsed time (hours since experiment start) is reached, at which
+#     point the selected channel(s) switch on and stay on continuously.
+#     The trigger check is restart-safe: it recomputes desired state from
+#     wall-clock elapsed time every cycle rather than an in-memory
+#     countdown, so an app/Pi restart mid-experiment can't re-arm or lose
+#     the trigger.
+#
+# Imaging illumination is always Rear IR (transmission) — Front IR/Combined
+# have been removed from the hardware/GUI.
+#
+# Public surface (mostly unchanged): signals, logging, CSV schema, LED callbacks, etc.
 
 from PySide6.QtCore import QThread, Signal
 from datetime import datetime, timedelta
@@ -21,7 +35,7 @@ import os
 import motor_control
 import camera
 from camera_config import load_settings
-from experiment_setup import ILLUM_FRONT_IR, ILLUM_REAR_IR, ILLUM_COMBINED
+from experiment_setup import ILLUM_REAR_IR, GERM_LED_PINS, GROWTH_MODE_DAYLIGHT, GROWTH_MODE_DARK
 
 # --- Edit 1: import registration corrector ---
 try:
@@ -60,6 +74,9 @@ class ExperimentRunner(QThread):
         frequency_minutes,
         illumination_mode,
         led_control_fn,
+        growth_mode=GROWTH_MODE_DAYLIGHT,
+        growth_settings=None,
+        germ_led_control_fn=None,
         perform_homing: bool = True,
         parent=None
     ):
@@ -71,6 +88,12 @@ class ExperimentRunner(QThread):
         self.illumination_mode = illumination_mode
         self.led_control_fn = led_control_fn
         self.perform_homing = perform_homing
+
+        # Growth mode (DAYLIGHT static / DARK timer-triggered) germination LEDs
+        self.growth_mode = growth_mode
+        self.growth_settings = dict(growth_settings) if growth_settings else {}
+        self.germ_led_control_fn = germ_led_control_fn
+        self._dark_triggered = False  # tracks whether DARK-mode LEDs have been switched on yet
 
         self._abort = False
         self.wait_seconds_for_camera = 10
@@ -85,10 +108,17 @@ class ExperimentRunner(QThread):
 
         self.cam_settings = load_settings()
 
+        # Reference point for DARK-mode elapsed-time trigger — captured once
+        # here so it survives for the life of the run object and matches
+        # metadata.json's timestamp_start.
+        self._growth_start_time = datetime.now()
+
         meta_path = self.run_dir / "metadata.json"
         meta = {
-            "timestamp_start": datetime.now().isoformat(timespec="seconds"),
+            "timestamp_start": self._growth_start_time.isoformat(timespec="seconds"),
             "illumination_mode": self.illumination_mode,
+            "growth_mode": self.growth_mode,
+            "growth_settings": self.growth_settings,
             "selected_plates": self.selected_plates,
             "frequency_minutes": self.frequency_minutes,
             "duration_days": self.duration_days,
@@ -155,6 +185,11 @@ class ExperimentRunner(QThread):
                     # registration shift columns
                     "reg_shift_dy_px",
                     "reg_shift_dx_px",
+                    # growth mode / germination LED state columns
+                    "growth_mode",
+                    "germ_FarRed",
+                    "germ_Red",
+                    "germ_Blue",
                 ]
             )
             # Reset registration references at the start of each run
@@ -170,6 +205,69 @@ class ExperimentRunner(QThread):
                 self.csv_file.close()
         except Exception:
             pass
+
+    # ---------- Growth-mode germination LED control ----------
+    def _current_germ_state(self, name: str) -> bool:
+        """Return whether germination channel `name` is currently ON, for
+        CSV logging purposes."""
+        if not self.growth_settings.get(name, False):
+            return False
+        if self.growth_mode == GROWTH_MODE_DAYLIGHT:
+            return True
+        return self._dark_triggered
+
+    def _apply_daylight_leds(self):
+        """DAYLIGHT: set germination LEDs once, statically, for the whole run."""
+        if self.growth_mode != GROWTH_MODE_DAYLIGHT or not self.germ_led_control_fn:
+            return
+        active = [name for name, pin in GERM_LED_PINS.items() if self.growth_settings.get(name, False)]
+        for name, pin in GERM_LED_PINS.items():
+            if self.growth_settings.get(name, False):
+                try:
+                    self.germ_led_control_fn(pin, True)
+                except Exception as e:
+                    self._log(f"DAYLIGHT LED error ({name}): {e}")
+        self._log(f"DAYLIGHT mode: static germination LED(s) set for full experiment: {active or 'none'}")
+
+    def _apply_growth_mode_leds(self):
+        """
+        DARK mode only: recompute (every cycle, restart-safe) whether
+        elapsed time since timestamp_start has passed the configured
+        trigger hour. Comparing wall-clock elapsed time against a fixed
+        threshold — rather than an in-memory countdown — means an app or
+        Pi restart mid-experiment can't re-arm or skip the trigger.
+        """
+        if self.growth_mode != GROWTH_MODE_DARK or not self.germ_led_control_fn:
+            return
+        trigger_hours = float(self.growth_settings.get("timer_hours", 36))
+        elapsed_hours = (datetime.now() - self._growth_start_time).total_seconds() / 3600.0
+        should_be_on = elapsed_hours >= trigger_hours
+        if should_be_on == self._dark_triggered:
+            return  # no state change needed
+        active = [name for name, pin in GERM_LED_PINS.items() if self.growth_settings.get(name, False)]
+        for name, pin in GERM_LED_PINS.items():
+            if self.growth_settings.get(name, False):
+                try:
+                    self.germ_led_control_fn(pin, should_be_on)
+                except Exception as e:
+                    self._log(f"DARK LED error ({name}): {e}")
+        self._dark_triggered = should_be_on
+        if should_be_on:
+            self._log(
+                f"DARK mode: elapsed {elapsed_hours:.1f}h >= trigger {trigger_hours:.0f}h — "
+                f"germination LED(s) ON (sustained): {active or 'none'}"
+            )
+
+    def _clear_growth_mode_leds(self):
+        """Safety cleanup at end of run — turn off any germination LEDs
+        that DAYLIGHT/DARK may have switched on."""
+        if not self.germ_led_control_fn:
+            return
+        for name, pin in GERM_LED_PINS.items():
+            try:
+                self.germ_led_control_fn(pin, False)
+            except Exception:
+                pass
 
     # ---------- Optional autofocus helpers ----------
     def _wait_for_focus_fom(self, threshold: float = 500.0, timeout_s: float = 3.0, poll_s: float = 0.2):
@@ -339,14 +437,12 @@ class ExperimentRunner(QThread):
                 self.finished_signal.emit()
                 return
 
-        # Start camera & apply the correct IR preset for the chosen mode
+        # Start camera & apply the transmission (Rear IR) preset — the
+        # sole imaging illumination mode now.
         try:
             camera.start_camera()
             active_settings = dict(self.cam_settings)
-            if self.illumination_mode == ILLUM_REAR_IR:
-                active_settings = camera.apply_ir_transmission_preset(active_settings)
-            else:
-                active_settings = camera.apply_ir_quant_preset(active_settings)
+            active_settings = camera.apply_ir_transmission_preset(active_settings)
             camera.apply_settings(active_settings)
         except Exception as e:
             self._log(f"Camera start error: {e}")
@@ -364,11 +460,22 @@ class ExperimentRunner(QThread):
             if self.led_control_fn:
                 self.led_control_fn(False, self.illumination_mode)
 
+        # Apply growth-mode germination LEDs (independent of imaging illumination).
+        # DAYLIGHT is static and applied once here; DARK is timer-triggered and
+        # re-checked every cycle via _apply_growth_mode_leds() below.
+        self._apply_daylight_leds()
+        if self.growth_mode == GROWTH_MODE_DARK:
+            active = [name for name in GERM_LED_PINS if self.growth_settings.get(name, False)]
+            self._log(
+                f"DARK mode: germination LED(s) will trigger at elapsed "
+                f"{float(self.growth_settings.get('timer_hours', 36)):.0f}h for channels: {active or 'none'}"
+            )
+
         self._open_csv()
         self._log(
             f"Experiment started: {self.duration_days} day(s), "
             f"every {self.frequency_minutes} min. "
-            f"Illumination: {self.illumination_mode}. "
+            f"Illumination: {self.illumination_mode}. Growth mode: {self.growth_mode}. "
             f"Re-home: full, every {int(REHOME_EVERY_N) if REHOME_EVERY_N else 0} cycle(s)."
         )
 
@@ -377,6 +484,9 @@ class ExperimentRunner(QThread):
         try:
             while datetime.now() < end_time and not self._abort:
                 self.cycle_count += 1
+
+                # Restart-safe DARK-mode trigger check, once per cycle.
+                self._apply_growth_mode_leds()
 
                 # Always start a cycle by ensuring we are at Plate #1
                 motor_control.goto_plate(1, status_callback=self.status_signal.emit)
@@ -470,11 +580,8 @@ class ExperimentRunner(QThread):
                     if plate_idx in self.selected_plates:
                         ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-                        mode_tag = {
-                            ILLUM_FRONT_IR:  "front",
-                            ILLUM_REAR_IR:   "rear",
-                            ILLUM_COMBINED:  "combined",
-                        }.get(self.illumination_mode, "ir")
+                        # Rear IR is the only imaging illumination now.
+                        mode_tag = "rear"
 
                         img_name = f"plate{plate_idx}_{ts_str}_{mode_tag}_gray.tif"
                         img_path = str(self.run_dir / f"plate{plate_idx}" / img_name)
@@ -535,6 +642,10 @@ class ExperimentRunner(QThread):
                                     focus_fom,
                                     reg_dy,
                                     reg_dx,
+                                    self.growth_mode,
+                                    self._current_germ_state("FarRed"),
+                                    self._current_germ_state("Red"),
+                                    self._current_germ_state("Blue"),
                                 ])
                             self.image_saved_signal.emit(img_path)
                             self._log(f"Saved: {img_path}")
@@ -576,6 +687,7 @@ class ExperimentRunner(QThread):
                 pass
             if self.led_control_fn:
                 self.led_control_fn(False, self.illumination_mode)
+            self._clear_growth_mode_leds()
             self._close_csv()
             self.finished_signal.emit()
 
