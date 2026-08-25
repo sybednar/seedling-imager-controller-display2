@@ -34,7 +34,7 @@ try:
     # Green LED (GPIO23) — low-photomorphogenic-impact light for setting up
     # dark-grown experiments (loading plates, checking alignment, etc.)
     # without triggering light-dependent germination responses.
-    LED_GREEN_PIN = 23
+    LED_GREEN_PIN = 24
 
     # Germination/photomorphogenesis LED strip — independent of imaging
     # illumination. Pin map is shared with experiment_setup.py /
