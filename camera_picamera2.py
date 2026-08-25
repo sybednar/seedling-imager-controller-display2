@@ -155,14 +155,8 @@ def enable_liveview_boost_for_ir(
     if _liveview_boost_active:
         return  # already active; caller must disable before re-calling with new mode
  
-    # --- Adjust boost parameters for transmission geometries ---
-    # Rear and combined panels produce a bright-field signal that is typically
-    # 5–20× stronger than front reflectance.  Cap gain and exposure to prevent
-    # the agar background from clipping while still giving a usable preview.
-    if mode in ("Rear IR", "Combined IR"):
-        target_gain        = min(target_gain, 1.0)    # was 2.0
-        target_exposure_us = min(target_exposure_us, 500)  # ~8 ms ceiling change from 8000
-    # Front IR: use the caller-supplied values unchanged (default 8.0 gain / 20 ms)
+    # Front IR/Combined IR removed from hardware+GUI (Aug 2026) — Rear IR is
+    # the sole imaging illumination 
  
     try:
         # Snapshot current controls so disable_liveview_boost() can restore them exactly
