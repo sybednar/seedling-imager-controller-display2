@@ -320,6 +320,7 @@ class SeedlingImagerGUI(QWidget):
         # Right: status + camera + log
         right_layout = QVBoxLayout()
         self.status_label = QLabel("Status: Ready"); self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setWordWrap(True)
         #right_layout.addWidget(self.status_label)
 
         # Experiment progress info — elapsed time + rough next-cycle ETA.
