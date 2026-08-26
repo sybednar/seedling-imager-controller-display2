@@ -147,7 +147,7 @@ class SeedlingImagerGUI(QWidget):
         self.green_btn.setFixedWidth(setup_btn_w)
         self.green_btn.setFixedHeight(button_height)
         self.green_btn.toggled.connect(
-            lambda checked: self._toggle_manual_led(LED_GREEN_PIN, checked, self.green_btn, "#2E7D32", "Green")
+            lambda checked: self._toggle_manual_led(LED_GREEN_PIN, checked, self.green_btn, "#4CAF50", "Green")
         )
 
         for _btn in (self.rear_ir_btn, self.green_btn):
@@ -172,7 +172,7 @@ class SeedlingImagerGUI(QWidget):
         self.germ_blue_btn.setFixedWidth(germ_btn_w)
         self.germ_blue_btn.setFixedHeight(button_height)
         self.germ_blue_btn.toggled.connect(
-            lambda checked: self._toggle_manual_led(LED_GERM_BLUE_PIN, checked, self.germ_blue_btn, "#1E88E5", "Blue")
+            lambda checked: self._toggle_manual_led(LED_GERM_BLUE_PIN, checked, self.germ_blue_btn, "#3D5AFE", "Blue")
         )
 
         self.germ_red_btn = QPushButton("Red")
@@ -180,7 +180,7 @@ class SeedlingImagerGUI(QWidget):
         self.germ_red_btn.setFixedWidth(germ_btn_w)
         self.germ_red_btn.setFixedHeight(button_height)
         self.germ_red_btn.toggled.connect(
-            lambda checked: self._toggle_manual_led(LED_GERM_RED_PIN, checked, self.germ_red_btn, "#E53935", "Red")
+            lambda checked: self._toggle_manual_led(LED_GERM_RED_PIN, checked, self.germ_red_btn, "#D32F2F", "Red")
         )
 
         self.germ_farred_btn = QPushButton("FarRed")
@@ -188,7 +188,7 @@ class SeedlingImagerGUI(QWidget):
         self.germ_farred_btn.setFixedWidth(germ_btn_w)
         self.germ_farred_btn.setFixedHeight(button_height)
         self.germ_farred_btn.toggled.connect(
-            lambda checked: self._toggle_manual_led(LED_GERM_FARRED_PIN, checked, self.germ_farred_btn, "#6A1B9A", "FarRed")
+            lambda checked: self._toggle_manual_led(LED_GERM_FARRED_PIN, checked, self.germ_farred_btn, "#FF5722", "FarRed")
         )
 
         for _btn in (self.germ_blue_btn, self.germ_red_btn, self.germ_farred_btn):
@@ -366,7 +366,7 @@ class SeedlingImagerGUI(QWidget):
         self.rear_ir_btn.setChecked(on)
         if on:
             self.rear_ir_btn.setStyleSheet(
-                dark_style(s) + " QPushButton { background-color: #1565C0; color: white; font-weight: bold; }"
+                dark_style(s) + " QPushButton { background-color: #C2185B; color: white; font-weight: bold; }"
             )
         else:
             self.rear_ir_btn.setStyleSheet(
