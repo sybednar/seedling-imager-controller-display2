@@ -326,6 +326,7 @@ class SeedlingImagerGUI(QWidget):
         # Only populated/visible while an experiment is running.
         self.experiment_info_label = QLabel("")
         self.experiment_info_label.setAlignment(Qt.AlignCenter)
+        self.experiment_info_label.setWordWrap(True)
         self.experiment_info_label.setStyleSheet(f"font-size: {max(9, int(9 * s))}px; color: #90A4AE;")        
 
         self.camera_label = QLabel("Camera Preview")
@@ -592,6 +593,7 @@ class SeedlingImagerGUI(QWidget):
         self.experiment_thread.image_saved_signal.connect(lambda p: self.log_panel.append(f"Image saved: {p}"))
         self.experiment_thread.plate_signal.connect(lambda idx: self.status_label.setText(f"Plate #{idx}"))
         self.experiment_thread.settling_started.connect(self.show_experiment_snapshot)
+        self.experiment_thread.cycle_wait_started.connect(self._on_cycle_wait_started)
         self.experiment_thread.finished_signal.connect(self.on_experiment_finished)
         self.update_controls_for_experiment(True)
 
@@ -640,7 +642,10 @@ class SeedlingImagerGUI(QWidget):
                 next_txt = "Imaging in progress"
         else:
             next_txt = "Next cycle: calculating..."
-        self.experiment_info_label.setText(f"Elapsed: {elapsed_h:.1f} h   |   {next_txt}")
+        # Two lines instead of one combined "Elapsed | Next" line — on the
+        # 800x480 display a single wide line can run past the label's box
+        # and get clipped. Two short lines stay comfortably within width.
+        self.experiment_info_label.setText(f"Elapsed: {elapsed_h:.1f} h\n{next_txt}")
 
     
     def update_controls_for_experiment(self, running: bool):
