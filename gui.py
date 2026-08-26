@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QPixmap, QGuiApplication
+from datetime import datetime, timedelta
 from styles import dark_style
 from experiment_setup import (
     ExperimentSetupDialog, ILLUM_REAR_IR,
@@ -95,6 +96,12 @@ class SeedlingImagerGUI(QWidget):
         self.experiment_thread = None
         self.homing_worker = None  # <-- abortable homing worker
 
+        # Experiment progress info (elapsed time / next-cycle ETA) — populated
+        # when an experiment starts, cleared when it ends. See
+        # _update_experiment_info() and _on_cycle_wait_started().
+        self._experiment_start_time = None
+        self._next_cycle_eta = None
+        
         main_layout = QHBoxLayout()
 
         # Left: buttons (EXACT-FILL balanced column)
@@ -315,6 +322,12 @@ class SeedlingImagerGUI(QWidget):
         self.status_label = QLabel("Status: Ready"); self.status_label.setAlignment(Qt.AlignCenter)
         #right_layout.addWidget(self.status_label)
 
+        # Experiment progress info — elapsed time + rough next-cycle ETA.
+        # Only populated/visible while an experiment is running.
+        self.experiment_info_label = QLabel("")
+        self.experiment_info_label.setAlignment(Qt.AlignCenter)
+        self.experiment_info_label.setStyleSheet(f"font-size: {max(9, int(9 * s))}px; color: #90A4AE;")        
+
         self.camera_label = QLabel("Camera Preview")
         self.camera_label.setAlignment(Qt.AlignCenter)
 
@@ -331,6 +344,7 @@ class SeedlingImagerGUI(QWidget):
 
         # Keep right-side stack but give preview more space than log
         right_layout.addWidget(self.status_label, stretch=0)
+        right_layout.addWidget(self.experiment_info_label, stretch=0)
         right_layout.addWidget(self.camera_label, stretch=3)
         right_layout.addWidget(self.log_panel, stretch=2)
 
@@ -340,6 +354,12 @@ class SeedlingImagerGUI(QWidget):
         self.timer = QTimer(); self.timer.timeout.connect(self.update_camera_frame)
         self.live_view_active = False
 
+        # Experiment progress info timer — deliberately coarse (1 min) per
+        # design intent: this is a "rough" indicator, not a live countdown,
+        # so it doesn't add meaningful overhead during long unattended runs.
+        self.experiment_info_timer = QTimer()
+        self.experiment_info_timer.timeout.connect(self._update_experiment_info)
+        
         self.update_controls_for_experiment(False)
 
         # Apply persisted camera settings at startup
@@ -574,6 +594,13 @@ class SeedlingImagerGUI(QWidget):
         self.experiment_thread.settling_started.connect(self.show_experiment_snapshot)
         self.experiment_thread.finished_signal.connect(self.on_experiment_finished)
         self.update_controls_for_experiment(True)
+
+        # Start tracking elapsed time / next-cycle ETA for the info label.
+        self._experiment_start_time = datetime.now()
+        self._next_cycle_eta = None
+        self._update_experiment_info()
+        self.experiment_info_timer.start(60000)  # refresh once a minute
+        
         self.experiment_thread.start()
 
     def end_experiment(self):
@@ -584,10 +611,38 @@ class SeedlingImagerGUI(QWidget):
             self.update_status("No experiment running.")
         self.update_controls_for_experiment(False)
 
+
     def on_experiment_finished(self):
         self.update_controls_for_experiment(False)
         self.update_status("Experiment finished.")
+        self.experiment_info_timer.stop()
+        self.experiment_info_label.setText("")
+        self._experiment_start_time = None
+        self._next_cycle_eta = None
 
+    # ---------- Experiment progress info (elapsed time / next-cycle ETA) ----------
+    def _on_cycle_wait_started(self, freq_minutes: int):
+        """Called once per cycle, right as the inter-cycle wait begins."""
+        self._next_cycle_eta = datetime.now() + timedelta(minutes=freq_minutes)
+        self._update_experiment_info()
+
+    def _update_experiment_info(self):
+        if not self._experiment_start_time:
+            self.experiment_info_label.setText("")
+            return
+        elapsed_h = (datetime.now() - self._experiment_start_time).total_seconds() / 3600.0
+        if self._next_cycle_eta:
+            remaining_s = (self._next_cycle_eta - datetime.now()).total_seconds()
+            if remaining_s > 30:
+                remaining_min = max(1, round(remaining_s / 60))
+                next_txt = f"Next cycle in ~{remaining_min} min"
+            else:
+                next_txt = "Imaging in progress"
+        else:
+            next_txt = "Next cycle: calculating..."
+        self.experiment_info_label.setText(f"Elapsed: {elapsed_h:.1f} h   |   {next_txt}")
+
+    
     def update_controls_for_experiment(self, running: bool):
         """Enable/disable controls while an experiment is running."""
         # Live View and motion/Config controls should be disabled during a run
