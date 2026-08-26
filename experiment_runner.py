@@ -56,6 +56,19 @@ AE_GATE_POLL_S       = 0.10  # poll cadence
 AE_GATE_GAIN_TOL     = 0.05  # <5% relative change considered "stable"
 AE_GATE_STABLE_READS = 5     # need this many consecutive stable reads
 
+# -------- Manual focus settle gate (run once, at experiment start) --------
+# start_camera() reissues the manual focus command every run (the lens does
+# NOT hold position across a pipeline stop/start). But Live View drives the
+# lens with continuous AF during the homing preview immediately beforehand
+# (see gui.py set_live_view), so the lens may have wandered far from the
+# calibrated position — how far varies with how long homing takes. Nothing
+# upstream confirms the lens actually arrived before the first capture.
+# This gate polls LensPosition until it's within tolerance of the target,
+# or times out (in which case we log a warning and proceed anyway).
+FOCUS_GATE_MAX_WAIT_S = 5.0   # total timeout waiting for lens to settle
+FOCUS_GATE_POLL_S     = 0.15  # poll cadence
+FOCUS_GATE_TOLERANCE  = 0.05  # diopters considered "arrived"
+
 
 class ExperimentRunner(QThread):
     # ---------- Signals ----------
@@ -382,6 +395,33 @@ class ExperimentRunner(QThread):
             time.sleep(poll_s)
         return False, last_md
 
+    def _focus_stability_gate(self, target_position: float,
+                               max_wait_s=FOCUS_GATE_MAX_WAIT_S,
+                               poll_s=FOCUS_GATE_POLL_S,
+                               tolerance=FOCUS_GATE_TOLERANCE):
+        """
+        Poll LensPosition until it settles within 'tolerance' diopters of
+        'target_position', or time out. Called once at experiment start,
+        right after camera.start_camera() reissues the manual focus command.
+
+        Returns: (settled: bool, last_lens_pos: float | None)
+        """
+        t0 = time.time()
+        last_pos = None
+        while (time.time() - t0) < max_wait_s and not self._abort:
+            md = camera.get_metadata() or {}
+            pos = md.get("LensPosition", None)
+            if pos is not None:
+                try:
+                    last_pos = float(pos)
+                except Exception:
+                    last_pos = None
+                if last_pos is not None and abs(last_pos - target_position) <= tolerance:
+                    return True, last_pos
+            time.sleep(poll_s)
+        return False, last_pos
+
+    
     # ---------- Always-on full re-home at cycle boundary ----------
     def _rehome_at_cycle_boundary(self):
         """
@@ -438,10 +478,33 @@ class ExperimentRunner(QThread):
                 self.finished_signal.emit()
                 return
 
+
         # Start camera & apply the transmission (Rear IR) preset — the
         # sole imaging illumination mode now.
         try:
             camera.start_camera()
+
+            # If manual focus is enabled, confirm the lens actually reached
+            # the calibrated position before proceeding. See FOCUS_GATE_*
+            # comment above for why this matters (continuous AF during the
+            # Live-View homing preview can leave the lens far from target).
+            if self.cam_settings.get("ManualFocusEnable", False):
+                target_pos = float(self.cam_settings.get("ManualFocusPosition", 0.0))
+                settled, last_pos = self._focus_stability_gate(target_pos)
+                if settled:
+                    self._log(
+                        f"Manual focus settled at {last_pos:.3f} diopters "
+                        f"(target {target_pos:.3f})."
+                    )
+                else:
+                    shown = "n/a" if last_pos is None else f"{last_pos:.3f}"
+                    self._log(
+                        f"WARNING: manual focus did not settle within "
+                        f"{FOCUS_GATE_MAX_WAIT_S:.1f}s (last read: {shown} "
+                        f"diopters, target {target_pos:.3f}). Proceeding "
+                        f"anyway — check the first captured image(s)."
+                    )
+
             active_settings = dict(self.cam_settings)
             active_settings = camera.apply_ir_transmission_preset(active_settings)
             camera.apply_settings(active_settings)
@@ -450,6 +513,7 @@ class ExperimentRunner(QThread):
             self.finished_signal.emit()
             return
 
+        
         # --- Global pre-warm once per run ---
         try:
             if self.led_control_fn:
