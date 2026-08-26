@@ -64,6 +64,7 @@ class ExperimentRunner(QThread):
     plate_signal = Signal(int)
     settling_started = Signal(int)
     settling_finished = Signal(int)
+    cycle_wait_started = Signal(int)   # emitted with frequency_minutes when the inter-cycle wait begins
     finished_signal = Signal()
 
     # ---------- Init ----------
@@ -673,6 +674,7 @@ class ExperimentRunner(QThread):
                         self.plate_signal.emit(1)
 
                     self._log(f"Cycle complete. Waiting {self.frequency_minutes} min...")
+                    self.cycle_wait_started.emit(self.frequency_minutes)
                     self._sleep_with_abort(self.frequency_minutes * 60)
 
         finally:
