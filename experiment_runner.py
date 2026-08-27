@@ -65,7 +65,7 @@ AE_GATE_STABLE_READS = 5     # need this many consecutive stable reads
 # upstream confirms the lens actually arrived before the first capture.
 # This gate polls LensPosition until it's within tolerance of the target,
 # or times out (in which case we log a warning and proceed anyway).
-FOCUS_GATE_MAX_WAIT_S = 5.0   # total timeout waiting for lens to settle
+FOCUS_GATE_MAX_WAIT_S = 12.0   # total timeout waiting for lens to settle
 FOCUS_GATE_POLL_S     = 0.15  # poll cadence
 FOCUS_GATE_TOLERANCE  = 0.05  # diopters considered "arrived"
 
