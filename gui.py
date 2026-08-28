@@ -1,7 +1,7 @@
 #gui.py fixing image rescaling issue during experimental run
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QDialog, QSizePolicy
+    QTextEdit, QDialog, QSizePolicy, QMessageBox
 )
 from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QPixmap, QGuiApplication
@@ -608,11 +608,31 @@ class SeedlingImagerGUI(QWidget):
 
     def end_experiment(self):
         if self.experiment_thread and self.experiment_thread.isRunning():
-            self.experiment_thread.abort(); self.experiment_thread.wait()
-            self.update_status("Experiment ended by user.")
+            reply = QMessageBox.question(
+                self,
+                "Experiment in Progress",
+                "Experiment in Progress: Do you really want to end experiment?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return  # "No" — leave the experiment running untouched
+
+            # Do NOT call self.experiment_thread.wait() here — that blocks the
+            # GUI thread's event loop until the background thread's run()
+            # fully returns, which can take several seconds if ending is
+            # confirmed while the motor is mid-move or the camera is
+            # mid-capture. That block previously caused a full GUI freeze.
+            # Instead, just signal abort and disable the button so it can't
+            # be clicked again; the existing finished_signal ->
+            # on_experiment_finished() connection already re-enables controls
+            # and updates status once the thread exits on its own, non-blocking.
+            self.experiment_thread.abort()
+            self.end_experiment_btn.setEnabled(False)
+            self.update_status("Ending experiment... waiting for current motor/camera operation to finish.")
         else:
             self.update_status("No experiment running.")
-        self.update_controls_for_experiment(False)
+            self.update_controls_for_experiment(False)
 
 
     def on_experiment_finished(self):
