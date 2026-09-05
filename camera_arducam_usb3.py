@@ -1,12 +1,15 @@
 # camera_arducam_usb3.py — OpenCV/V4L2 backend for the Arducam 20MP AR2020
 # Monochrome Manual-Focus USB 3.0 camera.
 #
-# STATUS (Aug 2026): written against the AR2020 mono USB3 datasheet and
-# standard UVC/V4L2 conventions. NOT YET VALIDATED against physical hardware
-# — flag this to yourself before trusting it for an unattended experiment.
+# STATUS (Sept 2026): validated against physical hardware. Rear IR is locked
+# to fixed manual exposure/gain — see apply_ir_transmission_preset() below —
+# because this sensor's onboard auto-exposure was confirmed to converge
+# poorly/inconsistently against the bright, uniform Rear IR transmission
+# scene (one capture had 54% of pixels clipped to white; the very next
+# capture at identical logged settings had 0% clipped).
 #
 # Before relying on this backend for a real run:
-#   1. Connect the camera, install v4l-utils (`sudo apt install v4l-utils`
+#   1. Connect the camera, install v4l2-utils (`sudo apt install v4l2-utils`
 #      — already added to install_dependencies.sh), then run:
 #           python3 -c "import camera_arducam_usb3 as c; c.print_diagnostics()"
 #      This prints the detected /dev/videoN device, every resolution/format
@@ -17,9 +20,11 @@
 #      module tries several known names and logs which one it resolved to,
 #      but add a name to the list rather than guessing blind if none match.
 #   3. Compare FULL/PREVIEW resolution constants against
-#      `v4l2-ctl --list-formats-ext -d <device>` output. The datasheet lists
-#      5120x3840@8fps (full) and 1280x960@90fps (preview); confirm the driver
-#      agrees before an experiment depends on it.
+#      `v4l2-ctl --list-formats-ext -d <device>` output. Confirmed on
+#      hardware: 5120x3840 @ 8/5 fps (full) and 1280x960 up to 90 fps
+#      (preview), plus 3840x2160, 2560x1920, and 1920x1080 intermediate
+#      modes. If the full 5120x3840 mode is missing from that listing, the
+#      USB3 cable/port is not delivering full SuperSpeed bandwidth.
 #   4. Time the mode-switch pause in save_image() (stop preview -> reconfigure
 #      to full res -> discard warm-up frames -> capture -> restore preview)
 #      with a stopwatch and adjust the warm-up frame count / sleep below if
@@ -35,9 +40,15 @@
 #     Live preview runs continuously at PREVIEW size; save_image() briefly
 #     reconfigures to FULL size, grabs a still, then reconfigures back. Expect
 #     a short pause during every capture that the Picamera2 backend does not
-#     have — length TBD until measured on real hardware.
+#     have.
 #   - Exposure/gain are driven via `v4l2-ctl` subprocess calls against
 #     standard V4L2_CID_* controls rather than libcamera controls.
+#   - This sensor's real V4L2 "gain" control range is 100-2200 (integer),
+#     confirmed via print_diagnostics() on real hardware — NOT the ~1.0-16.0
+#     float scale used by camera_picamera2.py. Front IR is unused in the
+#     current hardware (Front IR illumination was removed from the system),
+#     but its gain default is kept on the same 100-2200 scale for
+#     consistency in case it's ever reintroduced.
 
 import subprocess
 import shutil
@@ -58,7 +69,12 @@ except ImportError:
 # =============================================================================
 # Settings persistence — shares camera_settings.json with camera_picamera2.py.
 # Keys are prefixed Arducam_ so both backends' settings coexist peacefully in
-# the same file regardless of which one is currently selected.
+# the same file regardless of which one is currently selected. EXCEPTION:
+# Rear IR exposure time uses the plain 'RearIR_ExposureTime' key shared with
+# camera_picamera2.py (microseconds mean the same thing on any sensor, and
+# it's set from the same Camera Config dialog field for both backends). Gain
+# is never shared — see the note above about the 100-2200 vs 1.0-16.0 scale
+# mismatch.
 # =============================================================================
 DEFAULTS = {
     "CameraBackend": "arducam_usb3",
@@ -71,17 +87,27 @@ DEFAULTS = {
 
     "Arducam_AeEnable":      True,
     "Arducam_ExposureUs":    20000,  # manual exposure, µs (used when AE off)
-    "Arducam_Gain":          1.0,    # nominal 1.0-16.0 — verify real range on hardware
+    "Arducam_Gain":          100,    # CONFIRMED on real hardware (Sept 2026): this
+                                     # sensor's V4L2 "gain" control range is 100-2200
+                                     # (integer), NOT the ~1.0-16.0 float scale used by
+                                     # camera_picamera2.py. 100 = the device's declared
+                                     # minimum (no additional gain).
 
-    # Front IR (reflectance) overrides — mirrors camera_picamera2.py's FrontIR_* naming
+    # Front IR (reflectance) overrides — mirrors camera_picamera2.py's FrontIR_* naming.
+    # Unused in the current hardware (Front IR illumination was removed), kept for
+    # interface parity in case it's reintroduced.
     "Arducam_FrontIR_AeEnable":   True,
     "Arducam_FrontIR_ExposureUs": 20000,
-    "Arducam_FrontIR_Gain":       1.0,
+    "Arducam_FrontIR_Gain":       100,
 
-    # Rear IR (transmission) overrides
-    "Arducam_RearIR_AeEnable":    False,
-    "Arducam_RearIR_ExposureUs":  9000,
-    "Arducam_RearIR_Gain":        1.0,
+    # Rear IR (transmission) — always manual (see apply_ir_transmission_preset
+    # below). Exposure time is shared with camera_picamera2.py via the plain
+    # 'RearIR_ExposureTime' key (microseconds mean the same thing on any
+    # sensor, so one Camera Config dialog field drives both backends). Gain
+    # is NOT shared — this sensor's real range (100-2200) has nothing to do
+    # with Picamera2's ~1.0-16.0 scale — so it gets its own key here, with
+    # its own dialog field shown only when this backend is selected.
+    "Arducam_RearIR_Gain":        100,
 }
 SETTINGS_PATH = Path("camera_settings.json")
 
@@ -105,24 +131,133 @@ def save_settings(settings: dict) -> bool:
 
 def apply_ir_quant_preset(base: dict | None) -> dict:
     """Front IR (reflectance) runtime settings — mirrors the Picamera2 backend's helper."""
+    global _rear_ir_lock_manual
+    _rear_ir_lock_manual = False  # only Rear IR is locked to manual; Front IR is unaffected
     s = dict(base) if base else load_settings()
     saved = load_settings()
     s["Arducam_AeEnable"] = bool(saved.get("Arducam_FrontIR_AeEnable", True))
     if not s["Arducam_AeEnable"]:
         s["Arducam_ExposureUs"] = int(saved.get("Arducam_FrontIR_ExposureUs", 20000))
-        s["Arducam_Gain"] = float(saved.get("Arducam_FrontIR_Gain", 1.0))
+        s["Arducam_Gain"] = float(saved.get("Arducam_FrontIR_Gain", 100))
     return s
 
 
 def apply_ir_transmission_preset(base: dict | None) -> dict:
-    """Rear IR (transmission) runtime settings — mirrors the Picamera2 backend's helper."""
+    """
+    Rear IR (transmission) runtime settings — mirrors the Picamera2 backend's helper.
+
+    Always forced to manual exposure/gain, regardless of any saved AE flag.
+    Confirmed on real hardware: this sensor's onboard auto-exposure converges
+    poorly/inconsistently against the bright, uniform Rear IR transmission
+    scene (one capture had 54% of pixels clipped white, the very next
+    capture at identical logged settings had 0% clipped).
+
+    Exposure time (µs) is shared with camera_picamera2.py via the same
+    'RearIR_ExposureTime' key in camera_settings.json, set from the Camera
+    Config dialog's Rear IR tab — µs means the same physical thing on any
+    sensor. Gain is NOT shared (this sensor's 100-2200 range has nothing to
+    do with Picamera2's ~1.0-16.0 scale) — it uses its own
+    'Arducam_RearIR_Gain' key, shown as its own dialog field only when this
+    backend is selected.
+    """
+    global _rear_ir_lock_manual
     s = dict(base) if base else load_settings()
     saved = load_settings()
-    s["Arducam_AeEnable"] = bool(saved.get("Arducam_RearIR_AeEnable", False))
-    if not s["Arducam_AeEnable"]:
-        s["Arducam_ExposureUs"] = int(saved.get("Arducam_RearIR_ExposureUs", 9000))
-        s["Arducam_Gain"] = float(saved.get("Arducam_RearIR_Gain", 1.0))
+    s["Arducam_AeEnable"] = False
+    s["Arducam_ExposureUs"] = int(saved.get("RearIR_ExposureTime", 9000))
+    s["Arducam_Gain"] = float(saved.get("Arducam_RearIR_Gain", 100))
+    # Lock out any later set_auto_exposure(True) calls for the life of this
+    # Rear IR session — experiment_runner.py's shared per-plate settle logic
+    # unconditionally re-enables AE every cycle (needed for Picamera2), so
+    # without this lock Rear IR would silently drift back to auto exposure
+    # on the very next plate.
+    _rear_ir_lock_manual = True
     return s
+
+
+def set_manual_exposure_gain(exposure_us: int, gain: float) -> None:
+    """
+    Explicitly pin exposure and gain (use after AE settling for repeatability).
+    """
+    try:
+        _set_auto_exposure(False)
+        _v4l2_set("exposure", _us_to_v4l2_exposure(int(exposure_us)))
+        _v4l2_set("gain", int(gain))
+    except Exception as e:
+        print(f"[arducam] set_manual_exposure_gain error: {e}", flush=True)
+
+
+# =============================================================================
+# Live-view boost (interface parity with camera_picamera2.py)
+# =============================================================================
+_liveview_boost_active = False
+_liveview_saved = None
+
+# True while Rear IR is configured for manual exposure/gain (the normal,
+# recommended state — see apply_ir_transmission_preset()). While True,
+# set_auto_exposure(True) and enable_liveview_boost_for_ir() both become
+# no-ops, so nothing can silently re-enable auto-exposure out from under
+# Rear IR's fixed manual settings.
+_rear_ir_lock_manual = False
+
+
+def enable_liveview_boost_for_ir(
+    target_gain: float = 8.0,
+    target_exposure_us: int = 20000,
+    mode: str = "Front IR",
+) -> None:
+    global _liveview_boost_active, _liveview_saved
+    if _liveview_boost_active:
+        return
+    if mode in ("Rear IR", "Combined IR") and _rear_ir_lock_manual:
+        # Rear IR is locked to fixed manual exposure/gain — the caller
+        # (gui.py's apply_liveview_camera_profile()) already applied those
+        # exact values via apply_settings() moments before this runs. Skip
+        # the generic boost rather than flooring gain/exposure with values
+        # scaled for Picamera2's ~1-16 gain range, which is what made Rear
+        # IR Live View blow out completely on this camera.
+        print("[arducam] Live-view IR boost skipped — Rear IR locked to manual exposure/gain.", flush=True)
+        return
+    if mode in ("Rear IR", "Combined IR"):
+        target_gain = min(target_gain, 4.0)
+        target_exposure_us = min(target_exposure_us, 5000)
+    try:
+        _liveview_saved = dict(get_metadata())
+        _set_auto_exposure(True)
+        _v4l2_set("gain", int(target_gain))
+        _v4l2_set("exposure", _us_to_v4l2_exposure(target_exposure_us))
+        _liveview_boost_active = True
+        print(
+            f"[arducam] Live-view IR boost enabled: mode={mode}, "
+            f"gain_floor={target_gain}, exposure_floor={target_exposure_us}µs",
+            flush=True,
+        )
+    except Exception as e:
+        print(f"[arducam] liveview boost error: {e}", flush=True)
+
+
+def disable_liveview_boost() -> None:
+    """
+    Restore controls saved by enable_liveview_boost_for_ir(). Safe to call multiple times.
+    """
+    global _liveview_boost_active, _liveview_saved
+    if not _liveview_boost_active:
+        return
+    try:
+        if _liveview_saved:
+            ae = bool(_liveview_saved.get("AeEnable", True))
+            _set_auto_exposure(ae)
+            if not ae:
+                exp = _liveview_saved.get("ExposureTime")
+                gain = _liveview_saved.get("AnalogueGain")
+                if exp is not None and gain is not None:
+                    _v4l2_set("exposure", _us_to_v4l2_exposure(int(exp)))
+                    _v4l2_set("gain", int(gain))
+        _liveview_boost_active = False
+        _liveview_saved = None
+        print("[arducam] Live-view IR boost disabled (restored controls)", flush=True)
+    except Exception as e:
+        print(f"[arducam] liveview boost restore error: {e}", flush=True)
 
 
 # =============================================================================
@@ -139,9 +274,11 @@ def _find_device() -> str:
     hardcoded /dev/video0 fallback.
 
     USB enumeration order is not guaranteed stable across reboots if other
-    UVC devices are ever connected — prefer setting 'Arducam_DevicePath' to
-    a /dev/v4l/by-id/... symlink once you know the camera's stable ID, e.g.
-    via `ls -la /dev/v4l/by-id/`.
+    UVC devices are ever connected (confirmed: this camera enumerated as
+    /dev/video0 on one boot and /dev/video4 on another) — this auto-detect
+    already handles that correctly by matching on device name rather than a
+    fixed path. Prefer setting 'Arducam_DevicePath' to a
+    /dev/v4l/by-id/... symlink instead if you want to pin it explicitly.
     """
     global _device_path
     if _device_path:
@@ -176,7 +313,7 @@ def _find_device() -> str:
 
 
 # =============================================================================
-# V4L2 control access (via v4l2-ctl subprocess — see file header re: unverified names)
+# V4L2 control access (via v4l2-ctl subprocess)
 # =============================================================================
 _CTRL_CANDIDATES = {
     "exposure_auto": ["exposure_auto", "auto_exposure"],
@@ -196,7 +333,7 @@ def _resolve_ctrl(key: str):
         return _resolved_ctrl_names[key]
     device = _find_device()
     if not _v4l2ctl_available():
-        print("[arducam] v4l2-ctl not found — install the 'v4l-utils' apt package.", flush=True)
+        print("[arducam] v4l2-ctl not found — install the 'v4l2-utils' apt package.", flush=True)
         _resolved_ctrl_names[key] = None
         return None
     try:
@@ -248,18 +385,16 @@ def _v4l2_get(key: str):
             ["v4l2-ctl", "-d", device, f"--get-ctrl={name}"],
             capture_output=True, text=True, timeout=5, check=True,
         ).stdout
-        # Numeric controls: "exposure_absolute: 1000". Menu controls:
-        # "exposure_auto: 0 (Auto Mode)". Take just the leading numeric token
-        # so both forms parse correctly.
-        val_str = out.strip().split(":")[-1].strip()
-        return int(val_str.split()[0])
+        # Typical output line: "exposure_absolute: 1000"
+        return int(out.strip().split(":")[-1].strip())
     except Exception as e:
         print(f"[arducam] v4l2_get({key}) error: {e}", flush=True)
         return None
-        
+
 
 def _us_to_v4l2_exposure(exposure_us: int) -> int:
-    """UVC exposure_absolute is conventionally in 100µs units — verify on real hardware."""
+    """UVC exposure_absolute is conventionally in 100µs units — verified on real hardware
+    (a 9000µs manual exposure round-trips through get_metadata() as 9000µs)."""
     return max(1, int(round(exposure_us / 100)))
 
 
@@ -268,93 +403,59 @@ def _v4l2_exposure_to_us(value):
         return None
     return int(value) * 100
 
-def _gain_to_v4l2(gain: float) -> int:
-    """Device reports gain as raw integer 100-2200; treat as friendly multiplier x100."""
-    return max(100, min(2200, int(round(gain * 100))))
-
-
-def _v4l2_gain_to_friendly(value):
-    if value is None:
-        return None
-    return float(value) / 100.0
-
 
 def _set_auto_exposure(enabled: bool):
     name = _resolve_ctrl("exposure_auto")
     if not name:
         return
-    # UVC standard menu: 0 = Auto Mode, 1 = Manual Mode, 2 = Shutter Priority,
-    # 3 = Aperture Priority. Confirmed on real hardware (Aug 2026): this
-    # device only supports 0 and 1 — Shutter/Aperture Priority are rejected.
-    value = 0 if enabled else 1
+    # UVC menu convention: 3 = Aperture Priority (auto), 1 = Manual Mode.
+    # Some drivers instead use a plain 0/1 boolean for this control —
+    # print_diagnostics() will show the menu values actually reported.
+    value = 3 if enabled else 1
     _v4l2_set("exposure_auto", value)
 
 
 def set_auto_exposure(enabled: bool) -> None:
+    if enabled and _rear_ir_lock_manual:
+        # Rear IR is locked to fixed manual exposure/gain (see
+        # apply_ir_transmission_preset) — ignore requests to re-enable AE.
+        return
     _set_auto_exposure(bool(enabled))
 
 
-def set_manual_exposure_gain(exposure_us: int, gain: float) -> None:
-    """Pin exposure and gain (mirrors the Picamera2 backend's helper)."""
-    try:
-        _set_auto_exposure(False)
-        _v4l2_set("exposure", _us_to_v4l2_exposure(int(exposure_us)))
-        _v4l2_set("gain", _gain_to_v4l2(float(gain)))
-    except Exception as e:
-        print(f"[arducam] set_manual_exposure_gain error: {e}", flush=True)
+def set_manual_focus(position: float = None) -> None:
+    print(
+        "[arducam] set_manual_focus() ignored — this camera has a fixed "
+        "physical manual-focus lens; adjust the M12 focus ring by hand.",
+        flush=True,
+    )
+
+
+def set_af_mode(mode: int = 2) -> None:
+    pass  # no AF motor on this lens
+
+
+def trigger_autofocus() -> None:
+    pass  # no AF motor on this lens
 
 
 # =============================================================================
-# Live-view boost (interface parity with camera_picamera2.py)
+# Internal conversion utilities
 # =============================================================================
-_liveview_boost_active = False
-_liveview_saved = None
-
-
-def enable_liveview_boost_for_ir(
-    target_gain: float = 8.0,
-    target_exposure_us: int = 20000,
-    mode: str = "Front IR",
-) -> None:
-    global _liveview_boost_active, _liveview_saved
-    if _liveview_boost_active:
-        return
-    # Front IR/Combined IR removed from hardware+GUI (Aug 2026) — Rear IR is
-    # the sole imaging illumination
-    try:
-        _liveview_saved = dict(get_metadata())
-        _set_auto_exposure(False)   # was True — go Manual so exposure writes actually stick
-        _v4l2_set("gain", _gain_to_v4l2(target_gain))
-        _v4l2_set("exposure", _us_to_v4l2_exposure(target_exposure_us))
-        _liveview_boost_active = True
-        print(
-            f"[arducam] Live-view IR boost enabled: mode={mode}, "
-            f"gain={target_gain}, exposure={target_exposure_us}µs (manual, pinned)",
-            flush=True,
-        )
-    except Exception as e:
-        print(f"[arducam] liveview boost error: {e}", flush=True)
-
-
-def disable_liveview_boost() -> None:
-    global _liveview_boost_active, _liveview_saved
-    if not _liveview_boost_active:
-        return
-    try:
-        if _liveview_saved:
-            ae = bool(_liveview_saved.get("AeEnable", True))
-            _set_auto_exposure(ae)
-            if not ae:
-                exp = _liveview_saved.get("ExposureTime")
-                gain = _liveview_saved.get("AnalogueGain")
-                if exp is not None and gain is not None:
-                    _v4l2_set("exposure", _us_to_v4l2_exposure(int(exp)))
-                    _v4l2_set("gain", _gain_to_v4l2(float(gain)))
-        _liveview_boost_active = False
-        _liveview_saved = None
-        print("[arducam] Live-view IR boost disabled (restored controls)", flush=True)
-    except Exception as e:
-        print(f"[arducam] liveview boost restore error: {e}", flush=True)
+def _to_rgb(arr: np.ndarray) -> np.ndarray:
+    """
+    Normalize any returned frame to RGB (HxWx3, uint8).
+    Although we requested RGB888, guard against BGRA/BGR inputs.
+    """
+    if arr.ndim == 3:
+        h, w, c = arr.shape
+        if c == 4:
+            return cv2.cvtColor(arr, cv2.COLOR_BGRA2RGB)
+        elif c == 3:
+            return cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
+        else:
+            return arr[:, :, :3].copy()
+    return cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
 
 
 # =============================================================================
@@ -416,28 +517,11 @@ def apply_settings(settings: dict = None) -> None:
     _set_auto_exposure(ae)
     if not ae:
         _v4l2_set("exposure", _us_to_v4l2_exposure(int(settings.get("Arducam_ExposureUs", 20000))))
-        _v4l2_set("gain", _gain_to_v4l2(float(settings.get("Arducam_Gain", 1.0))))
+        _v4l2_set("gain", int(settings.get("Arducam_Gain", 100)))
 
 
 def get_current_settings() -> dict:
     return load_settings()
-
-
-# --- No-op focus interface: fixed physical manual-focus lens, no AF motor ---
-def set_manual_focus(position: float = None) -> None:
-    print(
-        "[arducam] set_manual_focus() ignored — this camera has a fixed "
-        "physical manual-focus lens; adjust the M12 focus ring by hand.",
-        flush=True,
-    )
-
-
-def set_af_mode(mode: int = 2) -> None:
-    pass  # no AF motor on this lens
-
-
-def trigger_autofocus() -> None:
-    pass  # no AF motor on this lens
 
 
 # =============================================================================
@@ -498,7 +582,8 @@ def save_image(path: str, grayscale: bool = True) -> bool:
         # Discard a few frames after the mode switch — many UVC drivers return
         # a stale/partially-exposed frame immediately after reconfiguring
         # resolution. Count/delay here are conservative placeholders; tune
-        # against real hardware.
+        # against real hardware if captures still look stale/mis-exposed
+        # immediately after this mode switch.
         for _ in range(3):
             _read_raw_frame()
             time.sleep(0.05)
@@ -535,13 +620,13 @@ def get_metadata() -> dict:
     out = {}
     try:
         ae_val = _v4l2_get("exposure_auto")
-        out["AeEnable"] = (ae_val == 0) if ae_val is not None else None
+        out["AeEnable"] = (ae_val == 3) if ae_val is not None else None
 
         exp_val = _v4l2_get("exposure")
         out["ExposureTime"] = _v4l2_exposure_to_us(exp_val)
 
         gain_val = _v4l2_get("gain")
-        out["AnalogueGain"] = _v4l2_gain_to_friendly(gain_val)
+        out["AnalogueGain"] = float(gain_val) if gain_val is not None else None
 
         out["AwbEnable"] = None  # monochrome sensor — no white balance concept
 
@@ -561,7 +646,7 @@ def get_last_saved_shape():
 
 
 # =============================================================================
-# Hardware validation helper — run once the camera is physically connected
+# Hardware validation helper
 # =============================================================================
 def print_diagnostics() -> None:
     """
@@ -569,14 +654,17 @@ def print_diagnostics() -> None:
 
     Prints the detected device path, every resolution/format the driver
     advertises, and every V4L2 control it exposes, plus which control names
-    this module resolved _CTRL_CANDIDATES to. Use this to confirm (or correct)
-    every assumption flagged in the file header before trusting this backend
-    for an unattended experiment.
+    this module resolved _CTRL_CANDIDATES to. Also useful as a USB3 cable/
+    bandwidth check: if 5120x3840 is missing from the resolution list, the
+    cable/port is not delivering full USB3 SuperSpeed bandwidth (confirmed
+    on real hardware — a marginal cable truncated the list to a single
+    1280x960 @ 10fps mode; the camera's own cable showed the complete list
+    up to 5120x3840 @ 8fps).
     """
     device = _find_device()
     print(f"Device: {device}")
     if not _v4l2ctl_available():
-        print("v4l2-ctl not found. Install with: sudo apt install v4l-utils")
+        print("v4l2-ctl not found. Install with: sudo apt install v4l2-utils")
         return
     print("\n--- v4l2-ctl --list-formats-ext ---")
     subprocess.run(["v4l2-ctl", "-d", device, "--list-formats-ext"])
