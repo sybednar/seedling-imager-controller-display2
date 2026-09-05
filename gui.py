@@ -810,20 +810,25 @@ class SeedlingImagerGUI(QWidget):
 
     def _set_preview_pixmap(self, pixmap: QPixmap):
         """
-        Scale pixmap to fill camera_label with center-crop, preventing layout side-effects.
-        KeepAspectRatioByExpanding without cropping returns a pixmap LARGER than the label,
-        which inflates the label's sizeHint and shifts the layout on the 800x480 display.
-        Cropping to the exact label size before setPixmap() keeps the label size stable.
+        Scale pixmap to fit fully inside camera_label, preserving the source's
+        true aspect ratio with no cropping. camera_label already has a fixed
+        size via setFixedSize(), so the label's own footprint in the layout
+        never changes regardless of the pixmap's size — Qt.KeepAspectRatio
+        guarantees the scaled result never exceeds (lw, lh), so there's no
+        risk of the layout-drift problem that motivated the old expand-and-
+        crop approach. Any leftover space just appears as blank margin on
+        the shorter axis, instead of silently cropping off real image
+        content — which is what was happening: camera_label's box shape is
+        derived from leftover screen space (sized for Picamera2's ~16:9
+        preview), and cropping a 4:3 Arducam frame to fit that box was
+        hiding roughly a quarter of the actual field of view in Live View,
+        even though the saved full-resolution capture was never cropped.
         """
         lw = self.camera_label.width()
         lh = self.camera_label.height()
         if lw < 2 or lh < 2:
             return
-        scaled = pixmap.scaled(lw, lh, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-        if scaled.width() > lw or scaled.height() > lh:
-            x = (scaled.width()  - lw) // 2
-            y = (scaled.height() - lh) // 2
-            scaled = scaled.copy(x, y, lw, lh)
+        scaled = pixmap.scaled(lw, lh, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.camera_label.setPixmap(scaled)
 
     def show_experiment_snapshot(self, plate_idx: int):
