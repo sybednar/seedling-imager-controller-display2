@@ -396,4 +396,15 @@ class CameraConfigDialog(QDialog):
                 camera.set_manual_focus(self.settings["ManualFocusPosition"])
             except Exception:
                 pass
+        # Push the updated Rear IR exposure/gain to the camera immediately,
+        # so a running Live View reflects the change right away. Without
+        # this, the new values were only saved to camera_settings.json and
+        # took effect the NEXT time Live View was started (via gui.py's
+        # apply_liveview_camera_profile()) — so Apply appeared to do nothing
+        # while Live View was already running. Mirrors that same call.
+        try:
+            live = camera.apply_ir_transmission_preset(None)
+            camera.apply_settings(live)
+        except Exception:
+            pass
         # Dialog stays open so the user can see the effect and fine-tune.
