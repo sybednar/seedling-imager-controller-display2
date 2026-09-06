@@ -227,6 +227,11 @@ class CameraConfigDialog(QDialog):
             "this system. Re-enable this tab in camera_config.py if it's "
             "reinstalled."
         )
+        # The main window's app-wide dark stylesheet forces tab-label text to
+        # white with no ":disabled" case, so Qt's normal automatic graying of
+        # disabled-tab text never kicks in. Force it explicitly here so a
+        # disabled tab actually looks disabled.
+        tabs.setStyleSheet("QTabBar::tab:disabled { color: #78909C; }")
         # ------------------------------------------------------------------ #
         # Tab 4 – Rear IR (Transmission)                                       #
         # ------------------------------------------------------------------ #
