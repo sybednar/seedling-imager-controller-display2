@@ -215,6 +215,18 @@ class CameraConfigDialog(QDialog):
         note_fir.setStyleSheet("color: #90A4AE; font-size: 13px;")
         fir.addRow(QLabel(""), note_fir)
         tabs.addTab(fir_w, "Front IR")
+        # Front IR illumination hardware has been removed from the current
+        # chassis. Keep the tab (and all its settings/code) intact rather
+        # than deleting it, in case Front IR is reinstalled later — just
+        # gray it out and disable it so it can't be selected/edited for now.
+        _fir_idx = tabs.indexOf(fir_w)
+        tabs.setTabEnabled(_fir_idx, False)
+        tabs.setTabToolTip(
+            _fir_idx,
+            "Front IR illumination hardware is not currently installed on "
+            "this system. Re-enable this tab in camera_config.py if it's "
+            "reinstalled."
+        )
         # ------------------------------------------------------------------ #
         # Tab 4 – Rear IR (Transmission)                                       #
         # ------------------------------------------------------------------ #
@@ -222,7 +234,13 @@ class CameraConfigDialog(QDialog):
         self.rir_ae_chk = QCheckBox("AE on")
         self.rir_ae_chk.setChecked(bool(self.settings.get("RearIR_AeEnable", False)))
         rir.addRow(QLabel("AE:"), self.rir_ae_chk)
-        self.rir_exp = QSpinBox()
+        # NOTE: uses QDoubleSpinBox (decimals=0) rather than QSpinBox — on this
+        # system's Qt style, plain QSpinBox renders with no visible up/down
+        # arrows while QDoubleSpinBox renders them correctly, even though both
+        # are otherwise configured identically. QDoubleSpinBox + decimals=0
+        # behaves as an integer stepper and sidesteps the missing-arrows bug.
+        self.rir_exp = QDoubleSpinBox()
+        self.rir_exp.setDecimals(0)
         self.rir_exp.setRange(100, 200000)
         self.rir_exp.setSingleStep(500)           # 500 µs per click
         self.rir_exp.setValue(int(self.settings.get("RearIR_ExposureTime", 9000)))
@@ -239,7 +257,10 @@ class CameraConfigDialog(QDialog):
         # when the Arducam backend is selected; see
         # _update_backend_specific_fields() below.
         self.rir_arducam_gain_lbl = QLabel("Gain (Arducam, 100-2200):")
-        self.rir_arducam_gain = QSpinBox()
+        # QDoubleSpinBox (decimals=0) for the same up/down-arrow-rendering
+        # reason as self.rir_exp above.
+        self.rir_arducam_gain = QDoubleSpinBox()
+        self.rir_arducam_gain.setDecimals(0)
         self.rir_arducam_gain.setRange(100, 2200); self.rir_arducam_gain.setSingleStep(10)
         self.rir_arducam_gain.setValue(int(self.settings.get("Arducam_RearIR_Gain", 100)))
         rir.addRow(self.rir_arducam_gain_lbl, self.rir_arducam_gain)
