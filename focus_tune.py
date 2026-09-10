@@ -40,13 +40,44 @@ RUN IT (same pattern as camera_arducam_usb3.print_diagnostics()):
     source venv/bin/activate
     python3 focus_tune.py
 
-NOTE: Close the main seedling imager GUI (or at least stop Live View) before
-running this — only one process can hold the camera device open at a time.
+NOTE: Fully close the main seedling imager GUI application before running
+this (not just "stop Live View" — the GUI holds the GPIO/LED lines and the
+camera device open for its entire lifetime, so both need to be free).
 """
 import time
 import numpy as np
 import cv2
 import camera_arducam_usb3 as cam
+
+# --- Rear IR (940nm transmission) illumination — GPIO27, same pin/chip/API
+# as gui.py's LED_REAR_IR_PIN. focus_tune.py must drive this itself: it's a
+# standalone script, so nothing else turns the illumination on, and without
+# it every frame is uniformly black (Laplacian variance = 0.0 no matter how
+# the lens is focused — a flat black frame has no edges at any focus).
+REAR_IR_PIN = 27
+_gpio_chip = "/dev/gpiochip0"
+_led_request = None
+try:
+    import gpiod
+    from gpiod.line import Value, Direction
+except Exception as e:
+    gpiod = None
+    print(f"[focus_tune] gpiod import failed ({e}) — Rear IR LED will NOT "
+          f"be turned on; sharpness will read 0.0 the whole time.", flush=True)
+
+
+def rear_ir_on(on: bool):
+    global _led_request
+    if gpiod is None:
+        return
+    if _led_request is None:
+        _led_request = gpiod.request_lines(
+            _gpio_chip,
+            consumer="focus_tune",
+            config={REAR_IR_PIN: gpiod.LineSettings(
+                direction=Direction.OUTPUT, output_value=Value.INACTIVE)},
+        )
+    _led_request.set_value(REAR_IR_PIN, Value.ACTIVE if on else Value.INACTIVE)
 
 
 def sharpness_score(gray: np.ndarray) -> float:
@@ -70,6 +101,28 @@ def main():
     # don't masquerade as focus changes while you're turning the ring.
     live = cam.apply_ir_transmission_preset(None)
     cam.apply_settings(live)
+
+    # Turn the Rear IR (940nm) illumination ON — see rear_ir_on() above.
+    rear_ir_on(True)
+    time.sleep(0.3)  # let the LED and first frame settle
+
+    # Sanity-check that we're actually getting a non-black frame before
+    # relying on the sharpness score at all. A flat/near-zero mean here
+    # means the LED isn't lit, the target isn't in the frame, or exposure
+    # is too low — sharpness will read ~0.0 regardless of focus until this
+    # is fixed, so check it first rather than sweeping the lens blind.
+    frame = cam._read_raw_frame()
+    if frame is not None:
+        gray0 = cam._to_gray(frame)
+        print(f"Startup frame check — mean: {gray0.mean():.1f}  "
+              f"min: {gray0.min()}  max: {gray0.max()}  (8-bit, 0-255)")
+        if gray0.max() < 10:
+            print("WARNING: frame looks essentially all-black. Check that "
+                  "the Rear IR LED is actually lit (you should see a faint "
+                  "red/dark-red glow from the panel), the target is in "
+                  "frame, and exposure/gain aren't set too low.\n")
+    else:
+        print("WARNING: could not read a startup frame at all.\n")
 
     print(f"Streaming at {fw}x{fh}. Point the camera at a high-contrast "
           f"target (text, ruler, seed markings) at your real working "
@@ -108,6 +161,12 @@ def main():
         print("If that peak was more than a few seconds before you stopped, "
               "turn back to that ring position before locking it down.")
     finally:
+        rear_ir_on(False)
+        if _led_request is not None:
+            try:
+                _led_request.release()
+            except Exception:
+                pass
         cam.stop_camera()
 
 
