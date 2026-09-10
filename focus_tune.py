@@ -15,11 +15,13 @@ useful as a RELATIVE score to maximize on the SAME scene while you turn the
 focus ring. Comparing scores between different scenes/lighting is not
 meaningful.
 
-HOW TO USE:
+HOW TO USE (see MODES below for which command/illumination to use):
   1. Place a plate (or anything with fine, high-contrast detail — printed
-     text, a ruler, seed/tray markings) at your real working distance, under
-     your real Rear IR illumination. A blank/uniform surface gives a
-     near-zero, uninformative score regardless of focus.
+     text, a ruler, seed/tray markings) at your real working distance,
+     under whichever illumination matches the mode you're running (Rear IR
+     panel for the default mode, front green LED for front_visible — see
+     MODES below). A blank/uniform surface gives a near-zero, uninformative
+     score regardless of focus.
   2. Run this script (see command below), then SLOWLY turn the focus ring
      in one direction while watching the printed score.
   3. The score will rise, peak, and then fall as you sweep through best
@@ -38,23 +40,42 @@ RUN IT (same pattern as camera_arducam_usb3.print_diagnostics()):
 
     cd ~/Seedling_Imager/seedling_imager_controller
     source venv/bin/activate
-    python3 focus_tune.py
+    python3 focus_tune.py                 # default: Rear IR (940nm), manual exposure
+    python3 focus_tune.py front_visible    # front green LED, auto-exposure
 
 NOTE: Fully close the main seedling imager GUI application before running
 this (not just "stop Live View" — the GUI holds the GPIO/LED lines and the
 camera device open for its entire lifetime, so both need to be free).
+
+MODES:
+  rear_ir (default) — drives GPIO27 (Rear IR 940nm panel, same pin gui.py
+      uses) and forces the same manual exposure/gain used for real imaging,
+      via apply_ir_transmission_preset(). This matches real imaging
+      conditions but ONLY makes sense with that illumination — the manual
+      exposure/gain values are tuned for that panel's brightness and will
+      be wrong (usually far too dark) under any other light source.
+  front_visible — for testing with the lens's IR bandpass filter removed
+      under ordinary front lighting (to isolate whether a printed target's
+      poor contrast is IR-specific). Drives GPIO24 — gui.py's actual
+      LED_GREEN_PIN — and turns auto-exposure ON instead of forcing the
+      Rear IR manual values, since front lighting is a different
+      brightness the AE needs to find on its own.
 """
+import sys
 import time
 import numpy as np
 import cv2
 import camera_arducam_usb3 as cam
 
-# --- Rear IR (940nm transmission) illumination — GPIO27, same pin/chip/API
-# as gui.py's LED_REAR_IR_PIN. focus_tune.py must drive this itself: it's a
-# standalone script, so nothing else turns the illumination on, and without
-# it every frame is uniformly black (Laplacian variance = 0.0 no matter how
-# the lens is focused — a flat black frame has no edges at any focus).
-REAR_IR_PIN = 27
+MODE = sys.argv[1] if len(sys.argv) > 1 else "rear_ir"
+if MODE not in ("rear_ir", "front_visible"):
+    print(f"Unknown mode '{MODE}' — use 'rear_ir' or 'front_visible'.")
+    sys.exit(1)
+
+# GPIO pins/chip match gui.py's LED_REAR_IR_PIN (27) and LED_GREEN_PIN (23)
+# exactly — focus_tune.py is standalone, so it must drive the LED itself;
+# nothing else will turn it on.
+LED_PIN = 27 if MODE == "rear_ir" else 24
 _gpio_chip = "/dev/gpiochip0"
 _led_request = None
 try:
@@ -62,11 +83,11 @@ try:
     from gpiod.line import Value, Direction
 except Exception as e:
     gpiod = None
-    print(f"[focus_tune] gpiod import failed ({e}) — Rear IR LED will NOT "
-          f"be turned on; sharpness will read 0.0 the whole time.", flush=True)
+    print(f"[focus_tune] gpiod import failed ({e}) — LED will NOT be turned "
+          f"on; sharpness will read ~0.0 the whole time.", flush=True)
 
 
-def rear_ir_on(on: bool):
+def led_on(on: bool):
     global _led_request
     if gpiod is None:
         return
@@ -74,10 +95,10 @@ def rear_ir_on(on: bool):
         _led_request = gpiod.request_lines(
             _gpio_chip,
             consumer="focus_tune",
-            config={REAR_IR_PIN: gpiod.LineSettings(
+            config={LED_PIN: gpiod.LineSettings(
                 direction=Direction.OUTPUT, output_value=Value.INACTIVE)},
         )
-    _led_request.set_value(REAR_IR_PIN, Value.ACTIVE if on else Value.INACTIVE)
+    _led_request.set_value(LED_PIN, Value.ACTIVE if on else Value.INACTIVE)
 
 
 def sharpness_score(gray: np.ndarray) -> float:
@@ -97,14 +118,22 @@ def main():
     fh = int(settings.get("Arducam_FullHeight", 3840))
     cam._open_capture(fw, fh)
 
-    # Lock exposure/gain to your saved Rear IR values so brightness changes
-    # don't masquerade as focus changes while you're turning the ring.
-    live = cam.apply_ir_transmission_preset(None)
-    cam.apply_settings(live)
+    if MODE == "rear_ir":
+        # Lock exposure/gain to your saved Rear IR values so brightness
+        # changes don't masquerade as focus changes while turning the ring.
+        # Only valid under the actual Rear IR panel's brightness.
+        live = cam.apply_ir_transmission_preset(None)
+        cam.apply_settings(live)
+    else:
+        # front_visible: a fixed exposure tuned for the (much brighter, or
+        # just differently-bright) Rear IR panel would likely be wrong here
+        # — let auto-exposure find the right level for this light source.
+        cam.set_auto_exposure(True)
+        print("Auto-exposure ON for front_visible mode.")
 
-    # Turn the Rear IR (940nm) illumination ON — see rear_ir_on() above.
-    rear_ir_on(True)
-    time.sleep(0.3)  # let the LED and first frame settle
+    # Turn the illumination ON — see led_on() above.
+    led_on(True)
+    time.sleep(1.5 if MODE == "front_visible" else 0.3)  # let AE/LED settle
 
     # Sanity-check that we're actually getting a non-black frame before
     # relying on the sharpness score at all. A flat/near-zero mean here
@@ -127,9 +156,15 @@ def main():
     print(f"Streaming at {fw}x{fh}. Point the camera at a high-contrast "
           f"target (text, ruler, seed markings) at your real working "
           f"distance, then turn the focus ring slowly. Ctrl+C to stop.\n")
+    print("Writing focus_debug_snapshot.jpg once a second — the full frame, "
+          "downsized, with a box around the region actually being scored. "
+          "Pull it off the Pi (or open it in a file manager) to confirm the "
+          "target is really inside that box before trusting the numbers "
+          "below — a low, noisy score usually means it isn't.\n")
 
     best = 0.0
     best_time = time.time()
+    last_snapshot = 0.0
     try:
         while True:
             frame = cam._read_raw_frame()
@@ -143,7 +178,9 @@ def main():
             # softness/vignetting doesn't bias the score — focus on what's
             # in the middle of the plate, which is what matters most.
             h, w = gray.shape[:2]
-            roi = gray[h // 3: 2 * h // 3, w // 3: 2 * w // 3]
+            y0, y1 = h // 3, 2 * h // 3
+            x0, x1 = w // 3, 2 * w // 3
+            roi = gray[y0:y1, x0:x1]
             score = sharpness_score(roi)
             if score > best:
                 best = score
@@ -155,13 +192,26 @@ def main():
             print(f"sharpness: {score:9.1f}  |  peak: {best:9.1f} "
                   f"({since_peak:4.1f}s ago)  |  {bar}",
                   end="\r", flush=True)
+
+            now = time.time()
+            if now - last_snapshot > 1.0:
+                last_snapshot = now
+                preview = cv2.resize(gray, (w // 4, h // 4))
+                pr0, pc0 = y0 // 4, x0 // 4
+                pr1, pc1 = y1 // 4, x1 // 4
+                preview_bgr = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
+                cv2.rectangle(preview_bgr, (pc0, pr0), (pc1, pr1), (0, 0, 255), 2)
+                cv2.putText(preview_bgr, f"score: {score:.1f}", (10, 30),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                cv2.imwrite("focus_debug_snapshot.jpg", preview_bgr)
+
             time.sleep(0.1)
     except KeyboardInterrupt:
         print(f"\n\nStopped. Best sharpness seen this session: {best:.1f}")
         print("If that peak was more than a few seconds before you stopped, "
               "turn back to that ring position before locking it down.")
     finally:
-        rear_ir_on(False)
+        led_on(False)
         if _led_request is not None:
             try:
                 _led_request.release()
