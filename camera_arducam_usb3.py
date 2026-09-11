@@ -174,6 +174,42 @@ def apply_ir_transmission_preset(base: dict | None) -> dict:
     _rear_ir_lock_manual = True
     return s
 
+def apply_ir_transmission_preset_liveview(base: dict | None) -> dict:
+    """
+    Rear IR (transmission) LIVE VIEW runtime settings — deliberately
+    SEPARATE from apply_ir_transmission_preset() above, which drives the
+    actual saved full-resolution capture.
+
+    Confirmed on real hardware (Sept 2026): with identical exposure_auto/
+    exposure/gain register values, the 1280x960 preview stream comes out
+    visibly brighter than the 5120x3840 full-resolution capture — most
+    likely because the lower-resolution readout mode bins/combines multiple
+    photosites per output pixel, effectively increasing sensitivity versus
+    a full 1:1 readout. Practical consequence: exposure/gain tuned so the
+    real full-res CAPTURE looks correctly exposed will generally make Live
+    View look considerably brighter — possibly blown out — at those same
+    values, and a Live View that looks right will typically mean the real
+    capture is under-exposed. One shared manual value cannot serve both
+    purposes at once, so this uses its own 'Arducam_RearIR_LiveView_*' keys
+    (own dialog fields in Camera Config's Rear IR tab, shown only when this
+    backend is selected) rather than the capture-only 'RearIR_ExposureTime'
+    / 'Arducam_RearIR_Gain' keys used by apply_ir_transmission_preset().
+
+    gui.py's apply_liveview_camera_profile() calls this (not the capture
+    preset) whenever Live View is (re)started, and camera_config.py's
+    on_apply() pushes it immediately so tuning it is visible in Live View
+    right away. experiment_runner.py continues to use only the capture
+    preset — this function has no effect on what's actually saved.
+    """
+    global _rear_ir_lock_manual
+    s = dict(base) if base else load_settings()
+    saved = load_settings()
+    s["Arducam_AeEnable"] = False
+    s["Arducam_ExposureUs"] = int(saved.get("Arducam_RearIR_LiveView_ExposureUs", 4000))
+    s["Arducam_Gain"] = float(saved.get("Arducam_RearIR_LiveView_Gain", 100))
+    _rear_ir_lock_manual = True
+    return s
+
 
 def set_manual_exposure_gain(exposure_us: int, gain: float) -> None:
     """
