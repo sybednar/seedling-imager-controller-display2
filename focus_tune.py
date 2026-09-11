@@ -198,12 +198,19 @@ def main():
                 time.sleep(0.2)
                 continue
             gray = cam._to_gray(frame)
-            # Center crop (middle third x middle third) so frame-edge
-            # softness/vignetting doesn't bias the score — focus on what's
-            # in the middle of the plate, which is what matters most.
+            # Center crop — deliberately large (70% of the frame) rather
+            # than a tight crop on the star's exact center. A Siemens
+            # star's spokes get infinitely thin approaching the center, so
+            # there's always a small soft "convergence blur" right at the
+            # middle even at perfect focus — that's geometry, not defocus.
+            # A tight crop centered on that point was mostly measuring that
+            # one always-soft spot rather than the genuinely sharp spokes
+            # around it, which is why scores stayed small no matter what
+            # changed. This wider crop captures far more of the crisp outer
+            # detail, which now dominates the score instead.
             h, w = gray.shape[:2]
-            y0, y1 = h // 3, 2 * h // 3
-            x0, x1 = w // 3, 2 * w // 3
+            y0, y1 = int(h * 0.15), int(h * 0.85)
+            x0, x1 = int(w * 0.15), int(w * 0.85)
             roi = gray[y0:y1, x0:x1]
             score = sharpness_score(roi)
             if score > best:
