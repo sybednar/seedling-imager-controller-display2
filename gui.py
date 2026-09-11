@@ -689,8 +689,13 @@ class SeedlingImagerGUI(QWidget):
     def apply_liveview_camera_profile(self):
         # Rear IR (transmission) is the only imaging illumination now, so
         # the transmission preset always applies — no mode branching needed.
+        # Uses the LIVE VIEW preset specifically, not the capture preset —
+        # see apply_ir_transmission_preset_liveview() in the active camera
+        # backend for why these are now separate (confirmed on real
+        # hardware, Sept 2026: Live View and full-res capture are not
+        # equally sensitive at the same settings on the Arducam backend).
         base = camera.get_current_settings()
-        base = camera.apply_ir_transmission_preset(base)
+        base = camera.apply_ir_transmission_preset_liveview(base)
         camera.apply_settings(base)
 
 
