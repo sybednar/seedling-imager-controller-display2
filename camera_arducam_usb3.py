@@ -585,128 +585,109 @@ def save_image(path: str, grayscale: bool = True) -> bool:
     # right now (e.g. experiment_runner.py's per-plate AE-pin, set directly
     # via set_manual_exposure_gain() and never written to camera_settings.json)
     # — NOT the same thing as `settings` above, which only reflects the last
-    # saved JSON. Confirmed on real hardware: _open_capture() below fully
-    # releases and reopens the V4L2 device for the full-resolution still,
-    # and reopening can silently reset exposure/gain to the driver's default
-    # — which behaves like a brief, uncontrolled auto-exposure moment right
-    # as the frame is grabbed. This is why the Live View/settling preview
-    # (which never reopens the device) stayed correctly exposed while actual
-    # saved captures came out wildly over/under-exposed plate to plate.
+    # saved JSON.
     pinned_ae   = _v4l2_get("exposure_auto")
     pinned_exp  = _v4l2_get("exposure")
     pinned_gain = _v4l2_get("gain")
 
+    # Confirmed on real hardware (Sept 2026): re-reading frames from an
+    # already-open full-res session does NOT recover a bad capture — a
+    # degenerate flat frame (mean=255.00, std=0.01) came back byte-identical
+    # on all 6 retries within the same _open_capture() session, while a
+    # LATER, completely separate _open_capture() call (the next plate/cycle)
+    # produced a real image with zero retries needed. So this isn't a
+    # transient dropped USB packet that clears on a re-read — it's the
+    # device getting stuck delivering a static placeholder for as long as
+    # that particular full-res session stays open. The exposure_auto/
+    # exposure/gain CONTROLS read back correctly every time regardless (see
+    # the verify prints below) — this is not an exposure problem. Since only
+    # a fresh close+reopen has any chance of clearing it, retry by fully
+    # closing and reopening the device from scratch, not just re-reading.
+    _DISCARD_FRAMES = 5
+    _FRAME_PERIOD_S = 0.15
+    max_reopen_attempts = 3
+
+    def _frame_looks_valid(g) -> bool:
+        # A real Rear IR transmission image (even a poorly-exposed one)
+        # always has SOME structure — the darkest real captures we've seen
+        # still had std >= ~10. A stuck/placeholder frame reads as
+        # near-perfectly flat (std ~0).
+        return float(g.std()) > 2.0
+
+    gray = None
     try:
-        _open_capture(fw, fh)
+        for reopen_attempt in range(1, max_reopen_attempts + 1):
+            # Force a REAL reopen — _open_capture() no-ops if _cap is
+            # already open at this exact size, so an already-open full-res
+            # session (from a previous failed attempt) must be explicitly
+            # closed first or this would just keep reading the same stuck
+            # stream instead of getting a fresh one.
+            stop_camera()
+            _open_capture(fw, fh)
 
-        # Re-apply whatever was pinned immediately before the reopen, rather
-        # than trusting the driver to have preserved it across the reopen.
-        if pinned_ae is not None:
-            _v4l2_set("exposure_auto", pinned_ae)
-        if pinned_exp is not None:
-            _v4l2_set("exposure", pinned_exp)
-        if pinned_gain is not None:
-            _v4l2_set("gain", pinned_gain)
+            # Re-apply whatever was pinned immediately before the reopen,
+            # rather than trusting the driver to have preserved it.
+            if pinned_ae is not None:
+                _v4l2_set("exposure_auto", pinned_ae)
+            if pinned_exp is not None:
+                _v4l2_set("exposure", pinned_exp)
+            if pinned_gain is not None:
+                _v4l2_set("gain", pinned_gain)
 
-        # Verify the re-apply above actually landed, rather than assuming it
-        # did. Confirmed on real hardware (Sept 2026): Live View at these
-        # exact same manual settings looks correctly and consistently
-        # exposed at every plate position, yet save_image()'s full-res
-        # capture still came out wildly over/under-exposed in a way that's
-        # reproducible per plate across repeat cycles — i.e. NOT random
-        # per-capture drift, and NOT a Rear IR LED or positional/optical
-        # issue (both independently ruled out). That combination points at
-        # this reopen sequence itself: either the driver needs more than a
-        # few frames to converge to the newly (re-)applied manual
-        # exposure/gain after a full stream restart at 5120x3840, or
-        # cv2.VideoCapture is handing back frames still sitting in an
-        # internal buffer from before the reopen — i.e. a stale frame
-        # captured under whatever state existed BEFORE we re-applied
-        # settings, rather than a fresh one captured under them. This
-        # readback makes that failure mode visible in the log instead of
-        # invisible.
-        verify_ae   = _v4l2_get("exposure_auto")
-        verify_exp  = _v4l2_get("exposure")
-        verify_gain = _v4l2_get("gain")
-        print(
-            f"[arducam] save_image: after re-apply — requested "
-            f"ae={pinned_ae} exp={pinned_exp} gain={pinned_gain}; "
-            f"verified ae={verify_ae} exp={verify_exp} gain={verify_gain}",
-            flush=True,
-        )
+            verify_ae   = _v4l2_get("exposure_auto")
+            verify_exp  = _v4l2_get("exposure")
+            verify_gain = _v4l2_get("gain")
+            print(
+                f"[arducam] save_image: reopen attempt {reopen_attempt}/{max_reopen_attempts} "
+                f"— requested ae={pinned_ae} exp={pinned_exp} gain={pinned_gain}; "
+                f"verified ae={verify_ae} exp={verify_exp} gain={verify_gain}",
+                flush=True,
+            )
 
-        # Discard a modest run-up of frames after the mode switch (dialed
-        # back from an earlier, longer attempt — see below).
-        _DISCARD_FRAMES = 5
-        _FRAME_PERIOD_S = 0.15
-        for _ in range(_DISCARD_FRAMES):
-            _read_raw_frame()
-            time.sleep(_FRAME_PERIOD_S)
+            # Discard a modest run-up of frames after the mode switch.
+            for _ in range(_DISCARD_FRAMES):
+                _read_raw_frame()
+                time.sleep(_FRAME_PERIOD_S)
 
-        # Re-verify immediately before the frame we actually keep, in case
-        # anything drifted during that discard run-up.
-        verify_ae2   = _v4l2_get("exposure_auto")
-        verify_exp2  = _v4l2_get("exposure")
-        verify_gain2 = _v4l2_get("gain")
-        print(
-            f"[arducam] save_image: immediately before final capture — "
-            f"ae={verify_ae2} exp={verify_exp2} gain={verify_gain2}",
-            flush=True,
-        )
+            frame = _read_raw_frame()
+            if frame is None:
+                print(
+                    f"[arducam] save_image: reopen attempt {reopen_attempt} — "
+                    f"no frame returned at full resolution.",
+                    flush=True,
+                )
+                continue
 
-        # Confirmed on real hardware (Sept 2026): the exposure_auto/exposure/
-        # gain CONTROLS read back correctly every single time (see the two
-        # verify prints above) — no drift, no mismatch — yet some saved
-        # captures still came back as an essentially blank/uniform frame
-        # (e.g. a 5120x3840 TIFF collapsing to ~21KB via zlib, vs. ~2-7MB
-        # for a real image), while Live View at the identical settings
-        # looked completely normal moments earlier. So the CONTROLS are
-        # right but the FRAME DATA from _read_raw_frame() is occasionally
-        # bad regardless — most consistent with a dropped/corrupted USB3
-        # transfer during the resolution-switch read sequence, not an
-        # exposure problem. Rather than assume any one frame we happen to
-        # read is good, check its actual content and retry if it looks
-        # like a blank/degenerate read: a real Rear IR transmission image
-        # (even a poorly-exposed one) always has SOME structure — the
-        # darkest real captures we've seen still had std >= ~10. A truly
-        # blank/corrupt frame reads as near-perfectly flat (std ~0).
-        def _frame_looks_valid(g) -> bool:
-            return float(g.std()) > 2.0
-
-        frame = _read_raw_frame()
-        attempts = 0
-        max_retries = 6
-        while frame is not None:
             g_check = _to_gray(frame)
             g_mean, g_std = float(g_check.mean()), float(g_check.std())
             if _frame_looks_valid(g_check):
-                if attempts > 0:
+                if reopen_attempt > 1:
                     print(
                         f"[arducam] save_image: got a valid frame after "
-                        f"{attempts} retry(ies) (mean={g_mean:.2f}, std={g_std:.2f}).",
+                        f"{reopen_attempt} full-reopen attempt(s) "
+                        f"(mean={g_mean:.2f}, std={g_std:.2f}).",
                         flush=True,
                     )
+                gray = g_check
                 break
-            attempts += 1
+
             print(
-                f"[arducam] save_image: suspect blank/flat frame "
-                f"(mean={g_mean:.2f}, std={g_std:.2f}) — retry {attempts}/{max_retries}.",
+                f"[arducam] save_image: reopen attempt {reopen_attempt} produced a "
+                f"suspect blank/flat frame (mean={g_mean:.2f}, std={g_std:.2f}) — "
+                f"forcing a full close+reopen and trying again.",
                 flush=True,
             )
-            if attempts >= max_retries:
-                print(
-                    "[arducam] save_image: still blank/flat after max retries; "
-                    "saving it anyway so the failure is visible rather than lost.",
-                    flush=True,
-                )
-                break
-            time.sleep(_FRAME_PERIOD_S)
-            frame = _read_raw_frame()
+            gray = g_check  # keep the last one in case every attempt fails
 
-        if frame is None:
+        if gray is None:
             print("[arducam] save_image: no frame returned at full resolution", flush=True)
             return False
-        gray = _to_gray(frame)
+        if not _frame_looks_valid(gray):
+            print(
+                "[arducam] save_image: still blank/flat after all reopen attempts; "
+                "saving it anyway so the failure is visible rather than lost.",
+                flush=True,
+            )
 
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         ext = Path(path).suffix.lower()
