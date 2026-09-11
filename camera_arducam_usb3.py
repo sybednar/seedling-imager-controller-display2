@@ -385,8 +385,12 @@ def _v4l2_get(key: str):
             ["v4l2-ctl", "-d", device, f"--get-ctrl={name}"],
             capture_output=True, text=True, timeout=5, check=True,
         ).stdout
-        # Typical output line: "exposure_absolute: 1000"
-        return int(out.strip().split(":")[-1].strip())
+        # Typical output for a plain integer control: "exposure_absolute: 1000"
+        # Menu/enum controls (e.g. exposure_auto) print the value PLUS its
+        # label: "exposure_auto: 1 (Manual Mode)" — take only the leading
+        # token so both forms parse correctly.
+        value_str = out.strip().split(":")[-1].strip().split()[0]
+        return int(value_str)
     except Exception as e:
         print(f"[arducam] v4l2_get({key}) error: {e}", flush=True)
         return None
