@@ -635,18 +635,10 @@ def save_image(path: str, grayscale: bool = True) -> bool:
             flush=True,
         )
 
-        # Discard a generous run-up of frames after the mode switch, rather
-        # than the previous 3 — many UVC drivers return several stale/
-        # partially-exposed frames (or hand back frames still queued from
-        # before the reopen) immediately after reconfiguring resolution.
-        # The sensor's own advertised full-res rate is ~5-8 fps (~125-200ms
-        # per frame), so discarding only 3 frames at a 0.05s pace could
-        # finish well before even ONE real new frame at the new settings
-        # had actually been produced, silently keeping stale buffered
-        # frames in play. Pace the discard loop to the frame's own period
-        # instead of a fixed short sleep.
-        _DISCARD_FRAMES = 10
-        _FRAME_PERIOD_S = 0.20
+        # Discard a modest run-up of frames after the mode switch (dialed
+        # back from an earlier, longer attempt — see below).
+        _DISCARD_FRAMES = 5
+        _FRAME_PERIOD_S = 0.15
         for _ in range(_DISCARD_FRAMES):
             _read_raw_frame()
             time.sleep(_FRAME_PERIOD_S)
@@ -662,7 +654,55 @@ def save_image(path: str, grayscale: bool = True) -> bool:
             flush=True,
         )
 
+        # Confirmed on real hardware (Sept 2026): the exposure_auto/exposure/
+        # gain CONTROLS read back correctly every single time (see the two
+        # verify prints above) — no drift, no mismatch — yet some saved
+        # captures still came back as an essentially blank/uniform frame
+        # (e.g. a 5120x3840 TIFF collapsing to ~21KB via zlib, vs. ~2-7MB
+        # for a real image), while Live View at the identical settings
+        # looked completely normal moments earlier. So the CONTROLS are
+        # right but the FRAME DATA from _read_raw_frame() is occasionally
+        # bad regardless — most consistent with a dropped/corrupted USB3
+        # transfer during the resolution-switch read sequence, not an
+        # exposure problem. Rather than assume any one frame we happen to
+        # read is good, check its actual content and retry if it looks
+        # like a blank/degenerate read: a real Rear IR transmission image
+        # (even a poorly-exposed one) always has SOME structure — the
+        # darkest real captures we've seen still had std >= ~10. A truly
+        # blank/corrupt frame reads as near-perfectly flat (std ~0).
+        def _frame_looks_valid(g) -> bool:
+            return float(g.std()) > 2.0
+
         frame = _read_raw_frame()
+        attempts = 0
+        max_retries = 6
+        while frame is not None:
+            g_check = _to_gray(frame)
+            g_mean, g_std = float(g_check.mean()), float(g_check.std())
+            if _frame_looks_valid(g_check):
+                if attempts > 0:
+                    print(
+                        f"[arducam] save_image: got a valid frame after "
+                        f"{attempts} retry(ies) (mean={g_mean:.2f}, std={g_std:.2f}).",
+                        flush=True,
+                    )
+                break
+            attempts += 1
+            print(
+                f"[arducam] save_image: suspect blank/flat frame "
+                f"(mean={g_mean:.2f}, std={g_std:.2f}) — retry {attempts}/{max_retries}.",
+                flush=True,
+            )
+            if attempts >= max_retries:
+                print(
+                    "[arducam] save_image: still blank/flat after max retries; "
+                    "saving it anyway so the failure is visible rather than lost.",
+                    flush=True,
+                )
+                break
+            time.sleep(_FRAME_PERIOD_S)
+            frame = _read_raw_frame()
+
         if frame is None:
             print("[arducam] save_image: no frame returned at full resolution", flush=True)
             return False
