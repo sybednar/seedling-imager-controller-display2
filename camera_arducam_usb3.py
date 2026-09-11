@@ -577,8 +577,33 @@ def save_image(path: str, grayscale: bool = True) -> bool:
     pw = int(settings.get("Arducam_PreviewWidth", 1280))
     ph = int(settings.get("Arducam_PreviewHeight", 960))
 
+    # Capture whatever exposure/gain is CURRENTLY pinned on the hardware
+    # right now (e.g. experiment_runner.py's per-plate AE-pin, set directly
+    # via set_manual_exposure_gain() and never written to camera_settings.json)
+    # — NOT the same thing as `settings` above, which only reflects the last
+    # saved JSON. Confirmed on real hardware: _open_capture() below fully
+    # releases and reopens the V4L2 device for the full-resolution still,
+    # and reopening can silently reset exposure/gain to the driver's default
+    # — which behaves like a brief, uncontrolled auto-exposure moment right
+    # as the frame is grabbed. This is why the Live View/settling preview
+    # (which never reopens the device) stayed correctly exposed while actual
+    # saved captures came out wildly over/under-exposed plate to plate.
+    pinned_ae   = _v4l2_get("exposure_auto")
+    pinned_exp  = _v4l2_get("exposure")
+    pinned_gain = _v4l2_get("gain")
+
     try:
         _open_capture(fw, fh)
+
+        # Re-apply whatever was pinned immediately before the reopen, rather
+        # than trusting the driver to have preserved it across the reopen.
+        if pinned_ae is not None:
+            _v4l2_set("exposure_auto", pinned_ae)
+        if pinned_exp is not None:
+            _v4l2_set("exposure", pinned_exp)
+        if pinned_gain is not None:
+            _v4l2_set("gain", pinned_gain)
+
         # Discard a few frames after the mode switch — many UVC drivers return
         # a stale/partially-exposed frame immediately after reconfiguring
         # resolution. Count/delay here are conservative placeholders; tune
