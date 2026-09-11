@@ -115,7 +115,22 @@ def apply_ir_transmission_preset(base: dict | None) -> dict:
         s["ExposureTime"]  = int(saved.get("RearIR_ExposureTime", 9000))
         s["AnalogueGain"]  = float(saved.get("RearIR_Gain",        1.0))
     return s
- 
+
+
+def apply_ir_transmission_preset_liveview(base: dict | None) -> dict:
+    """
+    Picamera2-only alias: unlike the Arducam USB3 backend, this backend's
+    Live View and full-resolution capture share the same underlying
+    exposure/gain state (Picamera2's simultaneous main+lores streams), so
+    there's no binned-vs-full-readout sensitivity mismatch here — Live View
+    and the saved capture look the same at the same settings. This exists
+    only so camera.py's dispatcher and gui.py/camera_config.py's calls work
+    identically regardless of which backend is active; it's just the same
+    preset either way.
+    """
+    return apply_ir_transmission_preset(base)
+
+
 def set_manual_exposure_gain(exposure_us: int, gain: float) -> None:
     """
     Explicitly pin exposure and gain (use after AE settling for repeatability).
