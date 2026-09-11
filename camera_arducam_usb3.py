@@ -608,14 +608,60 @@ def save_image(path: str, grayscale: bool = True) -> bool:
         if pinned_gain is not None:
             _v4l2_set("gain", pinned_gain)
 
-        # Discard a few frames after the mode switch — many UVC drivers return
-        # a stale/partially-exposed frame immediately after reconfiguring
-        # resolution. Count/delay here are conservative placeholders; tune
-        # against real hardware if captures still look stale/mis-exposed
-        # immediately after this mode switch.
-        for _ in range(3):
+        # Verify the re-apply above actually landed, rather than assuming it
+        # did. Confirmed on real hardware (Sept 2026): Live View at these
+        # exact same manual settings looks correctly and consistently
+        # exposed at every plate position, yet save_image()'s full-res
+        # capture still came out wildly over/under-exposed in a way that's
+        # reproducible per plate across repeat cycles — i.e. NOT random
+        # per-capture drift, and NOT a Rear IR LED or positional/optical
+        # issue (both independently ruled out). That combination points at
+        # this reopen sequence itself: either the driver needs more than a
+        # few frames to converge to the newly (re-)applied manual
+        # exposure/gain after a full stream restart at 5120x3840, or
+        # cv2.VideoCapture is handing back frames still sitting in an
+        # internal buffer from before the reopen — i.e. a stale frame
+        # captured under whatever state existed BEFORE we re-applied
+        # settings, rather than a fresh one captured under them. This
+        # readback makes that failure mode visible in the log instead of
+        # invisible.
+        verify_ae   = _v4l2_get("exposure_auto")
+        verify_exp  = _v4l2_get("exposure")
+        verify_gain = _v4l2_get("gain")
+        print(
+            f"[arducam] save_image: after re-apply — requested "
+            f"ae={pinned_ae} exp={pinned_exp} gain={pinned_gain}; "
+            f"verified ae={verify_ae} exp={verify_exp} gain={verify_gain}",
+            flush=True,
+        )
+
+        # Discard a generous run-up of frames after the mode switch, rather
+        # than the previous 3 — many UVC drivers return several stale/
+        # partially-exposed frames (or hand back frames still queued from
+        # before the reopen) immediately after reconfiguring resolution.
+        # The sensor's own advertised full-res rate is ~5-8 fps (~125-200ms
+        # per frame), so discarding only 3 frames at a 0.05s pace could
+        # finish well before even ONE real new frame at the new settings
+        # had actually been produced, silently keeping stale buffered
+        # frames in play. Pace the discard loop to the frame's own period
+        # instead of a fixed short sleep.
+        _DISCARD_FRAMES = 10
+        _FRAME_PERIOD_S = 0.20
+        for _ in range(_DISCARD_FRAMES):
             _read_raw_frame()
-            time.sleep(0.05)
+            time.sleep(_FRAME_PERIOD_S)
+
+        # Re-verify immediately before the frame we actually keep, in case
+        # anything drifted during that discard run-up.
+        verify_ae2   = _v4l2_get("exposure_auto")
+        verify_exp2  = _v4l2_get("exposure")
+        verify_gain2 = _v4l2_get("gain")
+        print(
+            f"[arducam] save_image: immediately before final capture — "
+            f"ae={verify_ae2} exp={verify_exp2} gain={verify_gain2}",
+            flush=True,
+        )
+
         frame = _read_raw_frame()
         if frame is None:
             print("[arducam] save_image: no frame returned at full resolution", flush=True)
