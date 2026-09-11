@@ -75,7 +75,7 @@ if MODE not in ("rear_ir", "front_visible"):
     print(f"Unknown mode '{MODE}' — use 'rear_ir' or 'front_visible'.")
     sys.exit(1)
 
-# GPIO pins/chip match gui.py's LED_REAR_IR_PIN (27) and LED_GREEN_PIN (23)
+# GPIO pins/chip match gui.py's LED_REAR_IR_PIN (27) and LED_GREEN_PIN (24)
 # exactly — focus_tune.py is standalone, so it must drive the LED itself;
 # nothing else will turn it on.
 LED_PIN = 27 if MODE == "rear_ir" else 24
@@ -115,10 +115,23 @@ FRONT_VISIBLE_GAIN = 300  # Arducam scale, 100-2200
 
 
 def sharpness_score(gray: np.ndarray) -> float:
-    """Variance of the Laplacian — higher means sharper. Relative score
-    only; meaningful for comparing frames of the SAME scene."""
-    lap = cv2.Laplacian(gray, cv2.CV_64F)
-    return float(lap.var())
+    """Variance of the Laplacian, on a CONTRAST-NORMALIZED copy of the ROI —
+    higher means sharper. Raw variance-of-Laplacian is NOT normalized for
+    brightness: a brighter/higher-contrast capture produces numerically
+    bigger edge transitions and can score higher even when it's actually
+    blurrier, which is exactly the trap that made two visibly blurry frames
+    outscore a visibly sharp one. Stretching each frame's own pixel values
+    to the same 0-1 range before scoring removes that confound, so only
+    genuine edge sharpness — not incidental lighting differences between
+    runs — affects the number. Only meaningful as a RELATIVE score for
+    comparing frames of the same scene."""
+    g = gray.astype(np.float64)
+    lo, hi = float(g.min()), float(g.max())
+    if hi - lo < 1.0:  # essentially flat/blank — nothing to measure
+        return 0.0
+    g_norm = (g - lo) / (hi - lo)
+    lap = cv2.Laplacian(g_norm, cv2.CV_64F)
+    return float(lap.var()) * 10000.0  # scale factor purely for readability
 
 
 def main():
