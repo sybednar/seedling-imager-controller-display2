@@ -131,7 +131,11 @@ def sharpness_score(gray: np.ndarray) -> float:
         return 0.0
     g_norm = (g - lo) / (hi - lo)
     lap = cv2.Laplacian(g_norm, cv2.CV_64F)
-    return float(lap.var()) * 10000.0  # scale factor purely for readability
+    # Scale factor purely for readability — doesn't change what's being
+    # measured, just spreads it into a range where small real differences
+    # (e.g. 10.6 vs 11.0) show up as more digits rather than getting lost
+    # in one decimal place on screen.
+    return float(lap.var()) * 100000.0
 
 
 def main():
@@ -233,7 +237,7 @@ def main():
             bar_len = 50
             filled = min(bar_len, int((score / best) * bar_len)) if best > 0 else 0
             bar = "#" * filled + "-" * (bar_len - filled)
-            print(f"sharpness: {score:9.1f}  |  peak: {best:9.1f} "
+            print(f"sharpness: {score:9.2f}  |  peak: {best:9.2f} "
                   f"({since_peak:4.1f}s ago)  |  {bar}",
                   end="\r", flush=True)
 
@@ -245,13 +249,13 @@ def main():
                 pr1, pc1 = y1 // 4, x1 // 4
                 preview_bgr = cv2.cvtColor(preview, cv2.COLOR_GRAY2BGR)
                 cv2.rectangle(preview_bgr, (pc0, pr0), (pc1, pr1), (0, 0, 255), 2)
-                cv2.putText(preview_bgr, f"score: {score:.1f}", (10, 30),
+                cv2.putText(preview_bgr, f"score: {score:.2f}", (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
                 cv2.imwrite("focus_debug_snapshot.jpg", preview_bgr)
 
             time.sleep(0.1)
     except KeyboardInterrupt:
-        print(f"\n\nStopped. Best sharpness seen this session: {best:.1f}")
+        print(f"\n\nStopped. Best sharpness seen this session: {best:.2f}")
         print("If that peak was more than a few seconds before you stopped, "
               "turn back to that ring position before locking it down.")
     finally:
