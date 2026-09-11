@@ -44,6 +44,20 @@ DEFAULTS = {
     # 100-2200, unrelated to Picamera2's RearIR_Gain scale above, so it
     # can't share that key. See camera_arducam_usb3.py.
     "Arducam_RearIR_Gain": 100,
+    # Arducam-only LIVE VIEW Rear IR exposure/gain — kept separate from the
+    # capture values above. Confirmed on real hardware (Sept 2026): the
+    # 1280x960 preview stream and the 5120x3840 full-resolution capture are
+    # NOT equally sensitive at identical exposure/gain register values — the
+    # lower-resolution preview reads out effectively brighter (most likely
+    # sensor pixel binning) than a full 1:1 readout at full resolution. A
+    # single shared manual value can't look right in both places at once:
+    # exposure/gain tuned so the full-res CAPTURE looks correctly exposed
+    # makes Live View look considerably brighter, and could blow it out.
+    # These two keys let Live View be tuned independently for a usable
+    # on-screen preview, with no effect on what's actually saved during an
+    # experiment. See apply_ir_transmission_preset_liveview() below.
+    "Arducam_RearIR_LiveView_ExposureUs": 4000,
+    "Arducam_RearIR_LiveView_Gain": 100,
 }
 SETTINGS_PATH = Path("camera_settings.json")
 def load_settings():
@@ -231,7 +245,10 @@ class CameraConfigDialog(QDialog):
         # white with no ":disabled" case, so Qt's normal automatic graying of
         # disabled-tab text never kicks in. Force it explicitly here so a
         # disabled tab actually looks disabled.
-        tabs.setStyleSheet("QTabBar::tab:disabled { color: #78909C; }")
+        tabs.setStyleSheet(
+            "QTabBar::tab:disabled { color: #78909C; }"
+            " QLabel:disabled { color: #78909C; }"
+        )
         # ------------------------------------------------------------------ #
         # Tab 4 – Rear IR (Transmission)                                       #
         # ------------------------------------------------------------------ #
@@ -270,18 +287,52 @@ class CameraConfigDialog(QDialog):
         self.rir_arducam_gain.setValue(int(self.settings.get("Arducam_RearIR_Gain", 100)))
         rir.addRow(self.rir_arducam_gain_lbl, self.rir_arducam_gain)
 
+        # Arducam-only LIVE VIEW exposure/gain — separate from the capture
+        # values above. Confirmed on real hardware (Sept 2026): the 1280x960
+        # preview stream reads out effectively brighter than a full 5120x3840
+        # readout at identical exposure/gain (most likely sensor pixel
+        # binning at the lower resolution) — so exposure/gain tuned for a
+        # correctly-exposed CAPTURE can make Live View look badly blown out,
+        # and vice versa. These two fields let Live View be tuned to a
+        # usable on-screen preview independently; they have no effect on
+        # what's actually saved during an experiment (that's still driven by
+        # the Exposure/Gain fields above). Shown only for the Arducam
+        # backend; see _update_backend_specific_fields() below.
+        self.rir_arducam_liveview_exp_lbl = QLabel("Live View Exposure (µs):")
+        self.rir_arducam_liveview_exp = QDoubleSpinBox()
+        self.rir_arducam_liveview_exp.setDecimals(0)
+        self.rir_arducam_liveview_exp.setRange(100, 200000)
+        self.rir_arducam_liveview_exp.setSingleStep(500)
+        self.rir_arducam_liveview_exp.setValue(
+            int(self.settings.get("Arducam_RearIR_LiveView_ExposureUs", 4000))
+        )
+        rir.addRow(self.rir_arducam_liveview_exp_lbl, self.rir_arducam_liveview_exp)
+
+        self.rir_arducam_liveview_gain_lbl = QLabel("Live View Gain (Arducam, 100-2200):")
+        self.rir_arducam_liveview_gain = QDoubleSpinBox()
+        self.rir_arducam_liveview_gain.setDecimals(0)
+        self.rir_arducam_liveview_gain.setRange(100, 2200)
+        self.rir_arducam_liveview_gain.setSingleStep(10)
+        self.rir_arducam_liveview_gain.setValue(
+            int(self.settings.get("Arducam_RearIR_LiveView_Gain", 100))
+        )
+        rir.addRow(self.rir_arducam_liveview_gain_lbl, self.rir_arducam_liveview_gain)
+
+        self.rir_contrast_lbl = QLabel("Contrast:")
         self.rir_contrast = QDoubleSpinBox()
         self.rir_contrast.setRange(0.5, 2.0); self.rir_contrast.setSingleStep(0.05)
         self.rir_contrast.setValue(float(self.settings.get("RearIR_Contrast", 1.5)))
-        rir.addRow(QLabel("Contrast:"), self.rir_contrast)
+        rir.addRow(self.rir_contrast_lbl, self.rir_contrast)
+        self.rir_sharpness_lbl = QLabel("Sharpness:")
         self.rir_sharpness = QDoubleSpinBox()
         self.rir_sharpness.setRange(0.0, 2.0); self.rir_sharpness.setSingleStep(0.05)
         self.rir_sharpness.setValue(float(self.settings.get("RearIR_Sharpness", 1.4)))
-        rir.addRow(QLabel("Sharpness:"), self.rir_sharpness)
+        rir.addRow(self.rir_sharpness_lbl, self.rir_sharpness)
+        self.rir_brightness_lbl = QLabel("Brightness:")
         self.rir_brightness = QDoubleSpinBox()
         self.rir_brightness.setRange(-1.0, 1.0); self.rir_brightness.setSingleStep(0.05)
         self.rir_brightness.setValue(float(self.settings.get("RearIR_Brightness", -0.05)))
-        rir.addRow(QLabel("Brightness:"), self.rir_brightness)
+        rir.addRow(self.rir_brightness_lbl, self.rir_brightness)
         note_rir = QLabel(
             "AE is off by default to prevent exposure drift\n"
             "as seedlings grow over the experiment.\n"
@@ -319,6 +370,13 @@ class CameraConfigDialog(QDialog):
         fixed manual exposure/gain for Rear IR (its onboard auto-exposure is
         unreliable on the bright, uniform transmission scene; see
         camera_arducam_usb3.apply_ir_transmission_preset()).
+
+        Also shows the Arducam-only Live View exposure/gain fields (see
+        apply_ir_transmission_preset_liveview()), and disables the
+        Contrast/Sharpness/Brightness fields for Arducam — those only ever
+        apply to the Picamera2 backend's libcamera controls; confirmed on
+        real hardware that they have zero effect on the Arducam backend's
+        Live View, so leaving them enabled there was actively misleading.
         """
         is_arducam = (self.backend_combo.currentData() == "arducam_usb3")
 
@@ -327,6 +385,11 @@ class CameraConfigDialog(QDialog):
 
         self.rir_arducam_gain_lbl.setVisible(is_arducam)
         self.rir_arducam_gain.setVisible(is_arducam)
+
+        self.rir_arducam_liveview_exp_lbl.setVisible(is_arducam)
+        self.rir_arducam_liveview_exp.setVisible(is_arducam)
+        self.rir_arducam_liveview_gain_lbl.setVisible(is_arducam)
+        self.rir_arducam_liveview_gain.setVisible(is_arducam)
 
         self.rir_ae_chk.setEnabled(not is_arducam)
         if is_arducam:
@@ -338,6 +401,25 @@ class CameraConfigDialog(QDialog):
             )
         else:
             self.rir_ae_chk.setToolTip("")
+
+        # Contrast/Sharpness/Brightness only ever affect the Picamera2
+        # backend (they're applied via libcamera's set_controls() in
+        # camera_picamera2.py's apply_ir_transmission_preset()). The Arducam
+        # backend's own apply_ir_transmission_preset() only ever touches
+        # exposure_auto/exposure/gain via v4l2-ctl — it never reads these
+        # keys at all, so they silently do nothing there.
+        for widget in (
+            self.rir_contrast_lbl, self.rir_contrast,
+            self.rir_sharpness_lbl, self.rir_sharpness,
+            self.rir_brightness_lbl, self.rir_brightness,
+        ):
+            widget.setEnabled(not is_arducam)
+        _picamera2_only_tip = (
+            "Only affects the Picamera2 backend — the Arducam backend has no "
+            "equivalent control and ignores this field."
+        )
+        for widget in (self.rir_contrast, self.rir_sharpness, self.rir_brightness):
+            widget.setToolTip(_picamera2_only_tip if is_arducam else "")
     # ---------------------------------------------------------------------- #
     # Read current lens position from the running camera pipeline             #
     # ---------------------------------------------------------------------- #
@@ -396,6 +478,8 @@ class CameraConfigDialog(QDialog):
             "RearIR_ExposureTime": int(self.rir_exp.value()),
             "RearIR_Gain":         float(self.rir_gain.value()),
             "Arducam_RearIR_Gain": int(self.rir_arducam_gain.value()),
+            "Arducam_RearIR_LiveView_ExposureUs": int(self.rir_arducam_liveview_exp.value()),
+            "Arducam_RearIR_LiveView_Gain":       int(self.rir_arducam_liveview_gain.value()),
             "RearIR_Contrast":     float(self.rir_contrast.value()),
             "RearIR_Sharpness":    float(self.rir_sharpness.value()),
             "RearIR_Brightness":   float(self.rir_brightness.value()),
@@ -422,14 +506,23 @@ class CameraConfigDialog(QDialog):
                 camera.set_manual_focus(self.settings["ManualFocusPosition"])
             except Exception:
                 pass
-        # Push the updated Rear IR exposure/gain to the camera immediately,
-        # so a running Live View reflects the change right away. Without
-        # this, the new values were only saved to camera_settings.json and
-        # took effect the NEXT time Live View was started (via gui.py's
-        # apply_liveview_camera_profile()) — so Apply appeared to do nothing
-        # while Live View was already running. Mirrors that same call.
+        # Push the updated Rear IR LIVE VIEW exposure/gain to the camera
+        # immediately, so a running Live View reflects the change right
+        # away. Without this, the new values were only saved to
+        # camera_settings.json and took effect the NEXT time Live View was
+        # started (via gui.py's apply_liveview_camera_profile()) — so Apply
+        # appeared to do nothing while Live View was already running.
+        # Deliberately uses the LIVE VIEW preset here, not the capture
+        # preset — Live View and the full-resolution capture are NOT
+        # equally sensitive at the same settings on the Arducam backend
+        # (confirmed on real hardware, Sept 2026; see
+        # apply_ir_transmission_preset_liveview()), so what's shown on
+        # screen while tuning should reflect the Live View profile, not the
+        # capture-only one. On Picamera2 this is a no-op difference — its
+        # apply_ir_transmission_preset_liveview() is the same preset either
+        # way.
         try:
-            live = camera.apply_ir_transmission_preset(None)
+            live = camera.apply_ir_transmission_preset_liveview(None)
             camera.apply_settings(live)
         except Exception:
             pass
