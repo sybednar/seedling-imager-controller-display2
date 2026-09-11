@@ -41,7 +41,7 @@ RUN IT (same pattern as camera_arducam_usb3.print_diagnostics()):
     cd ~/Seedling_Imager/seedling_imager_controller
     source venv/bin/activate
     python3 focus_tune.py                 # default: Rear IR (940nm), manual exposure
-    python3 focus_tune.py front_visible    # front green LED, auto-exposure
+    python3 focus_tune.py front_visible    # ordinary room light recommended, manual exposure
 
 NOTE: Fully close the main seedling imager GUI application before running
 this (not just "stop Live View" — the GUI holds the GPIO/LED lines and the
@@ -56,10 +56,13 @@ MODES:
       be wrong (usually far too dark) under any other light source.
   front_visible — for testing with the lens's IR bandpass filter removed
       under ordinary front lighting (to isolate whether a printed target's
-      poor contrast is IR-specific). Drives GPIO24 — gui.py's actual
-      LED_GREEN_PIN — and turns auto-exposure ON instead of forcing the
-      Rear IR manual values, since front lighting is a different
-      brightness the AE needs to find on its own.
+      poor contrast is IR-specific). Drives GPIO24 (gui.py's LED_GREEN_PIN)
+      as a convenience, but that LED is a deliberately dim service light —
+      ordinary room/desk light is a better illuminant for this test. This
+      camera's driver rejects true auto-exposure outright, so this mode
+      forces manual exposure/gain via the FRONT_VISIBLE_EXPOSURE_US /
+      FRONT_VISIBLE_GAIN constants below (edit them if the startup frame
+      check shows the image is too dark or too bright).
 """
 import sys
 import time
@@ -101,6 +104,16 @@ def led_on(on: bool):
     _led_request.set_value(LED_PIN, Value.ACTIVE if on else Value.INACTIVE)
 
 
+# Starting manual exposure/gain for front_visible mode. This camera's
+# driver rejects auto_exposure=3 ("aperture priority" / full auto) outright
+# — v4l2-ctl returns a hard error, not a soft fallback — so we can't rely on
+# AE at all here and must pick manual values instead. These are just a
+# starting guess for ordinary room/desk lighting; EDIT THEM if the startup
+# frame check below still shows a very dark (or blown-out) frame.
+FRONT_VISIBLE_EXPOSURE_US = 30000
+FRONT_VISIBLE_GAIN = 300  # Arducam scale, 100-2200
+
+
 def sharpness_score(gray: np.ndarray) -> float:
     """Variance of the Laplacian — higher means sharper. Relative score
     only; meaningful for comparing frames of the SAME scene."""
@@ -125,15 +138,26 @@ def main():
         live = cam.apply_ir_transmission_preset(None)
         cam.apply_settings(live)
     else:
-        # front_visible: a fixed exposure tuned for the (much brighter, or
-        # just differently-bright) Rear IR panel would likely be wrong here
-        # — let auto-exposure find the right level for this light source.
-        cam.set_auto_exposure(True)
-        print("Auto-exposure ON for front_visible mode.")
+        # front_visible: this camera's driver rejects true auto-exposure
+        # (auto_exposure=3 fails outright — confirmed on real hardware), so
+        # force manual mode (value=1, known to work) with a starting
+        # exposure/gain for ordinary lighting instead of the Rear-IR-tuned
+        # values, which are wrong for this much dimmer light source.
+        cam._set_auto_exposure(False)
+        cam._v4l2_set("exposure", cam._us_to_v4l2_exposure(FRONT_VISIBLE_EXPOSURE_US))
+        cam._v4l2_set("gain", FRONT_VISIBLE_GAIN)
+        print(f"Manual exposure/gain forced for front_visible mode: "
+              f"{FRONT_VISIBLE_EXPOSURE_US}us / gain {FRONT_VISIBLE_GAIN} "
+              f"— edit the FRONT_VISIBLE_EXPOSURE_US / FRONT_VISIBLE_GAIN "
+              f"constants near the top of this script if the frame below "
+              f"is still too dark or too bright.")
+        print("NOTE: the green LED (GPIO24) is a deliberately dim service "
+              "light, not a photographic illuminant — for this test, "
+              "ordinary room/desk light is likely a better light source.")
 
     # Turn the illumination ON — see led_on() above.
     led_on(True)
-    time.sleep(1.5 if MODE == "front_visible" else 0.3)  # let AE/LED settle
+    time.sleep(0.3)
 
     # Sanity-check that we're actually getting a non-black frame before
     # relying on the sharpness score at all. A flat/near-zero mean here
