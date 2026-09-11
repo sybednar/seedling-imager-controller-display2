@@ -605,8 +605,19 @@ class ExperimentRunner(QThread):
                         except Exception as e:
                             self._log(f"AF lock warning (ignored): {e}")
 
-                    # (A) One-time warm-up ONLY for the first Plate #1 of the run
-                    if self.cycle_count == 1 and plate_idx == 1 and FIRST_PLATE_WARMUP_S > 0:
+                    # (A) One-time warm-up ONLY for the first Plate #1 of the run.
+                    # Picamera2's real hardware AE genuinely benefits from this extra
+                    # settle time on the very first capture. The Arducam backend's
+                    # Rear IR, however, is ALWAYS locked to fixed manual exposure/gain
+                    # (see apply_ir_transmission_preset() in camera_arducam_usb3.py) —
+                    # it never actually runs AE, so this warmup does nothing useful for
+                    # it and only adds extra Rear IR LED dwell time before the very
+                    # first capture of a run. Skip it for Arducam only, so Picamera2's
+                    # behavior is completely unchanged, while we test whether this
+                    # contributed to the cycle-1/plate-1-only anomaly seen during
+                    # Arducam testing (Sept 2026).
+                    _is_arducam = (camera.get_camera_backend_active_this_process() == "arducam_usb3")
+                    if self.cycle_count == 1 and plate_idx == 1 and FIRST_PLATE_WARMUP_S > 0 and not _is_arducam:
                         self._log(f"First Plate #1 warm-up: extra {FIRST_PLATE_WARMUP_S:.1f}s AE settle")
                         self._sleep_with_abort(FIRST_PLATE_WARMUP_S)
 
