@@ -108,6 +108,8 @@ DEFAULTS = {
     # with Picamera2's ~1.0-16.0 scale — so it gets its own key here, with
     # its own dialog field shown only when this backend is selected.
     "Arducam_RearIR_Gain":        100,
+    "Arducam_RearIR_LiveView_ExposureUs": 4000,
+    "Arducam_RearIR_LiveView_Gain":       100,
 }
 SETTINGS_PATH = Path("camera_settings.json")
 
