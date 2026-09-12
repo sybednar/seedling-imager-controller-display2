@@ -1187,7 +1187,31 @@ class SettingsApplier(QThread):
         try:
             # Ensure a running pipeline before setting controls; many controls are safer then
             camera.start_camera()
-            camera.apply_settings(self.settings)
+            # Push the Rear IR LIVE VIEW preset specifically, NOT
+            # camera.apply_settings(self.settings). Rear IR is the sole
+            # imaging illumination in this app, and Live View is always
+            # shown under the Rear IR Live View profile regardless of what
+            # tab was open in Camera Config — see gui.py's
+            # apply_liveview_camera_profile(), called unconditionally by
+            # set_live_view()'s ON path.
+            #
+            # self.settings here is CameraConfigDialog.collect()'s output,
+            # which does NOT include the Arducam backend's internal
+            # Arducam_ExposureUs/Arducam_Gain/Arducam_AeEnable scratch keys
+            # (those are computed on the fly by the preset functions, never
+            # collected from dialog widgets). Calling apply_settings() with
+            # a dict missing those keys doesn't fall back to DEFAULTS or
+            # camera_settings.json — it falls back to hardcoded literals
+            # baked into that function itself (20000us exposure, gain 100,
+            # AE=True). Confirmed on real hardware (Sept 2026): that 20000us
+            # is roughly 6-10x the tuned Live View exposure, which is
+            # exactly why Live View reverted to badly overexposed the
+            # instant the Camera Config dialog was closed — even though
+            # clicking Apply while it was open (which correctly uses
+            # apply_ir_transmission_preset_liveview()) showed the right
+            # exposure moments earlier.
+            live = camera.apply_ir_transmission_preset_liveview(None)
+            camera.apply_settings(live)
             ok = True
             msg = "Camera settings applied."
         except Exception as e:
