@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt
 from styles import dark_style
 import shutil
 from pathlib import Path
+import camera   # needed only to read which backend is active, for the storage estimate
 
 # Rear IR (transmission, GPIO27) is now the SOLE imaging illumination
 # source. Front IR (GPIO17) and Combined IR have been removed from the
@@ -35,8 +36,26 @@ DARK_TIMER_MAX_HOURS = 168  # 1 week ceiling
 
 IMAGES_ROOT = Path("/home/sybednar/Seedling_Imager/images")  # for disk-usage estimate
 
-# Storage estimates (all IR grayscale now, Rear IR only)
-AVG_IMAGE_MB_IR_GRAY = 10.0
+# Storage estimates (all IR grayscale now, Rear IR only).
+#
+# On-disk (zlib-compressed TIFF) size depends heavily on which camera
+# backend is active — NOT just resolution. Confirmed on real hardware
+# (Sept 2026): the Picamera2 backend's well-exposed Rear IR grayscale
+# captures compress to roughly 6-7 MB, while the Arducam 20MP backend's
+# well-exposed full-resolution (5120x3840) captures — at exposure/gain
+# settings that produce comparable real image detail with no
+# clipping — run closer to 13-14 MB, because more real, non-uniform
+# image content (fine root/shoot detail across a much larger sensor)
+# compresses less than the smaller Picamera2 frame. A single shared
+# constant would misestimate storage badly for whichever backend it
+# wasn't tuned against, so this is now backend-specific; see
+# update_storage_estimate() below, which picks the right one from
+# camera.get_camera_backend_active_this_process() (the backend that will
+# actually be used once an experiment starts — this is fixed for the
+# life of the running process regardless of what's saved in the Camera
+# Configuration dialog until the app is restarted).
+AVG_IMAGE_MB_IR_GRAY_PICAMERA2 = 10.0
+AVG_IMAGE_MB_IR_GRAY_ARDUCAM   = 13.5
 
 
 class DaylightSettingsDialog(QDialog):
@@ -392,8 +411,17 @@ class ExperimentSetupDialog(QDialog):
             cycles    = int((duration_days * 24 * 60) / max(1, frequency_minutes))
             images    = n_plates * cycles
 
-            # All modes are IR grayscale, Rear IR only — single per-image size estimate
-            avg_mb    = AVG_IMAGE_MB_IR_GRAY
+            # All modes are IR grayscale, Rear IR only — but the per-image size
+            # estimate is backend-specific (see the constants' comment above).
+            try:
+                active_backend = camera.get_camera_backend_active_this_process()
+            except Exception:
+                active_backend = "picamera2"
+            avg_mb = (
+                AVG_IMAGE_MB_IR_GRAY_ARDUCAM
+                if active_backend == "arducam_usb3"
+                else AVG_IMAGE_MB_IR_GRAY_PICAMERA2
+            )
             est_gb    = (images * avg_mb) / 1024.0
 
             mode_label = "rear IR gray"
