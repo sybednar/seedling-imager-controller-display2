@@ -139,6 +139,7 @@ class CameraConfigDialog(QDialog):
         main.setSpacing(6)
         main.setContentsMargins(8, 8, 8, 8)
         tabs = QTabWidget()
+        self.tabs = tabs  # kept for _update_backend_specific_fields()'s Focus-tab graying
         main.addWidget(tabs, stretch=1)
         # ------------------------------------------------------------------ #
         # Tab 1 – General                                                      #
@@ -253,6 +254,7 @@ class CameraConfigDialog(QDialog):
         self.focus_status_lbl.setStyleSheet("color: #FFD600; font-size: 13px;")
         foc.addRow(QLabel(""), self.focus_status_lbl)
         tabs.addTab(foc_w, "Focus")
+        self.foc_tab_idx = tabs.indexOf(foc_w)  # for _update_backend_specific_fields()
         # ------------------------------------------------------------------ #
         # Tab 3 – Front IR (Reflectance)                                       #
         # ------------------------------------------------------------------ #
@@ -468,6 +470,25 @@ class CameraConfigDialog(QDialog):
         for widget in _general_widgets:
             widget.setToolTip(_general_tip if is_arducam else "")
 
+        # Gray out the entire Focus tab for Arducam — same pattern as the
+        # permanently-disabled Front IR tab above, but toggled dynamically
+        # since a user can switch backends in this same dialog. This
+        # camera has a fixed physical manual-focus lens (twist the M12 ring
+        # by hand) with no AF motor and no software focus control or
+        # position readback at all — set_manual_focus()/set_af_mode()/
+        # trigger_autofocus() are all no-ops in camera_arducam_usb3.py — so
+        # every control on this tab (Manual Focus checkbox, Lens Position,
+        # Read Current Position from Camera) is meaningless for this
+        # backend.
+        self.tabs.setTabEnabled(self.foc_tab_idx, not is_arducam)
+        self.tabs.setTabToolTip(
+            self.foc_tab_idx,
+            "" if not is_arducam else
+            "This camera has a fixed physical manual-focus lens (twist the "
+            "M12 ring by hand) — there is no software focus control or "
+            "position readback for the Arducam backend."
+        )
+
         self.rir_gain_lbl.setVisible(not is_arducam)
         self.rir_gain.setVisible(not is_arducam)
 
@@ -592,6 +613,17 @@ class CameraConfigDialog(QDialog):
         # value that was never actually meant to be reset here.
         merged = load_settings()
         merged.update(self.settings)
+        # Force this off unconditionally, regardless of whatever's already
+        # in the file. Rear IR is permanently locked to fixed manual
+        # exposure/gain (see camera_arducam_usb3._rear_ir_lock_manual) and
+        # this sensor's AE has been confirmed unreliable — there is no
+        # legitimate reason for this to ever be True. This also self-heals
+        # any camera_settings.json that already has it explicitly set to
+        # True from before DEFAULTS was corrected (this dialog's merge
+        # above would otherwise just preserve that stale value forever).
+        # Harmless no-op if Picamera2 is the active backend — it never
+        # reads this key.
+        merged["Arducam_AeEnable"] = False
         save_settings(merged)
         chosen_backend = self.settings["CameraBackend"]
         running_backend = camera.get_camera_backend_active_this_process()
