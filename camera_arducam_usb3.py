@@ -108,6 +108,17 @@ DEFAULTS = {
     # with Picamera2's ~1.0-16.0 scale — so it gets its own key here, with
     # its own dialog field shown only when this backend is selected.
     "Arducam_RearIR_Gain":        100,
+
+    # LIVE VIEW-only Rear IR exposure/gain — kept separate from the capture
+    # values above. Confirmed on real hardware (Sept 2026): the 1280x960
+    # preview stream and the 5120x3840 full-resolution capture are NOT
+    # equally sensitive at identical exposure/gain register values — the
+    # lower-resolution preview reads out effectively brighter (most likely
+    # sensor pixel binning at the lower resolution) than a full 1:1 readout
+    # at full resolution. A single shared manual value can't look right in
+    # both places: exposure/gain tuned so the full-res CAPTURE looks
+    # correct makes Live View look considerably brighter, potentially blown
+    # out. See apply_ir_transmission_preset_liveview() below.
     "Arducam_RearIR_LiveView_ExposureUs": 4000,
     "Arducam_RearIR_LiveView_Gain":       100,
 }
@@ -175,6 +186,7 @@ def apply_ir_transmission_preset(base: dict | None) -> dict:
     # on the very next plate.
     _rear_ir_lock_manual = True
     return s
+
 
 def apply_ir_transmission_preset_liveview(base: dict | None) -> dict:
     """
@@ -423,10 +435,21 @@ def _v4l2_get(key: str):
             ["v4l2-ctl", "-d", device, f"--get-ctrl={name}"],
             capture_output=True, text=True, timeout=5, check=True,
         ).stdout
-        # Typical output for a plain integer control: "exposure_absolute: 1000"
-        # Menu/enum controls (e.g. exposure_auto) print the value PLUS its
-        # label: "exposure_auto: 1 (Manual Mode)" — take only the leading
-        # token so both forms parse correctly.
+        # Typical output line for a plain integer control: "exposure_absolute: 1000"
+        # But menu/enum-type controls (e.g. exposure_auto) print the numeric
+        # value FOLLOWED by its label: "exposure_auto: 1 (Manual Mode)" — the
+        # plain int(...) below crashed on that whole "1 (Manual Mode)" string
+        # every single time this was called for exposure_auto, silently
+        # returning None from the except block. That in turn meant the
+        # pinned_ae re-application added to save_image() never actually ran
+        # (its "if pinned_ae is not None" guard was always False), so the
+        # exposure_auto mode itself was never re-pinned to manual after the
+        # full-resolution reopen — only exposure/gain were, which the driver
+        # may ignore while it isn't in manual mode. Confirmed on real
+        # hardware: exposure/gain still drifted wildly plate-to-plate even
+        # after that first fix. Fix: take only the leading whitespace-
+        # separated token (the numeric value) before parsing, which works
+        # for both plain-integer and menu/enum-type control output.
         value_str = out.strip().split(":")[-1].strip().split()[0]
         return int(value_str)
     except Exception as e:
@@ -623,7 +646,13 @@ def save_image(path: str, grayscale: bool = True) -> bool:
     # right now (e.g. experiment_runner.py's per-plate AE-pin, set directly
     # via set_manual_exposure_gain() and never written to camera_settings.json)
     # — NOT the same thing as `settings` above, which only reflects the last
-    # saved JSON.
+    # saved JSON. Confirmed on real hardware: _open_capture() below fully
+    # releases and reopens the V4L2 device for the full-resolution still,
+    # and reopening can silently reset exposure/gain to the driver's default
+    # — which behaves like a brief, uncontrolled auto-exposure moment right
+    # as the frame is grabbed. This is why the Live View/settling preview
+    # (which never reopens the device) stayed correctly exposed while actual
+    # saved captures came out wildly over/under-exposed plate to plate.
     pinned_ae   = _v4l2_get("exposure_auto")
     pinned_exp  = _v4l2_get("exposure")
     pinned_gain = _v4l2_get("gain")
@@ -744,7 +773,38 @@ def save_image(path: str, grayscale: bool = True) -> bool:
     finally:
         # Always try to restore live preview, even if the capture above failed.
         _open_capture(pw, ph)
-        apply_settings(settings)
+        # Restore the REAR IR LIVE VIEW preset explicitly, not a plain
+        # apply_settings(settings) — settings here is just load_settings(),
+        # and 'Arducam_AeEnable'/'Arducam_ExposureUs'/'Arducam_Gain' are
+        # transient keys the preset functions compute on the fly; they are
+        # NOT part of what camera_config.py's collect()/save_settings()
+        # persists, so they were never actually present in
+        # camera_settings.json. Confirmed on real hardware (Sept 2026): that
+        # meant load_settings() fell back to DEFAULTS' Arducam_AeEnable=True
+        # every time, so apply_settings(settings) tried (and failed — wrong
+        # enum value for this device, logged as
+        # "v4l2_set(exposure_auto=3) ... exit status 255") to turn AE back
+        # on after every capture, and because it believed AE was on, it
+        # skipped re-applying manual exposure/gain — leaving the preview
+        # stream sitting at whatever the CAPTURE profile's exposure/gain
+        # happened to be (e.g. 3100us/gain 300), which is tuned for the
+        # full-resolution sensor's lower sensitivity. Read back through the
+        # more light-sensitive low-res preview stream (see
+        # apply_ir_transmission_preset_liveview()'s docstring on sensor
+        # binning), that badly overexposed the "experiment snapshot" shown
+        # in gui.py's show_experiment_snapshot() — even though the actual
+        # saved TIFF for that same capture was correctly exposed, since
+        # save_image() pins exposure/gain from the live hardware registers,
+        # not from this JSON round-trip. Explicitly restoring the Live View
+        # preset here (which reads the properly-persisted
+        # Arducam_RearIR_LiveView_ExposureUs/Gain keys) fixes this
+        # regardless of what's (or isn't) in camera_settings.json.
+        try:
+            live = apply_ir_transmission_preset_liveview(None)
+            apply_settings(live)
+        except Exception as e:
+            print(f"[arducam] save_image: post-capture Live View restore error: {e}; falling back to apply_settings(settings)", flush=True)
+            apply_settings(settings)
 
 
 # =============================================================================
