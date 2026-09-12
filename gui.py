@@ -945,12 +945,53 @@ class SeedlingImagerGUI(QWidget):
         """
         During an experiment, show a single low-res snapshot (lores) at the start
         of each plate's settling window so users can see the carousel cycling.
+
+        Temporarily borrows the Rear IR LIVE VIEW exposure/gain for exactly
+        this one displayed frame, then explicitly restores whatever
+        exposure/gain was pinned beforehand. This is NOT cosmetic
+        bookkeeping — experiment_runner.py's AE-stability-gate blindly
+        treats "whatever exposure/gain is currently on the hardware" as the
+        correct value to pin for EACH plate's actual capture (necessary
+        since this backend's Rear IR is always locked to fixed manual
+        exposure/gain rather than genuinely running AE). Confirmed on real
+        hardware (Sept 2026): an earlier attempt to leave the Live View
+        preset applied after every capture (in camera_arducam_usb3.py's
+        save_image()) corrupted every SUBSEQUENT plate's real saved
+        image — plates were silently captured at Live View exposure/gain
+        instead of the intended Rear IR capture profile. Reading, then
+        restoring, the exact pinned value here confines the Live View push
+        to only the single frame grabbed for on-screen display, so the
+        next plate's real capture is never affected.
         """
         # If live view is active, snapshots are redundant (and Live View is usually off during runs)
         if self.live_view_active:
             return
 
+        before = {}
+
+        def _read_before():
+            before.update(camera.get_metadata() or {})
+
+        self._run_camera_call_guarded(_read_before, timeout_ms=4000, what="snapshot: read pinned exposure/gain")
+        prev_exp = before.get("ExposureTime")
+        prev_gain = before.get("AnalogueGain")
+
+        self._run_camera_call_guarded(
+            self.apply_liveview_camera_profile, timeout_ms=4000,
+            what="snapshot: push Live View profile",
+        )
+
         frame = camera.get_frame()
+
+        # Restore the exact exposure/gain that was pinned before this
+        # function touched anything — regardless of whether the frame grab
+        # above succeeded — so the next plate's real capture is unaffected.
+        if prev_exp is not None and prev_gain is not None:
+            self._run_camera_call_guarded(
+                lambda: camera.set_manual_exposure_gain(prev_exp, prev_gain),
+                timeout_ms=4000, what="snapshot: restore pinned exposure/gain",
+            )
+
         if frame.isNull():
             return
 
