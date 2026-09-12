@@ -771,40 +771,39 @@ def save_image(path: str, grayscale: bool = True) -> bool:
         return False
 
     finally:
-        # Always try to restore live preview, even if the capture above failed.
+        # Always try to restore the preview STREAM RESOLUTION, even if the
+        # capture above failed — but deliberately do NOT touch the manual
+        # exposure/gain controls here.
+        #
+        # A previous version of this function explicitly re-applied the
+        # Live View preset here (to fix an overexposed "experiment
+        # snapshot" preview in gui.py). Confirmed on real hardware (Sept
+        # 2026) that this was wrong and caused a worse, genuine data-quality
+        # regression: experiment_runner.py's AE-stability-gate
+        # (_ae_stability_gate) blindly treats whatever exposure/gain is
+        # CURRENTLY on the hardware as the correct value to pin for the
+        # NEXT plate's capture — necessary because this backend's Rear IR
+        # is always locked to fixed manual exposure/gain (see
+        # _rear_ir_lock_manual) rather than genuinely running AE. Pushing
+        # the Live View preset here meant every plate's capture AFTER the
+        # first one in an experiment got silently pinned to the Live View
+        # exposure/gain instead of the intended Rear IR capture profile —
+        # confirmed via metadata CSV showing SettledExposureTime_us/
+        # SettledAnalogueGain alternating away from the correct capture
+        # values, with matching under-exposed ~7MB files instead of the
+        # correct ~13-14MB ones.
+        #
+        # Leaving exposure/gain untouched here means the hardware simply
+        # keeps whatever was pinned for the capture that just happened —
+        # which is exactly right, since nothing between plates should be
+        # changing it. The (separate, real, cosmetic) overexposed-preview
+        # problem this was trying to fix is instead solved in gui.py's
+        # show_experiment_snapshot(), which temporarily borrows the Live
+        # View preset for exactly one displayed frame and then explicitly
+        # restores the exact exposure/gain that was pinned beforehand —
+        # confining the change so it can never leak into the next plate's
+        # real capture.
         _open_capture(pw, ph)
-        # Restore the REAR IR LIVE VIEW preset explicitly, not a plain
-        # apply_settings(settings) — settings here is just load_settings(),
-        # and 'Arducam_AeEnable'/'Arducam_ExposureUs'/'Arducam_Gain' are
-        # transient keys the preset functions compute on the fly; they are
-        # NOT part of what camera_config.py's collect()/save_settings()
-        # persists, so they were never actually present in
-        # camera_settings.json. Confirmed on real hardware (Sept 2026): that
-        # meant load_settings() fell back to DEFAULTS' Arducam_AeEnable=True
-        # every time, so apply_settings(settings) tried (and failed — wrong
-        # enum value for this device, logged as
-        # "v4l2_set(exposure_auto=3) ... exit status 255") to turn AE back
-        # on after every capture, and because it believed AE was on, it
-        # skipped re-applying manual exposure/gain — leaving the preview
-        # stream sitting at whatever the CAPTURE profile's exposure/gain
-        # happened to be (e.g. 3100us/gain 300), which is tuned for the
-        # full-resolution sensor's lower sensitivity. Read back through the
-        # more light-sensitive low-res preview stream (see
-        # apply_ir_transmission_preset_liveview()'s docstring on sensor
-        # binning), that badly overexposed the "experiment snapshot" shown
-        # in gui.py's show_experiment_snapshot() — even though the actual
-        # saved TIFF for that same capture was correctly exposed, since
-        # save_image() pins exposure/gain from the live hardware registers,
-        # not from this JSON round-trip. Explicitly restoring the Live View
-        # preset here (which reads the properly-persisted
-        # Arducam_RearIR_LiveView_ExposureUs/Gain keys) fixes this
-        # regardless of what's (or isn't) in camera_settings.json.
-        try:
-            live = apply_ir_transmission_preset_liveview(None)
-            apply_settings(live)
-        except Exception as e:
-            print(f"[arducam] save_image: post-capture Live View restore error: {e}; falling back to apply_settings(settings)", flush=True)
-            apply_settings(settings)
 
 
 # =============================================================================
