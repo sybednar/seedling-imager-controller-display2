@@ -622,7 +622,12 @@ class SeedlingImagerGUI(QWidget):
         self.experiment_thread.status_signal.connect(self.update_status)
         self.experiment_thread.image_saved_signal.connect(lambda p: self.log_panel.append(f"Image saved: {p}"))
         self.experiment_thread.plate_signal.connect(lambda idx: self.status_label.setText(f"Plate #{idx}"))
-        self.experiment_thread.settling_started.connect(self.show_experiment_snapshot)
+        # Connected to snapshot_ready (not settling_started) — the frame is
+        # grabbed on ExperimentRunner's own thread and handed to us already
+        # captured, so this slot performs no camera calls of its own. See
+        # show_experiment_snapshot()'s docstring and experiment_runner.py's
+        # run() for why.
+        self.experiment_thread.snapshot_ready.connect(self.show_experiment_snapshot)
         self.experiment_thread.cycle_wait_started.connect(self._on_cycle_wait_started)
         self.experiment_thread.finished_signal.connect(self.on_experiment_finished)
         self.update_controls_for_experiment(True)
@@ -941,58 +946,46 @@ class SeedlingImagerGUI(QWidget):
         scaled = pixmap.scaled(lw, lh, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         self.camera_label.setPixmap(scaled)
 
-    def show_experiment_snapshot(self, plate_idx: int):
+    def show_experiment_snapshot(self, plate_idx: int, frame):
         """
-        During an experiment, show a single low-res snapshot (lores) at the start
-        of each plate's settling window so users can see the carousel cycling.
+        Display a single on-screen snapshot during an experiment, showing
+        the just-arrived plate before its real capture.
 
-        REVERTED (Sept 2026) to a read-only frame grab — no exposure/gain
-        pushing or restoring here at all.
+        REWRITTEN (Sept 2026): this slot now takes an already-grabbed
+        QImage as an argument instead of calling into the camera itself.
+        The frame is captured by experiment_runner.py's ExperimentRunner —
+        the SAME thread that already owns exclusive, serialized camera
+        access during an automated run — immediately before it pins
+        exposure/gain for the real capture and calls camera.save_image().
+        This slot's only job now is to put already-fetched pixels on
+        screen; it performs NO camera calls of its own.
 
-        A prior version of this function temporarily pushed the Rear IR
-        LIVE VIEW exposure/gain preset for this one displayed frame, then
-        restored the previously-pinned value, using three separate
-        _run_camera_call_guarded() calls (each spinning up its own
-        background QThread). That introduced a genuine, serious
-        concurrency bug: this slot runs on the GUI/main thread, but
-        experiment_runner.py's ExperimentRunner is, at the same moment, on
-        ITS OWN background thread, independently calling
-        camera.set_manual_exposure_gain() (via _ae_stability_gate) and
-        camera.save_image() (which opens/closes the capture device and
-        issues its own v4l2-ctl pin/verify calls). camera_arducam_usb3.py's
-        _cap_lock only guards _cap/_open_capture()/stop_camera()/
-        _read_raw_frame() — it does NOT guard the _v4l2_set()/_v4l2_get()
-        subprocess calls. So the three guarded background threads spawned
-        here could run concurrently with ExperimentRunner's own camera
-        calls against the same /dev/video0 device, with zero
-        synchronization between them.
-
-        Confirmed on real hardware (Sept 2026): this raced hard enough to
-        wedge the USB3 device outright mid-experiment — "[arducam] ERROR:
-        could not open /dev/video0" repeated on every subsequent access,
-        v4l2_get/v4l2_set calls failing with exit status 1, and a
-        subsequent plate's capture failing completely (no frame returned
-        at full resolution, not even a bad/flat one) across all reopen
-        attempts. That is a hardware-availability failure, categorically
-        worse than the cosmetic issue (an occasionally overexposed
-        snapshot preview) this function was trying to fix.
-
-        Going back to a plain get_frame() call means the on-screen
-        snapshot may sometimes be overexposed if the hardware currently
-        has the Capture profile's exposure/gain pinned (since the
-        preview stream is more light-sensitive than capture at the same
-        register values) — but it performs ZERO camera-control calls of
-        its own, so it cannot race with or contend for the device against
-        ExperimentRunner's thread. Do not reintroduce any
-        exposure/gain-touching logic here without a real cross-thread lock
-        shared with experiment_runner.py's camera access.
+        Two previous versions of this feature DID call into the camera
+        from THIS (GUI/main) thread, in response to the settling_started
+        signal — which, being a queued cross-thread connection, does not
+        block ExperimentRunner's thread, so its own camera.save_image()
+        call could run at the same moment as whatever this slot was doing:
+          1) A version that only read frames (camera.get_frame(), no
+             exposure/gain changes) correlated, on real hardware, with
+             save_image() intermittently needing a reopen retry on every
+             single plate (a blank/flat first frame, fine on the second) —
+             plausibly because the competing read stole frames meant to
+             flush a just-reopened, not-yet-settled sensor.
+          2) A version that additionally pushed/restored the Live View
+             exposure/gain preset for the displayed frame wedged the USB3
+             device outright mid-experiment on real hardware — "[arducam]
+             ERROR: could not open /dev/video0" repeated on every
+             subsequent access, and a later plate's capture failed
+             completely.
+        Moving the whole push/grab/restore sequence into ExperimentRunner's
+        own thread (see run()'s snapshot block) removes both failure modes
+        at the source, and additionally means the snapshot can show the
+        correctly-exposed Live View profile again instead of the
+        occasionally-overexposed raw capture-profile frame.
         """
-        # If live view is active, snapshots are redundant (and Live View is usually off during runs)
         if self.live_view_active:
             return
-
-        frame = camera.get_frame()
-        if frame.isNull():
+        if frame is None or frame.isNull():
             return
 
         pixmap = QPixmap.fromImage(frame)
