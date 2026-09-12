@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTextEdit, QDialog, QSizePolicy, QMessageBox
 )
-from PySide6.QtCore import Qt, QThread, Signal, QTimer
+from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEventLoop
 from PySide6.QtGui import QPixmap, QGuiApplication
 from datetime import datetime, timedelta
 from styles import dark_style
@@ -62,6 +62,26 @@ except Exception as e:
     led_request = None
 
 
+class _CameraCallWorker(QThread):
+    """
+    Generic one-shot worker: runs an arbitrary no-arg callable on a
+    background thread. Paired with SeedlingImagerGUI._run_camera_call_guarded()
+    below — see that method's docstring for why this exists.
+    """
+    finished_ok = Signal(bool, str)
+
+    def __init__(self, fn, parent=None):
+        super().__init__(parent)
+        self._fn = fn
+
+    def run(self):
+        try:
+            self._fn()
+            self.finished_ok.emit(True, "")
+        except Exception as e:
+            self.finished_ok.emit(False, str(e))
+
+
 class SeedlingImagerGUI(QWidget):
     def __init__(self):
         super().__init__()
@@ -95,13 +115,14 @@ class SeedlingImagerGUI(QWidget):
         self.threads = []
         self.experiment_thread = None
         self.homing_worker = None  # <-- abortable homing worker
+        self._guarded_camera_workers = []  # see _run_camera_call_guarded()
 
         # Experiment progress info (elapsed time / next-cycle ETA) — populated
         # when an experiment starts, cleared when it ends. See
         # _update_experiment_info() and _on_cycle_wait_started().
         self._experiment_start_time = None
         self._next_cycle_eta = None
-        
+
         main_layout = QHBoxLayout()
 
         # Left: buttons (EXACT-FILL balanced column)
@@ -328,7 +349,7 @@ class SeedlingImagerGUI(QWidget):
         self.experiment_info_label = QLabel("")
         self.experiment_info_label.setAlignment(Qt.AlignCenter)
         self.experiment_info_label.setWordWrap(True)
-        self.experiment_info_label.setStyleSheet(f"font-size: {max(9, int(9 * s))}px; color: #90A4AE;")        
+        self.experiment_info_label.setStyleSheet(f"font-size: {max(9, int(9 * s))}px; color: #90A4AE;")
 
         self.camera_label = QLabel("Camera Preview")
         self.camera_label.setAlignment(Qt.AlignCenter)
@@ -361,11 +382,19 @@ class SeedlingImagerGUI(QWidget):
         # so it doesn't add meaningful overhead during long unattended runs.
         self.experiment_info_timer = QTimer()
         self.experiment_info_timer.timeout.connect(self._update_experiment_info)
-        
+
         self.update_controls_for_experiment(False)
 
-        # Apply persisted camera settings at startup
-        camera.apply_settings()
+        # Apply persisted camera settings at startup. Run through the
+        # guarded helper (background thread + bounded wait) rather than a
+        # direct call — confirmed on real hardware (Sept 2026) that if the
+        # Arducam USB3 device was left wedged from a previous session, a
+        # direct call here could hang indefinitely inside v4l2-ctl before
+        # this __init__() even finished, meaning the window never showed at
+        # all and every subsequent autostart-triggered boot would hang the
+        # exact same way, with no way to reach the GUI to fix it. See
+        # _run_camera_call_guarded()'s docstring for the full explanation.
+        self._run_camera_call_guarded(camera.apply_settings, timeout_ms=4000, what="startup apply_settings()")
 
         # Ensure the Live View button text/style matches the current state at startup
         self._update_live_view_button()
@@ -603,7 +632,7 @@ class SeedlingImagerGUI(QWidget):
         self._next_cycle_eta = None
         self._update_experiment_info()
         self.experiment_info_timer.start(60000)  # refresh once a minute
-        
+
         self.experiment_thread.start()
 
     def end_experiment(self):
@@ -668,7 +697,7 @@ class SeedlingImagerGUI(QWidget):
         # and get clipped. Two short lines stay comfortably within width.
         self.experiment_info_label.setText(f"Elapsed: {elapsed_h:.1f} h\n{next_txt}")
 
-    
+
     def update_controls_for_experiment(self, running: bool):
         """Enable/disable controls while an experiment is running."""
         # Live View and motion/Config controls should be disabled during a run
@@ -685,6 +714,77 @@ class SeedlingImagerGUI(QWidget):
         self.status_label.setText(text)
         self.log_panel.append(text)
 
+
+    def _run_camera_call_guarded(self, fn, timeout_ms=4000, what=""):
+        """
+        Run fn() (a no-arg camera.* call) on a background thread, and wait
+        for it via a local QEventLoop instead of calling it directly here.
+
+        Why: for the Arducam backend, several camera.* calls (apply_settings,
+        enable_liveview_boost_for_ir, disable_liveview_boost) go through
+        camera_arducam_usb3.py's _v4l2_set()/_v4l2_get(), which shell out to
+        `v4l2-ctl` via subprocess.run(..., timeout=5). That 5-second timeout
+        assumes the child process CAN be killed if it's slow. Confirmed on
+        real hardware (Sept 2026): if the USB3 device itself is wedged, the
+        v4l2-ctl child can enter an uninterruptible kernel wait that not even
+        SIGKILL clears — so subprocess.run()'s own timeout can end up
+        blocking indefinitely too, waiting to reap a child that cannot die.
+
+        These particular calls are NOT confined to the (occasional, manual)
+        Camera Config dialog — set_live_view() calls them automatically on
+        every app startup and every homing/plate-advance cycle during an
+        unattended, possibly multi-day experiment. Running them directly on
+        this thread previously meant a wedged device would freeze the whole
+        GUI event loop (and, since this app runs fullscreen, the whole
+        display) — either at startup (before the window even showed) or
+        silently mid-experiment with nobody watching, requiring a hard power
+        cycle to recover either way.
+
+        Running fn() on a background QThread and waiting via a *local*
+        QEventLoop (rather than QThread.wait(), a plain blocking call) means
+        the real Qt event loop keeps pumping while we wait — the window
+        stays repaintable/closeable — and the QTimer.singleShot(timeout_ms, ...)
+        below imposes a hard ceiling on how long we wait. If fn() hasn't
+        finished by timeout_ms, we stop waiting and return False, but the
+        worker thread itself is left running in the background — if fn() is
+        truly stuck on an unkillable kernel-level wait, there is no way to
+        forcibly stop it, only to stop waiting on it. This does not fix or
+        prevent a wedged USB device; it only prevents that failure mode from
+        taking down the whole GUI/display with it.
+
+        Returns True if fn() completed successfully within timeout_ms,
+        False otherwise (it either raised, or didn't finish in time).
+        """
+        worker = _CameraCallWorker(fn)
+        loop = QEventLoop()
+        result = {"ok": False, "settled": False}
+
+        def _on_done(ok, err):
+            result["ok"] = ok
+            result["settled"] = True
+            if not ok and err:
+                print(f"[gui] {what} error: {err}", flush=True)
+            loop.quit()
+
+        worker.finished_ok.connect(_on_done)
+        self._guarded_camera_workers.append(worker)
+
+        worker.start()
+        QTimer.singleShot(timeout_ms, loop.quit)
+        loop.exec()
+
+        if not result["settled"]:
+            print(
+                f"[gui] {what} did not complete within {timeout_ms}ms — "
+                f"proceeding without waiting further (possible wedged camera device).",
+                flush=True,
+            )
+        else:
+            try:
+                self._guarded_camera_workers.remove(worker)
+            except ValueError:
+                pass
+        return result["ok"] and result["settled"]
 
     def apply_liveview_camera_profile(self):
         # Rear IR (transmission) is the only imaging illumination now, so
@@ -765,18 +865,24 @@ class SeedlingImagerGUI(QWidget):
         if enable:
             camera.start_camera()
 
-            # Apply the transmission (Rear IR) camera profile
-            self.apply_liveview_camera_profile()
+            # Apply the transmission (Rear IR) camera profile — guarded
+            # (background thread + bounded wait); see
+            # _run_camera_call_guarded()'s docstring. This runs on every
+            # startup and homing/plate-advance cycle, not just from the
+            # Camera Config dialog, so it must not be able to freeze the
+            # whole GUI if the Arducam device is wedged.
+            self._run_camera_call_guarded(
+                self.apply_liveview_camera_profile, timeout_ms=4000,
+                what="apply_liveview_camera_profile()",
+            )
 
-            # Always apply the live-view brightness boost for Rear IR.
-            try:
-                camera.enable_liveview_boost_for_ir(
-                    target_gain=2.0,
-                    target_exposure_us=4000,
-                    mode=ILLUM_REAR_IR
-                )
-            except Exception as e:
-                print(f"[gui] enable IR liveview boost error: {e}", flush=True)
+            # Always apply the live-view brightness boost for Rear IR — also guarded.
+            self._run_camera_call_guarded(
+                lambda: camera.enable_liveview_boost_for_ir(
+                    target_gain=2.0, target_exposure_us=4000, mode=ILLUM_REAR_IR
+                ),
+                timeout_ms=4000, what="enable_liveview_boost_for_ir()",
+            )
 
             camera.set_af_mode(2)  # Continuous AF for preview
 
@@ -793,11 +899,10 @@ class SeedlingImagerGUI(QWidget):
         else:
             self.timer.stop()
 
-            # Always clear any preview boost when leaving Live View
-            try:
-                camera.disable_liveview_boost()
-            except Exception:
-                pass
+            # Always clear any preview boost when leaving Live View — guarded, same reasoning as above.
+            self._run_camera_call_guarded(
+                camera.disable_liveview_boost, timeout_ms=4000, what="disable_liveview_boost()"
+            )
 
             camera.stop_camera()
             self.live_view_active = False
@@ -1035,5 +1140,3 @@ class SettingsApplier(QThread):
                 except Exception:
                     pass
         self.done.emit(ok, msg)
-
-
