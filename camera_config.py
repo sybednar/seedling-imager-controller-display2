@@ -577,7 +577,22 @@ class CameraConfigDialog(QDialog):
     # ---------------------------------------------------------------------- #
     def on_apply(self):
         self.settings = self.collect()
-        save_settings(self.settings)
+        # Merge onto the existing on-disk settings rather than overwriting
+        # the whole file with just collect()'s output. collect() only
+        # returns the keys this dialog's widgets manage — writing that dict
+        # directly would silently drop every other persisted key (e.g. the
+        # Arducam backend's internal Arducam_ExposureUs / Arducam_Gain /
+        # Arducam_AeEnable, Arducam_DevicePath, Arducam_PreviewWidth/Height)
+        # back to camera_arducam_usb3.py's DEFAULTS on every single Apply
+        # click. Confirmed on real hardware (Sept 2026): that silent reset
+        # of Arducam_AeEnable to DEFAULTS' True contributed to the
+        # overexposed "experiment snapshot" bug fixed in
+        # camera_arducam_usb3.py's save_image() — apply_settings() elsewhere
+        # kept trying (and failing) to re-enable auto-exposure based on a
+        # value that was never actually meant to be reset here.
+        merged = load_settings()
+        merged.update(self.settings)
+        save_settings(merged)
         chosen_backend = self.settings["CameraBackend"]
         running_backend = camera.get_camera_backend_active_this_process()
         if chosen_backend != running_backend:
