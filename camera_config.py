@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
     QFormLayout, QCheckBox, QDoubleSpinBox, QSpinBox, QFrame,
     QTabWidget, QWidget, QComboBox,
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QThread, Signal
 import json
 from pathlib import Path
 import camera   # needed for "Read from Camera" button and backend get/set helpers
@@ -84,12 +84,57 @@ def _tab_page() -> tuple[QWidget, QFormLayout]:
     fl.setVerticalSpacing(6)
     fl.setContentsMargins(12, 10, 12, 10)
     return w, fl
+class _LiveApplyWorker(QThread):
+    """
+    Runs the camera-hardware-touching part of Apply (manual focus,
+    apply_ir_transmission_preset_liveview(), apply_settings()) on a
+    background thread instead of the Qt main thread/dialog event loop.
+
+    Why this exists: for the Arducam backend, apply_settings() goes through
+    _v4l2_set()/_v4l2_get() in camera_arducam_usb3.py, which shell out to
+    `v4l2-ctl` via subprocess.run(..., timeout=5). That 5-second timeout
+    assumes the child process CAN be killed if it's slow. Confirmed on real
+    hardware (Sept 2026): if the USB3 device itself is wedged, the v4l2-ctl
+    child can enter an uninterruptible kernel wait state that not even
+    SIGKILL clears, so subprocess.run()'s own timeout can end up blocking
+    indefinitely too, waiting to reap a child that cannot die. Previously
+    this ran directly in on_apply() (a button-click slot), which froze the
+    ENTIRE GUI — including the dialog's own Close button — for as long as
+    the device stayed wedged, since this app runs fullscreen. Running it
+    here means a future stuck call leaves this one worker thread hung, but
+    the GUI, the dialog, and the ability to close the app normally all stay
+    responsive. This does not fix a wedged USB device — see camera_config's
+    save_image()/_open_capture() notes and the README for hardware-level
+    recovery — it only prevents that failure mode from taking down the
+    whole display.
+    """
+    done = Signal(bool, str)
+
+    def __init__(self, settings: dict, parent=None):
+        super().__init__(parent)
+        self._settings = settings
+
+    def run(self):
+        try:
+            if self._settings.get("ManualFocusEnable"):
+                try:
+                    camera.set_manual_focus(self._settings.get("ManualFocusPosition"))
+                except Exception:
+                    pass
+            live = camera.apply_ir_transmission_preset_liveview(None)
+            camera.apply_settings(live)
+            self.done.emit(True, "")
+        except Exception as e:
+            self.done.emit(False, str(e))
+
+
 class CameraConfigDialog(QDialog):
     def __init__(self, current_settings=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Camera Configuration")
         self.setMinimumWidth(520)
         self.settings = load_settings() if current_settings is None else {**DEFAULTS, **current_settings}
+        self._live_apply_worker = None  # holds the in-flight _LiveApplyWorker, if any (see on_apply)
         main = QVBoxLayout(self)
         main.setSpacing(6)
         main.setContentsMargins(8, 8, 8, 8)
@@ -544,29 +589,44 @@ class CameraConfigDialog(QDialog):
         else:
             self.backend_status_lbl.setText(f"Active this session: {running_backend}")
             self.backend_status_lbl.setStyleSheet("color: #90A4AE; font-size: 12px;")
-        if self.settings["ManualFocusEnable"]:
-            try:
-                camera.set_manual_focus(self.settings["ManualFocusPosition"])
-            except Exception:
-                pass
-        # Push the updated Rear IR LIVE VIEW exposure/gain to the camera
-        # immediately, so a running Live View reflects the change right
-        # away. Without this, the new values were only saved to
-        # camera_settings.json and took effect the NEXT time Live View was
-        # started (via gui.py's apply_liveview_camera_profile()) — so Apply
-        # appeared to do nothing while Live View was already running.
-        # Deliberately uses the LIVE VIEW preset here, not the capture
-        # preset — Live View and the full-resolution capture are NOT
-        # equally sensitive at the same settings on the Arducam backend
-        # (confirmed on real hardware, Sept 2026; see
-        # apply_ir_transmission_preset_liveview()), so what's shown on
-        # screen while tuning should reflect the Live View profile, not the
-        # capture-only one. On Picamera2 this is a no-op difference — its
-        # apply_ir_transmission_preset_liveview() is the same preset either
-        # way.
-        try:
-            live = camera.apply_ir_transmission_preset_liveview(None)
-            camera.apply_settings(live)
-        except Exception:
-            pass
+        # Push the updated Rear IR LIVE VIEW exposure/gain (and manual focus,
+        # if enabled) to the camera immediately, so a running Live View
+        # reflects the change right away. Without this, new values were only
+        # saved to camera_settings.json and took effect the NEXT time Live
+        # View was started (via gui.py's apply_liveview_camera_profile()) —
+        # so Apply appeared to do nothing while Live View was already
+        # running. Deliberately uses the LIVE VIEW preset, not the capture
+        # preset — Live View and the full-resolution capture are NOT equally
+        # sensitive at the same settings on the Arducam backend (confirmed
+        # on real hardware, Sept 2026; see apply_ir_transmission_preset_liveview()),
+        # so what's shown on screen while tuning should reflect the Live
+        # View profile, not the capture-only one. On Picamera2 this is a
+        # no-op difference — its apply_ir_transmission_preset_liveview() is
+        # the same preset either way.
+        #
+        # Run on a background thread (_LiveApplyWorker) rather than here
+        # directly. Confirmed on real hardware (Sept 2026): if the Arducam
+        # USB3 device is wedged, the v4l2-ctl subprocess call inside
+        # apply_settings() can hang in an uninterruptible kernel wait that
+        # not even a timeout/SIGKILL clears — running that synchronously on
+        # this button-click slot froze the entire GUI (including this
+        # dialog's own Close button) for as long as the device stayed
+        # wedged, since this app runs fullscreen. See _LiveApplyWorker's
+        # docstring for the full explanation.
+        if self._live_apply_worker is not None and self._live_apply_worker.isRunning():
+            # A previous Apply is still in flight (e.g. stuck on a wedged
+            # device) — don't pile another attempt on top of it.
+            return
+        self.apply_btn.setEnabled(False)
+        self.apply_btn.setText("Applying...")
+        worker = _LiveApplyWorker(dict(self.settings), parent=self)
+        worker.done.connect(self._on_live_apply_done)
+        self._live_apply_worker = worker
+        worker.start()
         # Dialog stays open so the user can see the effect and fine-tune.
+
+    def _on_live_apply_done(self, ok: bool, err: str):
+        self.apply_btn.setEnabled(True)
+        self.apply_btn.setText("Apply")
+        if not ok and err:
+            print(f"[camera_config] background Apply error: {err}", flush=True)
