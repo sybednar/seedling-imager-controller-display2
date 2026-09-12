@@ -56,19 +56,6 @@ AE_GATE_POLL_S       = 0.10  # poll cadence
 AE_GATE_GAIN_TOL     = 0.05  # <5% relative change considered "stable"
 AE_GATE_STABLE_READS = 5     # need this many consecutive stable reads
 
-# -------- Manual focus settle gate (run once, at experiment start) --------
-# start_camera() reissues the manual focus command every run (the lens does
-# NOT hold position across a pipeline stop/start). But Live View drives the
-# lens with continuous AF during the homing preview immediately beforehand
-# (see gui.py set_live_view), so the lens may have wandered far from the
-# calibrated position — how far varies with how long homing takes. Nothing
-# upstream confirms the lens actually arrived before the first capture.
-# This gate polls LensPosition until it's within tolerance of the target,
-# or times out (in which case we log a warning and proceed anyway).
-FOCUS_GATE_MAX_WAIT_S = 12.0   # total timeout waiting for lens to settle
-FOCUS_GATE_POLL_S     = 0.15  # poll cadence
-FOCUS_GATE_TOLERANCE  = 0.05  # diopters considered "arrived"
-
 
 class ExperimentRunner(QThread):
     # ---------- Signals ----------
@@ -77,6 +64,10 @@ class ExperimentRunner(QThread):
     plate_signal = Signal(int)
     settling_started = Signal(int)
     settling_finished = Signal(int)
+    # Carries an already-grabbed preview frame (QImage) for the GUI to
+    # display — see the snapshot block in run() for why this is emitted
+    # from THIS thread instead of the GUI grabbing its own frame.
+    snapshot_ready = Signal(int, object)
     cycle_wait_started = Signal(int)   # emitted with frequency_minutes when the inter-cycle wait begins
     finished_signal = Signal()
 
@@ -395,33 +386,6 @@ class ExperimentRunner(QThread):
             time.sleep(poll_s)
         return False, last_md
 
-    def _focus_stability_gate(self, target_position: float,
-                               max_wait_s=FOCUS_GATE_MAX_WAIT_S,
-                               poll_s=FOCUS_GATE_POLL_S,
-                               tolerance=FOCUS_GATE_TOLERANCE):
-        """
-        Poll LensPosition until it settles within 'tolerance' diopters of
-        'target_position', or time out. Called once at experiment start,
-        right after camera.start_camera() reissues the manual focus command.
-
-        Returns: (settled: bool, last_lens_pos: float | None)
-        """
-        t0 = time.time()
-        last_pos = None
-        while (time.time() - t0) < max_wait_s and not self._abort:
-            md = camera.get_metadata() or {}
-            pos = md.get("LensPosition", None)
-            if pos is not None:
-                try:
-                    last_pos = float(pos)
-                except Exception:
-                    last_pos = None
-                if last_pos is not None and abs(last_pos - target_position) <= tolerance:
-                    return True, last_pos
-            time.sleep(poll_s)
-        return False, last_pos
-
-    
     # ---------- Always-on full re-home at cycle boundary ----------
     def _rehome_at_cycle_boundary(self):
         """
@@ -478,33 +442,10 @@ class ExperimentRunner(QThread):
                 self.finished_signal.emit()
                 return
 
-
         # Start camera & apply the transmission (Rear IR) preset — the
         # sole imaging illumination mode now.
         try:
             camera.start_camera()
-
-            # If manual focus is enabled, confirm the lens actually reached
-            # the calibrated position before proceeding. See FOCUS_GATE_*
-            # comment above for why this matters (continuous AF during the
-            # Live-View homing preview can leave the lens far from target).
-            if self.cam_settings.get("ManualFocusEnable", False):
-                target_pos = float(self.cam_settings.get("ManualFocusPosition", 0.0))
-                settled, last_pos = self._focus_stability_gate(target_pos)
-                if settled:
-                    self._log(
-                        f"Manual focus settled at {last_pos:.3f} diopters "
-                        f"(target {target_pos:.3f})."
-                    )
-                else:
-                    shown = "n/a" if last_pos is None else f"{last_pos:.3f}"
-                    self._log(
-                        f"WARNING: manual focus did not settle within "
-                        f"{FOCUS_GATE_MAX_WAIT_S:.1f}s (last read: {shown} "
-                        f"diopters, target {target_pos:.3f}). Proceeding "
-                        f"anyway — check the first captured image(s)."
-                    )
-
             active_settings = dict(self.cam_settings)
             active_settings = camera.apply_ir_transmission_preset(active_settings)
             camera.apply_settings(active_settings)
@@ -513,7 +454,6 @@ class ExperimentRunner(QThread):
             self.finished_signal.emit()
             return
 
-        
         # --- Global pre-warm once per run ---
         try:
             if self.led_control_fn:
@@ -605,19 +545,8 @@ class ExperimentRunner(QThread):
                         except Exception as e:
                             self._log(f"AF lock warning (ignored): {e}")
 
-                    # (A) One-time warm-up ONLY for the first Plate #1 of the run.
-                    # Picamera2's real hardware AE genuinely benefits from this extra
-                    # settle time on the very first capture. The Arducam backend's
-                    # Rear IR, however, is ALWAYS locked to fixed manual exposure/gain
-                    # (see apply_ir_transmission_preset() in camera_arducam_usb3.py) —
-                    # it never actually runs AE, so this warmup does nothing useful for
-                    # it and only adds extra Rear IR LED dwell time before the very
-                    # first capture of a run. Skip it for Arducam only, so Picamera2's
-                    # behavior is completely unchanged, while we test whether this
-                    # contributed to the cycle-1/plate-1-only anomaly seen during
-                    # Arducam testing (Sept 2026).
-                    _is_arducam = (camera.get_camera_backend_active_this_process() == "arducam_usb3")
-                    if self.cycle_count == 1 and plate_idx == 1 and FIRST_PLATE_WARMUP_S > 0 and not _is_arducam:
+                    # (A) One-time warm-up ONLY for the first Plate #1 of the run
+                    if self.cycle_count == 1 and plate_idx == 1 and FIRST_PLATE_WARMUP_S > 0:
                         self._log(f"First Plate #1 warm-up: extra {FIRST_PLATE_WARMUP_S:.1f}s AE settle")
                         self._sleep_with_abort(FIRST_PLATE_WARMUP_S)
 
@@ -651,6 +580,54 @@ class ExperimentRunner(QThread):
                     self._sleep_with_abort(0.20)
 
                     self.settling_started.emit(plate_idx)
+
+                    # --- On-screen snapshot for the GUI (Sept 2026 fix) ---
+                    # Grab a single, correctly-exposed low-res preview frame
+                    # for on-screen display ENTIRELY on this thread, in
+                    # strict sequence with the real capture below — no other
+                    # thread touches the camera during an automated run.
+                    #
+                    # This used to live in gui.py as show_experiment_snapshot(),
+                    # a slot connected to settling_started that ran on the Qt
+                    # main thread and called into the camera itself. Because
+                    # that signal uses a queued cross-thread connection, this
+                    # runner thread did not wait for the GUI to finish
+                    # handling it — it moved on to camera.save_image()
+                    # immediately, so the GUI's camera.get_frame() call could
+                    # (and on real hardware, did) execute AT THE SAME TIME as
+                    # save_image()'s own device reopen + discard-frame
+                    # sequence below. camera_arducam_usb3.py's _cap_lock only
+                    # guards individual read/open/close calls, not a whole
+                    # multi-frame sequence, so the two threads' reads could
+                    # interleave — plausibly consuming some of save_image()'s
+                    # post-reopen "discard frames" reads meant to flush a
+                    # not-yet-settled sensor, which matches the
+                    # "blank/flat frame on attempt 1, fine on attempt 2"
+                    # pattern seen on every plate in one real test. A still
+                    # earlier version of this feature ALSO pushed/restored
+                    # exposure/gain from that same competing GUI thread,
+                    # which one test showed could wedge the USB3 device
+                    # outright ("could not open /dev/video0"). Doing the
+                    # whole push/grab/restore here — on the one thread that
+                    # already owns exclusive camera access for the run —
+                    # removes both failure modes at the source rather than
+                    # trading one for the other.
+                    snap_frame = None
+                    try:
+                        live = camera.apply_ir_transmission_preset_liveview(None)
+                        camera.apply_settings(live)
+                        snap_frame = camera.get_frame()
+                    except Exception as e:
+                        self._log(f"Snapshot preview error (ignored): {e}")
+                    finally:
+                        # Restore the exact capture exposure/gain pinned
+                        # above, regardless of whether the snapshot grab
+                        # succeeded — save_image() below must see the real
+                        # capture profile, never the Live View one.
+                        if settled_exp is not None and settled_gain is not None:
+                            camera.set_manual_exposure_gain(settled_exp, settled_gain)
+                    if snap_frame is not None and not snap_frame.isNull():
+                        self.snapshot_ready.emit(plate_idx, snap_frame)
 
                     # Capture (if this plate is selected)
                     if plate_idx in self.selected_plates:
@@ -767,4 +744,3 @@ class ExperimentRunner(QThread):
             self._clear_growth_mode_leds()
             self._close_csv()
             self.finished_signal.emit()
-
