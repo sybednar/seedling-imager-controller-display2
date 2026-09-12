@@ -119,44 +119,54 @@ class CameraConfigDialog(QDialog):
         gen.addRow(QLabel(""), backend_note)
         sep = QFrame(); sep.setFrameShape(QFrame.HLine); sep.setStyleSheet("color: #455A64;")
         gen.addRow(sep)
+        self.ae_lbl = QLabel("Auto Exposure (AE):")
         self.ae_chk = QCheckBox("Enable Auto Exposure")
         self.ae_chk.setChecked(bool(self.settings["AeEnable"]))
-        gen.addRow(QLabel("Auto Exposure (AE):"), self.ae_chk)
+        gen.addRow(self.ae_lbl, self.ae_chk)
+        self.exp_lbl = QLabel("Exposure Time (µs):")
         self.exp_spin = QSpinBox()
         self.exp_spin.setRange(100, 200000)
         self.exp_spin.setSingleStep(500)          # 500 µs per click
         self.exp_spin.setValue(int(self.settings["ExposureTime"]))
-        gen.addRow(QLabel("Exposure Time (µs):"), self.exp_spin)
+        gen.addRow(self.exp_lbl, self.exp_spin)
+        self.gain_lbl = QLabel("Analogue Gain:")
         self.gain_spin = QDoubleSpinBox()
         self.gain_spin.setRange(1.0, 16.0); self.gain_spin.setSingleStep(0.1)
         self.gain_spin.setValue(float(self.settings["AnalogueGain"]))
-        gen.addRow(QLabel("Analogue Gain:"), self.gain_spin)
+        gen.addRow(self.gain_lbl, self.gain_spin)
+        self.awb_lbl = QLabel("AWB:")
         self.awb_chk = QCheckBox("Enable Auto White Balance")
         self.awb_chk.setChecked(bool(self.settings["AwbEnable"]))
-        gen.addRow(QLabel("AWB:"), self.awb_chk)
+        gen.addRow(self.awb_lbl, self.awb_chk)
+        self.contrast_lbl = QLabel("Contrast:")
         self.contrast_spin = QDoubleSpinBox()
         self.contrast_spin.setRange(0.5, 2.0); self.contrast_spin.setSingleStep(0.1)
         self.contrast_spin.setValue(float(self.settings["Contrast"]))
-        gen.addRow(QLabel("Contrast:"), self.contrast_spin)
+        gen.addRow(self.contrast_lbl, self.contrast_spin)
+        self.brightness_lbl = QLabel("Brightness:")
         self.brightness_spin = QDoubleSpinBox()
         self.brightness_spin.setRange(-1.0, 1.0); self.brightness_spin.setSingleStep(0.1)
         self.brightness_spin.setValue(float(self.settings["Brightness"]))
-        gen.addRow(QLabel("Brightness:"), self.brightness_spin)
+        gen.addRow(self.brightness_lbl, self.brightness_spin)
+        self.saturation_lbl = QLabel("Saturation:")
         self.saturation_spin = QDoubleSpinBox()
         self.saturation_spin.setRange(0.0, 2.0); self.saturation_spin.setSingleStep(0.1)
         self.saturation_spin.setValue(float(self.settings["Saturation"]))
-        gen.addRow(QLabel("Saturation:"), self.saturation_spin)
+        gen.addRow(self.saturation_lbl, self.saturation_spin)
+        self.sharpness_lbl = QLabel("Sharpness:")
         self.sharpness_spin = QDoubleSpinBox()
         self.sharpness_spin.setRange(0.0, 2.0); self.sharpness_spin.setSingleStep(0.1)
         self.sharpness_spin.setValue(float(self.settings["Sharpness"]))
-        gen.addRow(QLabel("Sharpness:"), self.sharpness_spin)
+        gen.addRow(self.sharpness_lbl, self.sharpness_spin)
+        self.nr_lbl = QLabel("Noise Reduction Mode:")
         self.nr_spin = QSpinBox()
         self.nr_spin.setRange(0, 3)
         self.nr_spin.setValue(int(self.settings["NoiseReductionMode"]))
-        gen.addRow(QLabel("Noise Reduction Mode:"), self.nr_spin)
+        gen.addRow(self.nr_lbl, self.nr_spin)
+        self.hdr_lbl = QLabel("HDR:")
         self.hdr_chk = QCheckBox("Enable HDR (3MP only)")
         self.hdr_chk.setChecked(bool(self.settings["HdrEnable"]))
-        gen.addRow(QLabel("HDR:"), self.hdr_chk)
+        gen.addRow(self.hdr_lbl, self.hdr_chk)
         tabs.addTab(gen_w, "General")
         # ------------------------------------------------------------------ #
         # Tab 2 – Focus                                                        #
@@ -377,8 +387,41 @@ class CameraConfigDialog(QDialog):
         apply to the Picamera2 backend's libcamera controls; confirmed on
         real hardware that they have zero effect on the Arducam backend's
         Live View, so leaving them enabled there was actively misleading.
+
+        Also disables the entire General tab (AE, Exposure Time, Analogue
+        Gain, AWB, Contrast, Brightness, Saturation, Sharpness, Noise
+        Reduction Mode, HDR) for Arducam. Confirmed by reading
+        camera_arducam_usb3.py's apply_settings(): it only ever reads
+        Arducam_AeEnable / Arducam_ExposureUs / Arducam_Gain — none of these
+        plain-named General tab keys are ever read by that backend at all.
+        They're Picamera2-only (applied via libcamera set_controls()), so
+        leaving them enabled and white-text for Arducam was misleading in
+        the exact same way the Rear IR Contrast/Sharpness/Brightness fields
+        were.
         """
         is_arducam = (self.backend_combo.currentData() == "arducam_usb3")
+
+        _general_widgets = (
+            self.ae_lbl, self.ae_chk,
+            self.exp_lbl, self.exp_spin,
+            self.gain_lbl, self.gain_spin,
+            self.awb_lbl, self.awb_chk,
+            self.contrast_lbl, self.contrast_spin,
+            self.brightness_lbl, self.brightness_spin,
+            self.saturation_lbl, self.saturation_spin,
+            self.sharpness_lbl, self.sharpness_spin,
+            self.nr_lbl, self.nr_spin,
+            self.hdr_lbl, self.hdr_chk,
+        )
+        _general_tip = (
+            "Only affects the Picamera2 backend — the Arducam backend has no "
+            "equivalent control and ignores this field. Rear IR exposure/gain "
+            "and Live View exposure/gain are set on the Rear IR tab instead."
+        )
+        for widget in _general_widgets:
+            widget.setEnabled(not is_arducam)
+        for widget in _general_widgets:
+            widget.setToolTip(_general_tip if is_arducam else "")
 
         self.rir_gain_lbl.setVisible(not is_arducam)
         self.rir_gain.setVisible(not is_arducam)
