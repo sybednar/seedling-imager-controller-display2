@@ -946,52 +946,52 @@ class SeedlingImagerGUI(QWidget):
         During an experiment, show a single low-res snapshot (lores) at the start
         of each plate's settling window so users can see the carousel cycling.
 
-        Temporarily borrows the Rear IR LIVE VIEW exposure/gain for exactly
-        this one displayed frame, then explicitly restores whatever
-        exposure/gain was pinned beforehand. This is NOT cosmetic
-        bookkeeping — experiment_runner.py's AE-stability-gate blindly
-        treats "whatever exposure/gain is currently on the hardware" as the
-        correct value to pin for EACH plate's actual capture (necessary
-        since this backend's Rear IR is always locked to fixed manual
-        exposure/gain rather than genuinely running AE). Confirmed on real
-        hardware (Sept 2026): an earlier attempt to leave the Live View
-        preset applied after every capture (in camera_arducam_usb3.py's
-        save_image()) corrupted every SUBSEQUENT plate's real saved
-        image — plates were silently captured at Live View exposure/gain
-        instead of the intended Rear IR capture profile. Reading, then
-        restoring, the exact pinned value here confines the Live View push
-        to only the single frame grabbed for on-screen display, so the
-        next plate's real capture is never affected.
+        REVERTED (Sept 2026) to a read-only frame grab — no exposure/gain
+        pushing or restoring here at all.
+
+        A prior version of this function temporarily pushed the Rear IR
+        LIVE VIEW exposure/gain preset for this one displayed frame, then
+        restored the previously-pinned value, using three separate
+        _run_camera_call_guarded() calls (each spinning up its own
+        background QThread). That introduced a genuine, serious
+        concurrency bug: this slot runs on the GUI/main thread, but
+        experiment_runner.py's ExperimentRunner is, at the same moment, on
+        ITS OWN background thread, independently calling
+        camera.set_manual_exposure_gain() (via _ae_stability_gate) and
+        camera.save_image() (which opens/closes the capture device and
+        issues its own v4l2-ctl pin/verify calls). camera_arducam_usb3.py's
+        _cap_lock only guards _cap/_open_capture()/stop_camera()/
+        _read_raw_frame() — it does NOT guard the _v4l2_set()/_v4l2_get()
+        subprocess calls. So the three guarded background threads spawned
+        here could run concurrently with ExperimentRunner's own camera
+        calls against the same /dev/video0 device, with zero
+        synchronization between them.
+
+        Confirmed on real hardware (Sept 2026): this raced hard enough to
+        wedge the USB3 device outright mid-experiment — "[arducam] ERROR:
+        could not open /dev/video0" repeated on every subsequent access,
+        v4l2_get/v4l2_set calls failing with exit status 1, and a
+        subsequent plate's capture failing completely (no frame returned
+        at full resolution, not even a bad/flat one) across all reopen
+        attempts. That is a hardware-availability failure, categorically
+        worse than the cosmetic issue (an occasionally overexposed
+        snapshot preview) this function was trying to fix.
+
+        Going back to a plain get_frame() call means the on-screen
+        snapshot may sometimes be overexposed if the hardware currently
+        has the Capture profile's exposure/gain pinned (since the
+        preview stream is more light-sensitive than capture at the same
+        register values) — but it performs ZERO camera-control calls of
+        its own, so it cannot race with or contend for the device against
+        ExperimentRunner's thread. Do not reintroduce any
+        exposure/gain-touching logic here without a real cross-thread lock
+        shared with experiment_runner.py's camera access.
         """
         # If live view is active, snapshots are redundant (and Live View is usually off during runs)
         if self.live_view_active:
             return
 
-        before = {}
-
-        def _read_before():
-            before.update(camera.get_metadata() or {})
-
-        self._run_camera_call_guarded(_read_before, timeout_ms=4000, what="snapshot: read pinned exposure/gain")
-        prev_exp = before.get("ExposureTime")
-        prev_gain = before.get("AnalogueGain")
-
-        self._run_camera_call_guarded(
-            self.apply_liveview_camera_profile, timeout_ms=4000,
-            what="snapshot: push Live View profile",
-        )
-
         frame = camera.get_frame()
-
-        # Restore the exact exposure/gain that was pinned before this
-        # function touched anything — regardless of whether the frame grab
-        # above succeeded — so the next plate's real capture is unaffected.
-        if prev_exp is not None and prev_gain is not None:
-            self._run_camera_call_guarded(
-                lambda: camera.set_manual_exposure_gain(prev_exp, prev_gain),
-                timeout_ms=4000, what="snapshot: restore pinned exposure/gain",
-            )
-
         if frame.isNull():
             return
 
