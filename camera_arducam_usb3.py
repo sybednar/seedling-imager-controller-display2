@@ -85,7 +85,18 @@ DEFAULTS = {
     "Arducam_FullWidth":     5120,
     "Arducam_FullHeight":    3840,
 
-    "Arducam_AeEnable":      True,
+    "Arducam_AeEnable":      False,  # CONFIRMED on real hardware (Sept 2026): this
+                                     # sensor's onboard AE converges poorly/
+                                     # inconsistently on the bright, uniform Rear IR
+                                     # scene, and Rear IR is permanently locked to
+                                     # fixed manual exposure/gain regardless of this
+                                     # flag anyway (see _rear_ir_lock_manual). Leaving
+                                     # this True caused apply_settings()/start_camera()
+                                     # to repeatedly try (and always fail — wrong enum
+                                     # value for this device) to re-enable AE, logged
+                                     # as harmless but noisy "v4l2_set(exposure_auto=3)
+                                     # ... exit status 255" errors on every Live View
+                                     # start and every capture restore.
     "Arducam_ExposureUs":    20000,  # manual exposure, µs (used when AE off)
     "Arducam_Gain":          100,    # CONFIRMED on real hardware (Sept 2026): this
                                      # sensor's V4L2 "gain" control range is 100-2200
