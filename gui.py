@@ -1031,18 +1031,38 @@ class SeedlingImagerGUI(QWidget):
         # No else branch needed — if the user cancels, camera state is unchanged.
 
     def _update_focus_mode_label(self):
-        """Refresh the focus mode indicator from persisted settings."""
+        """
+        Refresh the camera-identity / focus-mode indicator shown below the
+        Camera Config button.
+
+        Backend-aware: the Arducam backend has a fixed physical
+        manual-focus lens (twist the M12 ring by hand) with no software
+        focus control or position readback at all, so showing Picamera2's
+        diopter/manual-focus status here would be meaningless — and,
+        before this fix, this label always showed the stale Picamera2
+        value even while the Arducam backend was active, since it read
+        'ManualFocusEnable'/'ManualFocusPosition' unconditionally. Show
+        camera identity instead for Arducam; keep the existing diopter
+        readout for Picamera2, since that one IS meaningful there.
+        """
         from camera_config import load_settings as _load_cam_settings
         cs = _load_cam_settings()
         sc = self._s
         ffs = max(9, int(8.75 * sc))   # label font, scaled
+        backend = camera.get_camera_backend_active_this_process()
+
+        if backend == "arducam_usb3":
+            self.focus_mode_label.setText("Arducam 20MP USB3.0\n(fixed manual-focus lens)")
+            self.focus_mode_label.setStyleSheet(f"font-size: {ffs}px; color: #90A4AE;")
+            return
+
         if cs.get("ManualFocusEnable", False):
             pos = float(cs.get("ManualFocusPosition", 0.0))
             dist_cm = (1.0 / pos * 100) if pos > 0 else 0
-            self.focus_mode_label.setText(f"MF: {pos:.2f} D  ({dist_cm:.0f} cm)")
+            self.focus_mode_label.setText(f"Picamera3 12MP\nMF: {pos:.2f} D  ({dist_cm:.0f} cm)")
             self.focus_mode_label.setStyleSheet(f"font-size: {ffs}px; color: #FFD600;")  # yellow = manual
         else:
-            self.focus_mode_label.setText("Focus: Auto")
+            self.focus_mode_label.setText("Picamera3 12MP\nFocus: Auto")
             self.focus_mode_label.setStyleSheet(f"font-size: {ffs}px; color: #AAAAAA;")  # grey = auto
 
     def _on_settings_applied(self, ok: bool, msg: str, was_live: bool, worker: QThread):
