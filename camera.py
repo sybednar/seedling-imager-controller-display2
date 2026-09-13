@@ -77,7 +77,7 @@ if _ACTIVE_BACKEND == "arducam_usb3":
         start_camera, stop_camera,
         apply_settings, get_current_settings,
         set_auto_exposure, set_manual_focus, set_af_mode, trigger_autofocus,
-        get_frame, save_image, get_metadata, get_last_saved_shape,
+        get_frame, save_image, mock_capture, get_metadata, get_last_saved_shape,
         print_diagnostics,
     )
 else:
