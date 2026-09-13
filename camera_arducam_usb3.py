@@ -564,6 +564,31 @@ def _open_capture(width: int, height: int):
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"GREY"))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+
+        # Force a 1-frame internal buffer (Sept 2026). Diagnosed on real
+        # hardware: OpenCV's V4L2 backend queues captured frames rather than
+        # always handing back the newest one, so a .read() call after any
+        # gap without reads (e.g. get_frame() during the on-screen snapshot,
+        # after one or more plates were driven past without a real
+        # save_image() capture in between — save_image()'s own close+reopen
+        # is what happens to flush this queue) can return a stale, already-
+        # queued frame instead of the current one. Confirmed symptom: an
+        # experiment with plates 3/4/5 skipped showed Plate #6's on-screen
+        # snapshot displaying Plate #5's plate (visible grid markings Plate
+        # #6 doesn't have) even though Plate #6's real saved capture was
+        # correct every time — the queued/stale frame was consistently
+        # exactly one plate behind the physical position by the time the
+        # backlog was read. Setting BUFFERSIZE=1 tells the driver/backend to
+        # keep only the latest frame, so .read() always returns a fresh one
+        # regardless of how long it's been since the last read. This is a
+        # capture-property set only — no extra v4l2-ctl exposure/gain writes,
+        # no extra open/close cycling beyond what already happens in
+        # save_image() — so it does not touch either of the two things this
+        # device has been shown not to tolerate more of. Not every backend
+        # honors this property; if it's silently ignored here, the snapshot
+        # staleness described above would persist and need a different fix.
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
         _cap = cap
         _cap_size = (width, height)
 
