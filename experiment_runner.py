@@ -454,6 +454,27 @@ class ExperimentRunner(QThread):
             self.finished_signal.emit()
             return
 
+        # Tracks whether the camera stream is currently "fresh" for the
+        # on-screen snapshot's purposes (Sept 2026). Diagnosed on real
+        # hardware across two separate test runs: a plate's on-screen
+        # snapshot is only ever wrong when the PRECEDING plate in the
+        # sequence was skipped (not captured) — a real save_image() call
+        # always closes and reopens the device, and that reopen is what
+        # actually flushes the stream. A skipped plate never triggers that
+        # reopen, so anything read afterward can be a stale frame left over
+        # from an earlier plate position (confirmed: showed the previous
+        # plate's actual content, e.g. a resolution test target that
+        # belonged to a different plate, or an overexposed transitional
+        # frame). This held true both before and after adding
+        # CAP_PROP_BUFFERSIZE=1 in camera_arducam_usb3.py, so rather than
+        # keep chasing driver-level buffering behavior we can't fully
+        # control from here, we just never trust a snapshot in the one
+        # situation we've shown is unreliable — see the gate on this flag
+        # in the per-plate loop below. True here because start_camera()
+        # above just freshly opened the stream, which is equivalent to a
+        # reopen.
+        self._stream_fresh_for_snapshot = True
+
         # --- Global pre-warm once per run ---
         try:
             if self.led_control_fn:
@@ -590,42 +611,62 @@ class ExperimentRunner(QThread):
                     # RESTORED (Sept 2026) to this exact version — the one
                     # confirmed on real hardware to eliminate the
                     # cross-thread device-loss failure AND the every-plate
-                    # save_image() reopen retry, with only a narrower
-                    # cosmetic issue remaining (Plate 1's snapshot
-                    # occasionally blank/overexposed specifically when the
-                    # PRECEDING plate was skipped, not captured). Two later
-                    # attempts to also fix that narrower issue — a
-                    # discard-frame loop plus a forced close+reopen of the
-                    # preview stream, and separately a software-only
-                    # brightness scale — each made things worse (the forced
-                    # reopen caused a full device-loss cascade that lost 5
-                    # of 6 plates in one run; the software brightness scale
-                    # made every snapshot too dark to be useful). Do not
-                    # reintroduce either of those without a confirmed,
-                    # tested fix for what made them fail.
+                    # save_image() reopen retry. A narrower cosmetic issue
+                    # remained on top of this version: the snapshot could be
+                    # stale/wrong whenever the PRECEDING plate in the
+                    # sequence was skipped rather than captured. Two attempts
+                    # to fix that at the camera level — a discard-frame loop
+                    # plus a forced close+reopen of the preview stream, and
+                    # separately a software-only brightness scale — each made
+                    # things worse (the forced reopen caused a full
+                    # device-loss cascade that lost 5 of 6 plates in one run;
+                    # the software brightness scale made every snapshot too
+                    # dark to be useful). A third attempt, adding
+                    # CAP_PROP_BUFFERSIZE=1 in camera_arducam_usb3.py, was
+                    # low-risk but didn't eliminate the staleness either —
+                    # confirmed on real hardware across two separate test
+                    # runs that a skipped plate's successor can still show a
+                    # stale frame regardless. Rather than keep chasing
+                    # driver-level buffering behavior, we now just never
+                    # trust a snapshot in the one situation shown to be
+                    # unreliable: gate the whole block on
+                    # self._stream_fresh_for_snapshot, which is only True
+                    # when the plate immediately before this one was actually
+                    # captured (real save_image() reopen) or this is the run's
+                    # very first plate (fresh start_camera() open). No new
+                    # camera calls were added — a skipped plate now simply
+                    # does nothing here instead of grabbing a frame that
+                    # might belong to an earlier plate.
                     snap_frame = None
-                    try:
-                        live = camera.apply_ir_transmission_preset_liveview(None)
-                        camera.apply_settings(live)
-                        snap_frame = camera.get_frame()
-                    except Exception as e:
-                        self._log(f"Snapshot preview error (ignored): {e}")
-                    finally:
-                        # Restore the exact capture exposure/gain pinned
-                        # above, regardless of whether the snapshot grab
-                        # succeeded — save_image() below must see the real
-                        # capture profile, never the Live View one.
-                        if settled_exp is not None and settled_gain is not None:
-                            camera.set_manual_exposure_gain(settled_exp, settled_gain)
+                    if self._stream_fresh_for_snapshot:
+                        try:
+                            live = camera.apply_ir_transmission_preset_liveview(None)
+                            camera.apply_settings(live)
+                            snap_frame = camera.get_frame()
+                        except Exception as e:
+                            self._log(f"Snapshot preview error (ignored): {e}")
+                        finally:
+                            # Restore the exact capture exposure/gain pinned
+                            # above, regardless of whether the snapshot grab
+                            # succeeded — save_image() below must see the real
+                            # capture profile, never the Live View one.
+                            if settled_exp is not None and settled_gain is not None:
+                                camera.set_manual_exposure_gain(settled_exp, settled_gain)
 
-                    # Brief settle after the restore write above, before
-                    # save_image() switches the device to full resolution —
-                    # confirmed on real hardware to eliminate the
-                    # every-plate reopen retry that appeared without it.
-                    self._sleep_with_abort(0.15)
+                        # Brief settle after the restore write above, before
+                        # save_image() switches the device to full resolution —
+                        # confirmed on real hardware to eliminate the
+                        # every-plate reopen retry that appeared without it.
+                        self._sleep_with_abort(0.15)
 
-                    if snap_frame is not None and not snap_frame.isNull():
-                        self.snapshot_ready.emit(plate_idx, snap_frame)
+                        if snap_frame is not None and not snap_frame.isNull():
+                            self.snapshot_ready.emit(plate_idx, snap_frame)
+                    else:
+                        self._log(
+                            f"Plate #{plate_idx}: on-screen snapshot skipped "
+                            f"(preceding plate wasn't captured, so the preview "
+                            f"stream isn't guaranteed fresh)."
+                        )
 
                     # Capture (if this plate is selected)
                     if plate_idx in self.selected_plates:
@@ -704,6 +745,13 @@ class ExperimentRunner(QThread):
                             self._log(f"Capture failed on plate {plate_idx}")
                     else:
                         self._log(f"Plate #{plate_idx}: skipped.")
+
+                    # Record whether THIS plate was captured, for the next
+                    # plate's snapshot gate above — a real save_image() call
+                    # always closes/reopens the device (even on failure, via
+                    # its own finally block), which is what actually flushes
+                    # the stream. True only when a capture was attempted.
+                    self._stream_fresh_for_snapshot = (plate_idx in self.selected_plates)
 
                     # LED OFF, re-enable AE, prep for next plate
                     if self.led_control_fn:
