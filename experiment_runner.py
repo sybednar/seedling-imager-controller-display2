@@ -626,6 +626,36 @@ class ExperimentRunner(QThread):
                         # capture profile, never the Live View one.
                         if settled_exp is not None and settled_gain is not None:
                             camera.set_manual_exposure_gain(settled_exp, settled_gain)
+
+                    # Brief settle after the restore write above, before
+                    # save_image() switches the device to full resolution.
+                    #
+                    # Confirmed on real hardware (Sept 2026): moving the
+                    # snapshot grab onto this thread (see the block above)
+                    # eliminated the cross-thread device-loss failure
+                    # ("could not open /dev/video0") seen previously — but a
+                    # follow-up test still showed EVERY plate needing one
+                    # full close+reopen retry in save_image() (attempt 1: a
+                    # blank/flat frame; attempt 2: good), exactly like
+                    # before the fix. That means the retries were never
+                    # actually caused by the cross-thread race — they
+                    # persisted even with zero concurrency. The likely
+                    # cause: the snapshot block above now does two EXTRA
+                    # v4l2 exposure/gain writes (push Live View, then
+                    # restore capture values) at the preview resolution,
+                    # immediately before save_image() does its own
+                    # resolution-switch reopen. A bare v4l2_set with no
+                    # settle time right before a resolution switch is a
+                    # plausible way to make the sensor's already-known
+                    # mode-switch settling (see save_image()'s own
+                    # comments/retry loop) worse than it was in the older
+                    # baseline, which had no such intervening writes. This
+                    # sleep gives the sensor a moment to settle from the
+                    # restore write before the resolution switch — an
+                    # attempt to reduce/eliminate the now-typical single
+                    # reopen retry, not yet confirmed on real hardware.
+                    self._sleep_with_abort(0.15)
+
                     if snap_frame is not None and not snap_frame.isNull():
                         self.snapshot_ready.emit(plate_idx, snap_frame)
 
