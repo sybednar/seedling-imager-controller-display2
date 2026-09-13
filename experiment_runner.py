@@ -614,27 +614,41 @@ class ExperimentRunner(QThread):
                     # trading one for the other.
                     snap_frame = None
                     try:
+                        # Force a genuine close+reopen of the preview stream
+                        # before pushing the Live View profile, rather than
+                        # reusing whatever capture object happens to already
+                        # be open.
+                        #
+                        # Confirmed on real hardware (Sept 2026, three-cycle
+                        # test): snapshot success correlated exactly with
+                        # whether the PRECEDING plate in the sequence had
+                        # just gone through a real full-resolution capture.
+                        # Plate 2's snapshot always followed Plate 1's own
+                        # save_image() call, which — as part of its normal
+                        # cleanup — closes and reopens the capture device
+                        # back to preview resolution. Plate 1's snapshot
+                        # (2nd/3rd cycle) always followed Plate 6, which is
+                        # NOT in selected_plates for this experiment, so
+                        # save_image() is never called for it and the
+                        # preview stream just keeps running continuously,
+                        # unreopened, since Plate 5. Every one of those
+                        # "stale stream" snapshots came back blank/
+                        # overexposed; every "freshly reopened stream" one
+                        # was fine — a discard-frame count (see below) was
+                        # not enough to fix it on its own. Forcing the same
+                        # close+reopen here for every plate — capture or
+                        # not — removes that difference instead of hoping
+                        # a fixed discard count covers an unbounded stale
+                        # stream duration.
+                        camera.stop_camera()
+                        camera.start_camera()
+
                         live = camera.apply_ir_transmission_preset_liveview(None)
                         camera.apply_settings(live)
                         # Discard a couple of frames after the exposure/gain
-                        # write above before trusting one for display.
-                        #
-                        # Confirmed on real hardware (Sept 2026): a raw
-                        # v4l2 exposure/gain register write does not
-                        # necessarily take effect on the very next frame —
-                        # save_image() already accounts for this after ITS
-                        # OWN control writes by discarding several frames
-                        # before reading one (see _DISCARD_FRAMES in
-                        # camera_arducam_usb3.py). This snapshot code was
-                        # the one place that pushed new exposure/gain and
-                        # then trusted the very next frame with no discard
-                        # at all. One real test showed exactly the failure
-                        # this predicts: a single plate's on-screen preview
-                        # came back blank/overexposed (a stale/transitional
-                        # frame) while every other plate that cycle, and
-                        # the real capture for that same plate moments
-                        # later (which does go through save_image()'s own
-                        # discard loop), were unaffected.
+                        # write above before trusting one for display — a
+                        # raw v4l2 exposure/gain register write does not
+                        # necessarily take effect on the very next frame.
                         for _ in range(3):
                             camera.get_frame()
                             self._sleep_with_abort(0.15)
