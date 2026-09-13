@@ -25,14 +25,12 @@
 # Public surface (mostly unchanged): signals, logging, CSV schema, LED callbacks, etc.
 
 from PySide6.QtCore import QThread, Signal
-from PySide6.QtGui import QImage
 from datetime import datetime, timedelta
 from pathlib import Path
 import time
 import json
 import csv
 import os
-import numpy as np
 
 import motor_control
 import camera
@@ -163,89 +161,6 @@ class ExperimentRunner(QThread):
         end = time.time() + seconds
         while time.time() < end and not self._abort:
             time.sleep(0.1)
-
-    # ---------- On-screen snapshot helpers (read-only / software-only) ----------
-    # Both of these were added after four escalating attempts to fix the
-    # on-screen snapshot's exposure by touching the camera (pushing a
-    # different exposure/gain, forcing a close+reopen) — each of which, at
-    # some point on real hardware, caused a real capture failure. These two
-    # helpers do NOT call anything that writes to or opens/closes the
-    # device: _grab_snapshot_frame() only ever calls camera.get_frame()
-    # (a plain read, the same call the always-safe update_camera_frame()
-    # preview timer uses), and _adjust_snapshot_brightness() only does
-    # numpy arithmetic on pixel data already sitting in memory. Do not add
-    # any camera.apply_settings()/set_manual_exposure_gain()/stop_camera()/
-    # start_camera() calls to either of these — that risk was the entire
-    # reason for switching to this approach.
-
-    def _grab_snapshot_frame(self, attempts=3):
-        """
-        Read-only retry for a non-degenerate frame. camera.get_frame() has
-        no validity check at all (unlike save_image()'s own frame-quality
-        check) — an occasional bad USB read can come back as a flat black
-        or white frame. Since this only ever reads (never writes/opens),
-        retrying a few times carries none of the risk that writes/opens do.
-        """
-        best = None
-        for _ in range(max(1, attempts)):
-            f = camera.get_frame()
-            if f is None or f.isNull():
-                continue
-            std = self._frame_std(f)
-            if std is None or std > 2.0:
-                return f
-            best = f  # keep the last-seen frame in case every attempt looks flat
-        return best
-
-    def _frame_std(self, frame: QImage):
-        try:
-            w, h = frame.width(), frame.height()
-            bpl = frame.bytesPerLine()
-            arr = np.frombuffer(frame.constBits(), dtype=np.uint8, count=bpl * h).reshape(h, bpl)[:, :w]
-            return float(arr.std())
-        except Exception:
-            return None
-
-    def _adjust_snapshot_brightness(self, frame: QImage, settled_exp, settled_gain):
-        """
-        Darken the ALREADY-READ preview frame in software to approximate
-        what the dimmer, persisted Live View exposure/gain profile would
-        have looked like — using the ACTUAL configured Live View values
-        and the actual pinned Capture exposure/gain for this plate, not
-        hardcoded assumptions. Zero camera calls; pure pixel math.
-        """
-        try:
-            if frame is None or frame.isNull():
-                return frame
-            if frame.format() != QImage.Format_Grayscale8:
-                return frame  # unexpected format — leave untouched rather than risk it
-
-            cam_settings = load_settings()
-            live_exp = float(cam_settings.get("Arducam_RearIR_LiveView_ExposureUs", 4000))
-            live_gain = float(cam_settings.get("Arducam_RearIR_LiveView_Gain", 100))
-            cap_exp = float(settled_exp) if settled_exp else None
-            cap_gain = float(settled_gain) if settled_gain else None
-
-            if not (cap_exp and cap_gain and cap_exp > 0 and cap_gain > 0 and live_exp > 0 and live_gain > 0):
-                return frame
-
-            scale = (live_exp * live_gain) / (cap_exp * cap_gain)
-            # Only ever darken, never brighten, and never crush all the way
-            # to black even if the ratio is extreme.
-            scale = max(0.05, min(1.0, scale))
-            if scale >= 0.98:
-                return frame  # negligible difference — skip the extra copy
-
-            w, h = frame.width(), frame.height()
-            bpl = frame.bytesPerLine()
-            arr = np.frombuffer(frame.constBits(), dtype=np.uint8, count=bpl * h).reshape(h, bpl)[:, :w]
-            scaled = np.clip(arr.astype(np.float32) * scale, 0, 255).astype(np.uint8)
-            scaled = np.ascontiguousarray(scaled)
-            out = QImage(scaled.data, w, h, w, QImage.Format_Grayscale8)
-            return out.copy()  # detach from the numpy buffer before it goes out of scope
-        except Exception as e:
-            self._log(f"Snapshot brightness adjust error (ignored): {e}")
-            return frame
 
     def _open_csv(self):
         try:
@@ -667,29 +582,47 @@ class ExperimentRunner(QThread):
                     self.settling_started.emit(plate_idx)
 
                     # --- On-screen snapshot for the GUI ---
-                    # Grab a single frame for on-screen display ENTIRELY on
-                    # this thread, in strict sequence with the real capture
-                    # below — no other thread touches the camera during an
-                    # automated run.
+                    # Grab a single, correctly-exposed low-res preview frame
+                    # for on-screen display ENTIRELY on this thread, in
+                    # strict sequence with the real capture below — no other
+                    # thread touches the camera during an automated run.
                     #
-                    # Sept 2026: after four escalating attempts to fix this
-                    # preview's exposure by touching the camera (pushing a
-                    # different exposure/gain, forcing a close+reopen),
-                    # each of which at some point caused a real capture
-                    # failure on this hardware, the display path is now
-                    # READ-ONLY plus SOFTWARE-ONLY post-processing:
-                    #   - _grab_snapshot_frame() only calls camera.get_frame()
-                    #     (a plain read, retried a few times if a frame looks
-                    #     degenerate) — never a write, never open/close.
-                    #   - _adjust_snapshot_brightness() only does numpy math
-                    #     on pixel data already read into memory, darkening
-                    #     it to approximate the dimmer Live View profile
-                    #     using the actual configured exposure/gain values.
-                    # Neither of these can wedge or lose the device the way
-                    # every previous attempt eventually did. Do not add any
-                    # camera-control calls back into this block.
-                    snap_frame = self._grab_snapshot_frame()
-                    snap_frame = self._adjust_snapshot_brightness(snap_frame, settled_exp, settled_gain)
+                    # RESTORED (Sept 2026) to this exact version — the one
+                    # confirmed on real hardware to eliminate the
+                    # cross-thread device-loss failure AND the every-plate
+                    # save_image() reopen retry, with only a narrower
+                    # cosmetic issue remaining (Plate 1's snapshot
+                    # occasionally blank/overexposed specifically when the
+                    # PRECEDING plate was skipped, not captured). Two later
+                    # attempts to also fix that narrower issue — a
+                    # discard-frame loop plus a forced close+reopen of the
+                    # preview stream, and separately a software-only
+                    # brightness scale — each made things worse (the forced
+                    # reopen caused a full device-loss cascade that lost 5
+                    # of 6 plates in one run; the software brightness scale
+                    # made every snapshot too dark to be useful). Do not
+                    # reintroduce either of those without a confirmed,
+                    # tested fix for what made them fail.
+                    snap_frame = None
+                    try:
+                        live = camera.apply_ir_transmission_preset_liveview(None)
+                        camera.apply_settings(live)
+                        snap_frame = camera.get_frame()
+                    except Exception as e:
+                        self._log(f"Snapshot preview error (ignored): {e}")
+                    finally:
+                        # Restore the exact capture exposure/gain pinned
+                        # above, regardless of whether the snapshot grab
+                        # succeeded — save_image() below must see the real
+                        # capture profile, never the Live View one.
+                        if settled_exp is not None and settled_gain is not None:
+                            camera.set_manual_exposure_gain(settled_exp, settled_gain)
+
+                    # Brief settle after the restore write above, before
+                    # save_image() switches the device to full resolution —
+                    # confirmed on real hardware to eliminate the
+                    # every-plate reopen retry that appeared without it.
+                    self._sleep_with_abort(0.15)
 
                     if snap_frame is not None and not snap_frame.isNull():
                         self.snapshot_ready.emit(plate_idx, snap_frame)
