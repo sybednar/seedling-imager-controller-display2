@@ -634,9 +634,12 @@ class ExperimentRunner(QThread):
                     # when the plate immediately before this one was actually
                     # captured (real save_image() reopen) or this is the run's
                     # very first plate (fresh start_camera() open). No new
-                    # camera calls were added — a skipped plate now simply
-                    # does nothing here instead of grabbing a frame that
-                    # might belong to an earlier plate.
+                    # camera calls were added — a skipped plate now emits
+                    # snapshot_ready(plate_idx, None) instead of grabbing a
+                    # frame that might belong to an earlier plate, so
+                    # gui.py's show_experiment_snapshot() can actively clear
+                    # the preview pane rather than leave a stale picture on
+                    # screen next to a status message that says otherwise.
                     snap_frame = None
                     if self._stream_fresh_for_snapshot:
                         try:
@@ -662,11 +665,16 @@ class ExperimentRunner(QThread):
                         if snap_frame is not None and not snap_frame.isNull():
                             self.snapshot_ready.emit(plate_idx, snap_frame)
                     else:
-                        self._log(
-                            f"Plate #{plate_idx}: on-screen snapshot skipped "
-                            f"(preceding plate wasn't captured, so the preview "
-                            f"stream isn't guaranteed fresh)."
-                        )
+                        # Softer wording (Sept 2026) — the earlier message
+                        # here read like an error/warning to a non-technical
+                        # reader even though this is normal, expected
+                        # behavior for any plate following a skip. Also now
+                        # emits snapshot_ready with frame=None (rather than
+                        # nothing at all) so gui.py's show_experiment_snapshot()
+                        # can actively clear the preview pane instead of
+                        # leaving whatever picture was already on screen.
+                        self._log(f"Plate #{plate_idx}: preview not shown this cycle.")
+                        self.snapshot_ready.emit(plate_idx, None)
 
                     # Capture (if this plate is selected)
                     if plate_idx in self.selected_plates:
