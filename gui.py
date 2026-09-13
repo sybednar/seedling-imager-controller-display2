@@ -518,6 +518,24 @@ class SeedlingImagerGUI(QWidget):
         self.experiment_btn.setEnabled(True)
         self.camera_config_btn.setEnabled(True)
 
+        # Wait for the thread to ACTUALLY finish before dropping our last
+        # reference to it (Sept 2026 fix). HomingWorker.run() emits
+        # finished_with_result as its last statement, then returns — that
+        # emit is a queued cross-thread signal, so this slot can start
+        # running on the GUI thread at nearly the same instant the
+        # background thread is still in the middle of returning from run().
+        # If Python garbage-collects the QThread object (via the
+        # `self.homing_worker = None` below) before Qt's own internal
+        # "thread has stopped" bookkeeping completes, Qt aborts the whole
+        # process with "QThread: Destroyed while thread is still running" —
+        # confirmed on real hardware as an intermittent, hard-to-reproduce
+        # crash right after homing completes, no Python traceback since
+        # it's a Qt/C++-level abort, not a Python exception. wait() blocks
+        # only until the thread has verifiably finished; since we're
+        # already handling its "I'm done" signal, that should be
+        # effectively instant here, not a perceptible UI freeze.
+        if self.homing_worker is not None:
+            self.homing_worker.wait()
         self.homing_worker = None
 
         if plate_or_none is None:
@@ -585,6 +603,15 @@ class SeedlingImagerGUI(QWidget):
         self.experiment_btn.setEnabled(True)
         self.camera_config_btn.setEnabled(True)
 
+        # See on_homing_finished()'s comment above — same fix, same race:
+        # wait for the background thread to actually finish before dropping
+        # the last reference to it, to avoid Qt aborting the process with
+        # "QThread: Destroyed while thread is still running". This is the
+        # homing-before-experiment path, so this is also the exact spot the
+        # crash showed up on real hardware (right after "Homing complete"),
+        # since this callback runs BEFORE start_experiment() is ever reached.
+        if self.homing_worker is not None:
+            self.homing_worker.wait()
         self.homing_worker = None
 
         if plate_or_none is None:
