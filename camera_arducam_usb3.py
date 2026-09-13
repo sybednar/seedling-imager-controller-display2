@@ -664,31 +664,33 @@ def get_frame() -> QImage:
 _last_saved_shape: tuple[int, int] | None = None
 
 
-def save_image(path: str, grayscale: bool = True) -> bool:
+def _acquire_full_res_frame(fw: int, fh: int, label: str = "save_image"):
     """
-    Reconfigure to full resolution, grab a still, save, then restore the
-    preview stream. `grayscale` is accepted for interface parity with
-    camera_picamera2.py but is effectively always True here — the sensor has
-    no colour filter array, so there is no RGB variant to produce.
-    """
-    global _last_saved_shape
-    settings = load_settings()
-    fw = int(settings.get("Arducam_FullWidth", 5120))
-    fh = int(settings.get("Arducam_FullHeight", 3840))
-    pw = int(settings.get("Arducam_PreviewWidth", 1280))
-    ph = int(settings.get("Arducam_PreviewHeight", 960))
+    Shared by save_image() and mock_capture() (Sept 2026). Reconfigure to
+    full resolution, discard a run-up of warm-up frames, and validate/retry
+    up to 3 full close+reopen cycles — this is exactly save_image()'s
+    original reopen logic, pulled out unchanged so mock_capture() can reuse
+    the identical, already-proven-on-hardware sequence rather than a new,
+    untested variant. Does NOT restore preview resolution afterward —
+    callers are responsible for that in their own `finally` block, same as
+    before. `label` only changes the log-line prefix, so mock_capture()'s
+    reopens are distinguishable from save_image()'s real ones in the
+    console/run log.
 
+    Returns the acquired grayscale numpy frame (which may still be a
+    suspect blank/flat one if every retry failed), or None if no frame was
+    ever returned at all.
+    """
     # Capture whatever exposure/gain is CURRENTLY pinned on the hardware
     # right now (e.g. experiment_runner.py's per-plate AE-pin, set directly
-    # via set_manual_exposure_gain() and never written to camera_settings.json)
-    # — NOT the same thing as `settings` above, which only reflects the last
-    # saved JSON. Confirmed on real hardware: _open_capture() below fully
-    # releases and reopens the V4L2 device for the full-resolution still,
-    # and reopening can silently reset exposure/gain to the driver's default
-    # — which behaves like a brief, uncontrolled auto-exposure moment right
-    # as the frame is grabbed. This is why the Live View/settling preview
-    # (which never reopens the device) stayed correctly exposed while actual
-    # saved captures came out wildly over/under-exposed plate to plate.
+    # via set_manual_exposure_gain() and never written to camera_settings.json).
+    # Confirmed on real hardware: _open_capture() below fully releases and
+    # reopens the V4L2 device for the full-resolution still, and reopening
+    # can silently reset exposure/gain to the driver's default — which
+    # behaves like a brief, uncontrolled auto-exposure moment right as the
+    # frame is grabbed. This is why the Live View/settling preview (which
+    # never reopens the device) stayed correctly exposed while actual saved
+    # captures came out wildly over/under-exposed plate to plate.
     pinned_ae   = _v4l2_get("exposure_auto")
     pinned_exp  = _v4l2_get("exposure")
     pinned_gain = _v4l2_get("gain")
@@ -718,74 +720,93 @@ def save_image(path: str, grayscale: bool = True) -> bool:
         return float(g.std()) > 2.0
 
     gray = None
-    try:
-        for reopen_attempt in range(1, max_reopen_attempts + 1):
-            # Force a REAL reopen — _open_capture() no-ops if _cap is
-            # already open at this exact size, so an already-open full-res
-            # session (from a previous failed attempt) must be explicitly
-            # closed first or this would just keep reading the same stuck
-            # stream instead of getting a fresh one.
-            stop_camera()
-            _open_capture(fw, fh)
+    for reopen_attempt in range(1, max_reopen_attempts + 1):
+        # Force a REAL reopen — _open_capture() no-ops if _cap is
+        # already open at this exact size, so an already-open full-res
+        # session (from a previous failed attempt) must be explicitly
+        # closed first or this would just keep reading the same stuck
+        # stream instead of getting a fresh one.
+        stop_camera()
+        _open_capture(fw, fh)
 
-            # Re-apply whatever was pinned immediately before the reopen,
-            # rather than trusting the driver to have preserved it.
-            if pinned_ae is not None:
-                _v4l2_set("exposure_auto", pinned_ae)
-            if pinned_exp is not None:
-                _v4l2_set("exposure", pinned_exp)
-            if pinned_gain is not None:
-                _v4l2_set("gain", pinned_gain)
+        # Re-apply whatever was pinned immediately before the reopen,
+        # rather than trusting the driver to have preserved it.
+        if pinned_ae is not None:
+            _v4l2_set("exposure_auto", pinned_ae)
+        if pinned_exp is not None:
+            _v4l2_set("exposure", pinned_exp)
+        if pinned_gain is not None:
+            _v4l2_set("gain", pinned_gain)
 
-            verify_ae   = _v4l2_get("exposure_auto")
-            verify_exp  = _v4l2_get("exposure")
-            verify_gain = _v4l2_get("gain")
+        verify_ae   = _v4l2_get("exposure_auto")
+        verify_exp  = _v4l2_get("exposure")
+        verify_gain = _v4l2_get("gain")
+        print(
+            f"[arducam] {label}: reopen attempt {reopen_attempt}/{max_reopen_attempts} "
+            f"— requested ae={pinned_ae} exp={pinned_exp} gain={pinned_gain}; "
+            f"verified ae={verify_ae} exp={verify_exp} gain={verify_gain}",
+            flush=True,
+        )
+
+        # Discard a modest run-up of frames after the mode switch.
+        for _ in range(_DISCARD_FRAMES):
+            _read_raw_frame()
+            time.sleep(_FRAME_PERIOD_S)
+
+        frame = _read_raw_frame()
+        if frame is None:
             print(
-                f"[arducam] save_image: reopen attempt {reopen_attempt}/{max_reopen_attempts} "
-                f"— requested ae={pinned_ae} exp={pinned_exp} gain={pinned_gain}; "
-                f"verified ae={verify_ae} exp={verify_exp} gain={verify_gain}",
+                f"[arducam] {label}: reopen attempt {reopen_attempt} — "
+                f"no frame returned at full resolution.",
                 flush=True,
             )
+            continue
 
-            # Discard a modest run-up of frames after the mode switch.
-            for _ in range(_DISCARD_FRAMES):
-                _read_raw_frame()
-                time.sleep(_FRAME_PERIOD_S)
-
-            frame = _read_raw_frame()
-            if frame is None:
+        g_check = _to_gray(frame)
+        g_mean, g_std = float(g_check.mean()), float(g_check.std())
+        if _frame_looks_valid(g_check):
+            if reopen_attempt > 1:
                 print(
-                    f"[arducam] save_image: reopen attempt {reopen_attempt} — "
-                    f"no frame returned at full resolution.",
+                    f"[arducam] {label}: got a valid frame after "
+                    f"{reopen_attempt} full-reopen attempt(s) "
+                    f"(mean={g_mean:.2f}, std={g_std:.2f}).",
                     flush=True,
                 )
-                continue
+            gray = g_check
+            break
 
-            g_check = _to_gray(frame)
-            g_mean, g_std = float(g_check.mean()), float(g_check.std())
-            if _frame_looks_valid(g_check):
-                if reopen_attempt > 1:
-                    print(
-                        f"[arducam] save_image: got a valid frame after "
-                        f"{reopen_attempt} full-reopen attempt(s) "
-                        f"(mean={g_mean:.2f}, std={g_std:.2f}).",
-                        flush=True,
-                    )
-                gray = g_check
-                break
+        print(
+            f"[arducam] {label}: reopen attempt {reopen_attempt} produced a "
+            f"suspect blank/flat frame (mean={g_mean:.2f}, std={g_std:.2f}) — "
+            f"forcing a full close+reopen and trying again.",
+            flush=True,
+        )
+        gray = g_check  # keep the last one in case every attempt fails
 
-            print(
-                f"[arducam] save_image: reopen attempt {reopen_attempt} produced a "
-                f"suspect blank/flat frame (mean={g_mean:.2f}, std={g_std:.2f}) — "
-                f"forcing a full close+reopen and trying again.",
-                flush=True,
-            )
-            gray = g_check  # keep the last one in case every attempt fails
+    return gray
+
+
+def save_image(path: str, grayscale: bool = True) -> bool:
+    """
+    Reconfigure to full resolution, grab a still, save, then restore the
+    preview stream. `grayscale` is accepted for interface parity with
+    camera_picamera2.py but is effectively always True here — the sensor has
+    no colour filter array, so there is no RGB variant to produce.
+    """
+    global _last_saved_shape
+    settings = load_settings()
+    fw = int(settings.get("Arducam_FullWidth", 5120))
+    fh = int(settings.get("Arducam_FullHeight", 3840))
+    pw = int(settings.get("Arducam_PreviewWidth", 1280))
+    ph = int(settings.get("Arducam_PreviewHeight", 960))
+
+    try:
+        gray = _acquire_full_res_frame(fw, fh, label="save_image")
 
         if gray is None:
             print("[arducam] save_image: no frame returned at full resolution", flush=True)
             return False
-        if not _frame_looks_valid(gray):
+        if float(gray.std()) <= 2.0:
             print(
                 "[arducam] save_image: still blank/flat after all reopen attempts; "
                 "saving it anyway so the failure is visible rather than lost.",
@@ -839,6 +860,51 @@ def save_image(path: str, grayscale: bool = True) -> bool:
         # restores the exact exposure/gain that was pinned beforehand —
         # confining the change so it can never leak into the next plate's
         # real capture.
+        _open_capture(pw, ph)
+
+
+def mock_capture() -> bool:
+    """
+    Sept 2026: same full-resolution reopen/discard/retry dance as
+    save_image() (via the shared _acquire_full_res_frame() helper above),
+    but never writes anything to disk — no path argument, no
+    Path.mkdir()/tiff.imwrite()/cv2.imwrite() call at all.
+
+    Why this exists: across many real-hardware tests, a plate's on-screen
+    snapshot (see experiment_runner.py's per-plate loop) was only ever
+    trustworthy when the plate immediately before it in the sequence had
+    gone through a real save_image() reopen — a plate that was simply
+    skipped left the stream unflushed, and the next read could return a
+    stale frame belonging to an earlier plate entirely (confirmed: showed
+    content from a different physical plate position, and separately,
+    plain overexposure). experiment_runner.py previously worked around this
+    by suppressing the snapshot for any plate following a skip. This
+    function instead lets a skipped (not selected for real capture) plate
+    go through the EXACT SAME device-level reopen as a real capture, so its
+    OWN on-screen snapshot — and every subsequent plate's — can be trusted
+    every time, without writing an unwanted high-res file to disk for a
+    plate that was never meant to be saved.
+
+    Returns True if a plausible (non-blank) frame was acquired, False
+    otherwise — either way, the stream is restored to preview resolution
+    before returning, so a failed mock capture leaves the device no worse
+    off than before this function existed.
+    """
+    settings = load_settings()
+    fw = int(settings.get("Arducam_FullWidth", 5120))
+    fh = int(settings.get("Arducam_FullHeight", 3840))
+    pw = int(settings.get("Arducam_PreviewWidth", 1280))
+    ph = int(settings.get("Arducam_PreviewHeight", 960))
+
+    try:
+        gray = _acquire_full_res_frame(fw, fh, label="mock_capture")
+        return gray is not None and float(gray.std()) > 2.0
+    except Exception as e:
+        print(f"[arducam] mock_capture error: {e}", flush=True)
+        return False
+    finally:
+        # Same reasoning as save_image()'s finally block above: restore
+        # preview resolution, deliberately leave exposure/gain untouched.
         _open_capture(pw, ph)
 
 
