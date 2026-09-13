@@ -454,27 +454,6 @@ class ExperimentRunner(QThread):
             self.finished_signal.emit()
             return
 
-        # Tracks whether the camera stream is currently "fresh" for the
-        # on-screen snapshot's purposes (Sept 2026). Diagnosed on real
-        # hardware across two separate test runs: a plate's on-screen
-        # snapshot is only ever wrong when the PRECEDING plate in the
-        # sequence was skipped (not captured) — a real save_image() call
-        # always closes and reopens the device, and that reopen is what
-        # actually flushes the stream. A skipped plate never triggers that
-        # reopen, so anything read afterward can be a stale frame left over
-        # from an earlier plate position (confirmed: showed the previous
-        # plate's actual content, e.g. a resolution test target that
-        # belonged to a different plate, or an overexposed transitional
-        # frame). This held true both before and after adding
-        # CAP_PROP_BUFFERSIZE=1 in camera_arducam_usb3.py, so rather than
-        # keep chasing driver-level buffering behavior we can't fully
-        # control from here, we just never trust a snapshot in the one
-        # situation we've shown is unreliable — see the gate on this flag
-        # in the per-plate loop below. True here because start_camera()
-        # above just freshly opened the stream, which is equivalent to a
-        # reopen.
-        self._stream_fresh_for_snapshot = True
-
         # --- Global pre-warm once per run ---
         try:
             if self.led_control_fn:
@@ -602,81 +581,28 @@ class ExperimentRunner(QThread):
 
                     self.settling_started.emit(plate_idx)
 
-                    # --- On-screen snapshot for the GUI ---
-                    # Grab a single, correctly-exposed low-res preview frame
-                    # for on-screen display ENTIRELY on this thread, in
-                    # strict sequence with the real capture below — no other
-                    # thread touches the camera during an automated run.
-                    #
-                    # RESTORED (Sept 2026) to this exact version — the one
-                    # confirmed on real hardware to eliminate the
-                    # cross-thread device-loss failure AND the every-plate
-                    # save_image() reopen retry. A narrower cosmetic issue
-                    # remained on top of this version: the snapshot could be
-                    # stale/wrong whenever the PRECEDING plate in the
-                    # sequence was skipped rather than captured. Two attempts
-                    # to fix that at the camera level — a discard-frame loop
-                    # plus a forced close+reopen of the preview stream, and
-                    # separately a software-only brightness scale — each made
-                    # things worse (the forced reopen caused a full
-                    # device-loss cascade that lost 5 of 6 plates in one run;
-                    # the software brightness scale made every snapshot too
-                    # dark to be useful). A third attempt, adding
-                    # CAP_PROP_BUFFERSIZE=1 in camera_arducam_usb3.py, was
-                    # low-risk but didn't eliminate the staleness either —
-                    # confirmed on real hardware across two separate test
-                    # runs that a skipped plate's successor can still show a
-                    # stale frame regardless. Rather than keep chasing
-                    # driver-level buffering behavior, we now just never
-                    # trust a snapshot in the one situation shown to be
-                    # unreliable: gate the whole block on
-                    # self._stream_fresh_for_snapshot, which is only True
-                    # when the plate immediately before this one was actually
-                    # captured (real save_image() reopen) or this is the run's
-                    # very first plate (fresh start_camera() open). No new
-                    # camera calls were added — a skipped plate now emits
-                    # snapshot_ready(plate_idx, None) instead of grabbing a
-                    # frame that might belong to an earlier plate, so
-                    # gui.py's show_experiment_snapshot() can actively clear
-                    # the preview pane rather than leave a stale picture on
-                    # screen next to a status message that says otherwise.
-                    snap_frame = None
-                    if self._stream_fresh_for_snapshot:
-                        try:
-                            live = camera.apply_ir_transmission_preset_liveview(None)
-                            camera.apply_settings(live)
-                            snap_frame = camera.get_frame()
-                        except Exception as e:
-                            self._log(f"Snapshot preview error (ignored): {e}")
-                        finally:
-                            # Restore the exact capture exposure/gain pinned
-                            # above, regardless of whether the snapshot grab
-                            # succeeded — save_image() below must see the real
-                            # capture profile, never the Live View one.
-                            if settled_exp is not None and settled_gain is not None:
-                                camera.set_manual_exposure_gain(settled_exp, settled_gain)
-
-                        # Brief settle after the restore write above, before
-                        # save_image() switches the device to full resolution —
-                        # confirmed on real hardware to eliminate the
-                        # every-plate reopen retry that appeared without it.
-                        self._sleep_with_abort(0.15)
-
-                        if snap_frame is not None and not snap_frame.isNull():
-                            self.snapshot_ready.emit(plate_idx, snap_frame)
-                    else:
-                        # Softer wording (Sept 2026) — the earlier message
-                        # here read like an error/warning to a non-technical
-                        # reader even though this is normal, expected
-                        # behavior for any plate following a skip. Also now
-                        # emits snapshot_ready with frame=None (rather than
-                        # nothing at all) so gui.py's show_experiment_snapshot()
-                        # can actively clear the preview pane instead of
-                        # leaving whatever picture was already on screen.
-                        self._log(f"Plate #{plate_idx}: preview not shown this cycle.")
-                        self.snapshot_ready.emit(plate_idx, None)
-
-                    # Capture (if this plate is selected)
+                    # --- Full-resolution capture: real save, or mock for an
+                    # unselected plate (Sept 2026) ---
+                    # This now runs BEFORE the on-screen snapshot grab below,
+                    # for every plate — selected or not. Across many
+                    # real-hardware tests, only a real save_image() reopen
+                    # ever made the on-screen snapshot trustworthy; a plate
+                    # that was simply skipped left the stream unflushed, and
+                    # the snapshot (this plate's own, or the next plate's)
+                    # could show stale content from an earlier plate position
+                    # entirely. Earlier fixes worked around this by
+                    # suppressing the snapshot after a skip (a discard-frame
+                    # loop, a forced reopen, a software brightness scale, and
+                    # CAP_PROP_BUFFERSIZE=1 in camera_arducam_usb3.py were all
+                    # tried at various points — see that file's history —
+                    # with mixed-to-no success). Instead of continuing to
+                    # chase that, an unselected plate now goes through
+                    # camera.mock_capture() — the exact same full-resolution
+                    # reopen/discard/retry sequence as camera.save_image(),
+                    # just without writing a file — so every single plate's
+                    # stream is guaranteed fresh before ITS OWN snapshot is
+                    # grabbed, not just the plate that happens to follow a
+                    # captured one.
                     if plate_idx in self.selected_plates:
                         ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -752,14 +678,54 @@ class ExperimentRunner(QThread):
                         else:
                             self._log(f"Capture failed on plate {plate_idx}")
                     else:
-                        self._log(f"Plate #{plate_idx}: skipped.")
+                        mock_capture_fn = getattr(camera, "mock_capture", None)
+                        if mock_capture_fn is not None:
+                            mock_capture_fn()
+                            self._log(f"Plate #{plate_idx}: skipped (no high-res image saved).")
+                        else:
+                            # Backend has no mock_capture() (e.g. picamera2) —
+                            # fall back to the old plain-skip behavior. The
+                            # on-screen snapshot for this plate may then be
+                            # less reliable on that backend, same as before
+                            # this feature existed.
+                            self._log(f"Plate #{plate_idx}: skipped.")
 
-                    # Record whether THIS plate was captured, for the next
-                    # plate's snapshot gate above — a real save_image() call
-                    # always closes/reopens the device (even on failure, via
-                    # its own finally block), which is what actually flushes
-                    # the stream. True only when a capture was attempted.
-                    self._stream_fresh_for_snapshot = (plate_idx in self.selected_plates)
+                    # --- On-screen snapshot for the GUI ---
+                    # Grab a single, correctly-exposed low-res preview frame
+                    # for on-screen display ENTIRELY on this thread, in
+                    # strict sequence with the real/mock capture above — no
+                    # other thread touches the camera during an automated
+                    # run. Now runs unconditionally for every plate (Sept
+                    # 2026) since the capture/mock-capture above guarantees
+                    # the stream is freshly reopened before we get here,
+                    # regardless of whether this plate was selected. The
+                    # frame=None path (and gui.py's handling of it) is kept
+                    # as a defensive fallback for genuine grab failures, not
+                    # as the primary mechanism anymore.
+                    snap_frame = None
+                    try:
+                        live = camera.apply_ir_transmission_preset_liveview(None)
+                        camera.apply_settings(live)
+                        snap_frame = camera.get_frame()
+                    except Exception as e:
+                        self._log(f"Snapshot preview error (ignored): {e}")
+                    finally:
+                        # Restore the exact capture exposure/gain pinned
+                        # above, regardless of whether the snapshot grab
+                        # succeeded.
+                        if settled_exp is not None and settled_gain is not None:
+                            camera.set_manual_exposure_gain(settled_exp, settled_gain)
+
+                    # Brief settle after the restore write above — confirmed
+                    # on real hardware to eliminate every-plate reopen
+                    # retries in the original (selected-plates-only) version
+                    # of this block; kept here for the same reason.
+                    self._sleep_with_abort(0.15)
+
+                    if snap_frame is not None and not snap_frame.isNull():
+                        self.snapshot_ready.emit(plate_idx, snap_frame)
+                    else:
+                        self.snapshot_ready.emit(plate_idx, None)
 
                     # LED OFF, re-enable AE, prep for next plate
                     if self.led_control_fn:
