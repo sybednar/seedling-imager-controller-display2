@@ -581,116 +581,43 @@ class ExperimentRunner(QThread):
 
                     self.settling_started.emit(plate_idx)
 
-                    # --- On-screen snapshot for the GUI (Sept 2026 fix) ---
-                    # Grab a single, correctly-exposed low-res preview frame
-                    # for on-screen display ENTIRELY on this thread, in
-                    # strict sequence with the real capture below — no other
-                    # thread touches the camera during an automated run.
+                    # --- On-screen snapshot for the GUI ---
+                    # Grab a single frame for on-screen display ENTIRELY on
+                    # this thread, in strict sequence with the real capture
+                    # below — no other thread touches the camera during an
+                    # automated run.
                     #
-                    # This used to live in gui.py as show_experiment_snapshot(),
-                    # a slot connected to settling_started that ran on the Qt
-                    # main thread and called into the camera itself. Because
-                    # that signal uses a queued cross-thread connection, this
-                    # runner thread did not wait for the GUI to finish
-                    # handling it — it moved on to camera.save_image()
-                    # immediately, so the GUI's camera.get_frame() call could
-                    # (and on real hardware, did) execute AT THE SAME TIME as
-                    # save_image()'s own device reopen + discard-frame
-                    # sequence below. camera_arducam_usb3.py's _cap_lock only
-                    # guards individual read/open/close calls, not a whole
-                    # multi-frame sequence, so the two threads' reads could
-                    # interleave — plausibly consuming some of save_image()'s
-                    # post-reopen "discard frames" reads meant to flush a
-                    # not-yet-settled sensor, which matches the
-                    # "blank/flat frame on attempt 1, fine on attempt 2"
-                    # pattern seen on every plate in one real test. A still
-                    # earlier version of this feature ALSO pushed/restored
-                    # exposure/gain from that same competing GUI thread,
-                    # which one test showed could wedge the USB3 device
-                    # outright ("could not open /dev/video0"). Doing the
-                    # whole push/grab/restore here — on the one thread that
-                    # already owns exclusive camera access for the run —
-                    # removes both failure modes at the source rather than
-                    # trading one for the other.
-                    snap_frame = None
-                    try:
-                        # Force a genuine close+reopen of the preview stream
-                        # before pushing the Live View profile, rather than
-                        # reusing whatever capture object happens to already
-                        # be open.
-                        #
-                        # Confirmed on real hardware (Sept 2026, three-cycle
-                        # test): snapshot success correlated exactly with
-                        # whether the PRECEDING plate in the sequence had
-                        # just gone through a real full-resolution capture.
-                        # Plate 2's snapshot always followed Plate 1's own
-                        # save_image() call, which — as part of its normal
-                        # cleanup — closes and reopens the capture device
-                        # back to preview resolution. Plate 1's snapshot
-                        # (2nd/3rd cycle) always followed Plate 6, which is
-                        # NOT in selected_plates for this experiment, so
-                        # save_image() is never called for it and the
-                        # preview stream just keeps running continuously,
-                        # unreopened, since Plate 5. Every one of those
-                        # "stale stream" snapshots came back blank/
-                        # overexposed; every "freshly reopened stream" one
-                        # was fine — a discard-frame count (see below) was
-                        # not enough to fix it on its own. Forcing the same
-                        # close+reopen here for every plate — capture or
-                        # not — removes that difference instead of hoping
-                        # a fixed discard count covers an unbounded stale
-                        # stream duration.
-                        camera.stop_camera()
-                        camera.start_camera()
-
-                        live = camera.apply_ir_transmission_preset_liveview(None)
-                        camera.apply_settings(live)
-                        # Discard a couple of frames after the exposure/gain
-                        # write above before trusting one for display — a
-                        # raw v4l2 exposure/gain register write does not
-                        # necessarily take effect on the very next frame.
-                        for _ in range(3):
-                            camera.get_frame()
-                            self._sleep_with_abort(0.15)
-                        snap_frame = camera.get_frame()
-                    except Exception as e:
-                        self._log(f"Snapshot preview error (ignored): {e}")
-                    finally:
-                        # Restore the exact capture exposure/gain pinned
-                        # above, regardless of whether the snapshot grab
-                        # succeeded — save_image() below must see the real
-                        # capture profile, never the Live View one.
-                        if settled_exp is not None and settled_gain is not None:
-                            camera.set_manual_exposure_gain(settled_exp, settled_gain)
-
-                    # Brief settle after the restore write above, before
-                    # save_image() switches the device to full resolution.
-                    #
-                    # Confirmed on real hardware (Sept 2026): moving the
-                    # snapshot grab onto this thread (see the block above)
-                    # eliminated the cross-thread device-loss failure
-                    # ("could not open /dev/video0") seen previously — but a
-                    # follow-up test still showed EVERY plate needing one
-                    # full close+reopen retry in save_image() (attempt 1: a
-                    # blank/flat frame; attempt 2: good), exactly like
-                    # before the fix. That means the retries were never
-                    # actually caused by the cross-thread race — they
-                    # persisted even with zero concurrency. The likely
-                    # cause: the snapshot block above now does two EXTRA
-                    # v4l2 exposure/gain writes (push Live View, then
-                    # restore capture values) at the preview resolution,
-                    # immediately before save_image() does its own
-                    # resolution-switch reopen. A bare v4l2_set with no
-                    # settle time right before a resolution switch is a
-                    # plausible way to make the sensor's already-known
-                    # mode-switch settling (see save_image()'s own
-                    # comments/retry loop) worse than it was in the older
-                    # baseline, which had no such intervening writes. This
-                    # sleep gives the sensor a moment to settle from the
-                    # restore write before the resolution switch — an
-                    # attempt to reduce/eliminate the now-typical single
-                    # reopen retry, not yet confirmed on real hardware.
-                    self._sleep_with_abort(0.15)
+                    # FINAL DECISION (Sept 2026), after four escalating
+                    # attempts to also make this preview correctly exposed:
+                    # ONLY read whatever frame is already there. No exposure/
+                    # gain push, no discard-frame loop, no forced
+                    # close+reopen of the preview stream. Each of those
+                    # extra steps was tried in turn to fix a purely cosmetic
+                    # problem (the on-screen snapshot sometimes looking
+                    # overexposed) and each one, at some point on real
+                    # hardware, made the ACTUAL EXPERIMENT worse:
+                    #   - Pushing/restoring exposure from a competing GUI
+                    #     thread once wedged the USB3 device outright.
+                    #   - Pushing/restoring exposure right here (no
+                    #     concurrency) made save_image()'s next full-res
+                    #     reopen need a retry on every single plate.
+                    #   - Forcing a close+reopen of the preview stream every
+                    #     plate (to dodge a "stale stream" snapshot issue)
+                    #     caused a full device-loss cascade mid-experiment —
+                    #     "could not open /dev/video0" repeating, and every
+                    #     plate after the first failed to capture at all.
+                    # This hardware has repeatedly shown it cannot tolerate
+                    # extra open/close or control-write cycling beyond what
+                    # a real capture already requires. A plain read has NEVER
+                    # once, in any test, affected real capture data — only
+                    # the on-screen preview's exposure, which is cosmetic.
+                    # Do not reintroduce exposure changes or forced
+                    # open/close cycling here; if the overexposed preview
+                    # needs fixing again, it should be solved without any
+                    # additional camera-control calls (e.g. software gamma/
+                    # gain adjustment purely on the already-captured pixel
+                    # data before display), not by touching the device more.
+                    snap_frame = camera.get_frame()
 
                     if snap_frame is not None and not snap_frame.isNull():
                         self.snapshot_ready.emit(plate_idx, snap_frame)
