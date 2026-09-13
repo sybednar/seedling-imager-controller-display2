@@ -616,6 +616,28 @@ class ExperimentRunner(QThread):
                     try:
                         live = camera.apply_ir_transmission_preset_liveview(None)
                         camera.apply_settings(live)
+                        # Discard a couple of frames after the exposure/gain
+                        # write above before trusting one for display.
+                        #
+                        # Confirmed on real hardware (Sept 2026): a raw
+                        # v4l2 exposure/gain register write does not
+                        # necessarily take effect on the very next frame —
+                        # save_image() already accounts for this after ITS
+                        # OWN control writes by discarding several frames
+                        # before reading one (see _DISCARD_FRAMES in
+                        # camera_arducam_usb3.py). This snapshot code was
+                        # the one place that pushed new exposure/gain and
+                        # then trusted the very next frame with no discard
+                        # at all. One real test showed exactly the failure
+                        # this predicts: a single plate's on-screen preview
+                        # came back blank/overexposed (a stale/transitional
+                        # frame) while every other plate that cycle, and
+                        # the real capture for that same plate moments
+                        # later (which does go through save_image()'s own
+                        # discard loop), were unaffected.
+                        for _ in range(3):
+                            camera.get_frame()
+                            self._sleep_with_abort(0.15)
                         snap_frame = camera.get_frame()
                     except Exception as e:
                         self._log(f"Snapshot preview error (ignored): {e}")
