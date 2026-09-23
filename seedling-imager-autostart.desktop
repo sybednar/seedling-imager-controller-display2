@@ -1,8 +1,10 @@
 [Desktop Entry]
 Type=Application
-Name=Seedling Imager Controller (autostart)
-Comment=Fallback autostart entry — use only if the systemd service does not start the GUI correctly
-Exec=/home/sybednar/Seedling_Imager/seedling_imager_controller/start_seedling_imager.sh
-X-GNOME-Autostart-enabled=true
-NoDisplay=false
+Name=Seedling Imager Controller
+Comment=Autostart Seedling Imager GUI after desktop login
+Exec=/bin/bash -lc "/home/sybednar/Seedling_Imager/seedling_imager_controller/start_seedling_imager.sh"
 Terminal=false
+X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-Delay=5
+StartupNotify=false
+Categories=Utility;
