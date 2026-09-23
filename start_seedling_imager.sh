@@ -2,8 +2,8 @@
 # start_seedling_imager.sh
 #
 # Launch wrapper for the Seedling Imager Controller. This is the ONE script
-# that both the systemd service and the XDG autostart fallback call — so
-# the environment variables below (XDG_RUNTIME_DIR, QT_QPA_PLATFORM) are
+# that both autostart methods call (XDG autostart — recommended — and the
+# systemd --user service) — so the environment variables below are
 # guaranteed to be set correctly no matter which trigger mechanism starts it.
 #
 # It can also be run by hand from a terminal for a manual test:
@@ -19,18 +19,41 @@ LOG_FILE="$PROJECT_DIR/autostart.log"
 exec >> "$LOG_FILE" 2>&1
 echo "=== $(date) Seedling Imager launch begin ==="
 
+{ echo "--- NVMe/PCIe state at launch ---"; dmesg | tail -30; } >> "$LOG_FILE" 2>&1
+
 # Let the desktop session finish settling before we grab the display
-sleep 3
+sleep 10
 
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+# systemd --user services don't inherit WAYLAND_DISPLAY the way an
+# interactive terminal does. Only fall back to a default here if it isn't
+# already set, so manual/interactive runs (which already have the correct
+# value) are left untouched.
+: "${WAYLAND_DISPLAY:=wayland-0}"
+export WAYLAND_DISPLAY
+
+# systemd --user services also don't reliably inherit XAUTHORITY/WLR_XWAYLAND
+# the way an interactive session does, on at least some Pi 5/labwc images —
+# this breaks the xcb (X11/XWayland) platform plugin's ability to
+# authenticate even when DISPLAY is set correctly. Set explicit defaults
+# here (harmless if already set correctly). This is the confirmed root
+# cause of systemd-autostart failures documented in the README; the XDG
+# autostart method sidesteps the issue entirely by not depending on
+# systemd's environment import at all, and is the recommended method.
+: "${XAUTHORITY:=/home/sybednar/.Xauthority}"
+export XAUTHORITY
+: "${WLR_XWAYLAND:=/usr/bin/xwayland-xauth}"
+export WLR_XWAYLAND
 
 # Raspberry Pi OS Bookworm/Trixie use Wayland (labwc) by default on Pi 5.
 # If the touchscreen shows a black screen or the app fails to open a window,
 # comment the Wayland line and uncomment the xcb (X11) line instead, then
 # re-run this script by hand to confirm which one works before re-enabling
-# autostart.
-export QT_QPA_PLATFORM=wayland
-# export QT_QPA_PLATFORM=xcb
+# autostart. Note: in practice this has NOT been the cause of autostart
+# failures seen so far (those were the XAUTHORITY/WLR_XWAYLAND gap above) —
+# only change this if you have a specific, confirmed reason to.
+#export QT_QPA_PLATFORM=wayland
+export QT_QPA_PLATFORM=xcb
 
 source "$PROJECT_DIR/venv/bin/activate"
 
