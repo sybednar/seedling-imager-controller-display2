@@ -293,13 +293,21 @@ def start_camera() -> None:
         picam.start()
     except Exception:
         pass  # ignore if already started
- 
+
     settings = load_settings()
+    # Rear IR is currently the only illumination mode in active use, so
+    # its preset is applied immediately on startup -- otherwise the sensor
+    # runs on picamera2/libcamera's own hardware AE defaults until the
+    # user manually hits Apply. If/when a General (white-light/color)
+    # mode is added, this should apply whichever mode was last active
+    # instead of hardcoding Rear IR.
+    live = apply_ir_transmission_preset_liveview(settings)
+    apply_settings(live)
     if settings.get("ManualFocusEnable", False):
         set_manual_focus()              # lock to saved diopter value
     else:
         set_af_mode(2)                  # continuous AF for live preview
- 
+
 def stop_camera() -> None:
     """Stop Picamera2 pipeline."""
     try:

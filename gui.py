@@ -798,7 +798,24 @@ class SeedlingImagerGUI(QWidget):
                 print(f"[gui] {what} error: {err}", flush=True)
             loop.quit()
 
+        def _on_thread_finished(w=worker):
+            # Only drop the keep-alive reference once Qt itself reports the
+            # underlying OS thread has fully stopped (QThread's built-in
+            # finished signal) -- not just when our custom finished_ok signal
+            # fires from inside run(). Removing/destroying the worker based on
+            # finished_ok alone raced with QThread's own internal
+            # still-running bookkeeping and could trigger "QThread: Destroyed
+            # while thread is still running" -> abort, especially when Live
+            # View was toggled on/off in quick succession. finished() only
+            # fires after run() has fully returned and Qt has joined the
+            # thread, so this is race-free.
+            try:
+                self._guarded_camera_workers.remove(w)
+            except ValueError:
+                pass
+
         worker.finished_ok.connect(_on_done)
+        worker.finished.connect(_on_thread_finished)
         self._guarded_camera_workers.append(worker)
 
         worker.start()
@@ -811,11 +828,6 @@ class SeedlingImagerGUI(QWidget):
                 f"proceeding without waiting further (possible wedged camera device).",
                 flush=True,
             )
-        else:
-            try:
-                self._guarded_camera_workers.remove(worker)
-            except ValueError:
-                pass
         return result["ok"] and result["settled"]
 
     def apply_liveview_camera_profile(self):
@@ -908,13 +920,21 @@ class SeedlingImagerGUI(QWidget):
                 what="apply_liveview_camera_profile()",
             )
 
-            # Always apply the live-view brightness boost for Rear IR — also guarded.
-            self._run_camera_call_guarded(
-                lambda: camera.enable_liveview_boost_for_ir(
-                    target_gain=2.0, target_exposure_us=4000, mode=ILLUM_REAR_IR
-                ),
-                timeout_ms=4000, what="enable_liveview_boost_for_ir()",
-            )
+            # NOTE (Sept 2026): the live-view brightness boost used to be applied
+            # unconditionally here, forcing AeEnable=True with a gain/exposure
+            # floor for the whole Live View session. Rear IR (the sole
+            # illumination mode now) is already correctly exposed by
+            # apply_liveview_camera_profile()'s manual RearIR_* settings, and
+            # the boost was overriding those good values every time -- this was
+            # the actual cause of Live View always looking overexposed
+            # regardless of saved settings. Disabled for Rear IR; re-enable
+            # only if a genuinely dim illumination mode is added later.
+            # self._run_camera_call_guarded(
+            #     lambda: camera.enable_liveview_boost_for_ir(
+            #         target_gain=2.0, target_exposure_us=4000, mode=ILLUM_REAR_IR
+            #     ),
+            #     timeout_ms=4000, what="enable_liveview_boost_for_ir()",
+            # )
 
             camera.set_af_mode(2)  # Continuous AF for preview
 
