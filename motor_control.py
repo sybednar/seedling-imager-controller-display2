@@ -339,7 +339,7 @@ def rehome_quick_via_hall(status_callback=None, should_abort=None) -> bool:
         return False
 
     if status_callback:
-        status_callback("Re-home (quick): dynamic bracket to centre...")
+        status_callback("Re-home (quick): dynamic bracket to center...")
     if not _center_with_dynamic_bracket(delay=SLOW_DELAY, should_abort=should_abort):
         if status_callback:
             status_callback("Re-home (quick): bracket centering failed.")
@@ -348,7 +348,7 @@ def rehome_quick_via_hall(status_callback=None, should_abort=None) -> bool:
     global current_plate
     current_plate = 1
     if status_callback:
-        status_callback("Re-home (quick) complete: Plate #1 centred.")
+        status_callback("Re-home (quick) complete: Plate #1 centered.")
     return True
 
 
@@ -411,7 +411,7 @@ def rehome_full_from_hall(status_callback=None, should_abort=None) -> bool:
     global current_plate
     current_plate = 1
     if status_callback:
-        status_callback("Re-home (full) complete: Plate #1 centred.")
+        status_callback("Re-home (full) complete: Plate #1 centered.")
     return True
 
 
@@ -637,8 +637,8 @@ def home(timeout: float = 60.0, status_callback=None, should_abort=None):
 
     current_plate = 1
     if status_callback:
-        status_callback("Homing complete.  Plate #1 centred.")
-    _log("Homing complete.  Plate #1 centred.")
+        status_callback("Homing complete.  Plate #1 centered.")
+    _log("Homing complete.  Plate #1 centered.")
     return current_plate
 
 
@@ -670,7 +670,7 @@ def advance(status_callback=None, should_abort=None) -> int:
     if current_plate == 1:
         # Plate 1 wrap — use dedicated function for distinct log messages
         if status_callback:
-            status_callback("Plate #1 wrap: dynamic bracket re-centre...")
+            status_callback("Plate #1 wrap: dynamic bracket re-center...")
         ok = _recenter_plate1_dynamic(delay=SLOW_DELAY, should_abort=should_abort)
         if ok:
             if status_callback:
@@ -686,7 +686,7 @@ def advance(status_callback=None, should_abort=None) -> int:
                                           should_abort=should_abort)
         if ok:
             if status_callback:
-                status_callback(f"Plate #{current_plate} centred.")
+                status_callback(f"Plate #{current_plate} centered.")
         else:
             if status_callback:
                 status_callback(f"Plate #{current_plate}: centering FAILED.")
@@ -698,7 +698,7 @@ def advance(status_callback=None, should_abort=None) -> int:
 def goto_plate(target_plate, status_callback=None) -> int:
     """
     Move to `target_plate` (1-6) by calling advance() repeatedly.
-    Each intermediate position is bracket-centred before continuing.
+    Each intermediate position is bracket-centered before continuing.
     Returns the final current_plate.
     """
     global current_plate
