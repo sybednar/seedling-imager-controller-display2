@@ -31,7 +31,9 @@ DEFAULTS = {
     "Sharpness": 1.0,
     "NoiseReductionMode": 0,   # 0=off (preferred for scientific imaging)
     "HdrEnable": False,        # keep HDR off for full-res work
-    "ManualFocusEnable":   False,   # ADDED 041426
+    "ManualFocusEnable": True,   # Sept 2026: continuous AF proved unreliable Manual focus is now the
+                                  # recommended default; Auto remains available
+                                  # as an explicit opt-out via this checkbox.
     "ManualFocusPosition": 7.589,   # ADDED — diopters measured 14 April 2026
     
         # --- NEW: Front IR (reflectance) overrides ---
