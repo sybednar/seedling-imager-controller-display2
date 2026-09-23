@@ -1,10 +1,11 @@
 [Unit]
-Description=Seedling Imager Controller (touchscreen kiosk app)
+Description=Seedling Imager Controller
 After=graphical-session.target
-PartOf=graphical-session.target
+Wants=graphical-session.target
 
 [Service]
 Type=simple
+WorkingDirectory=/home/sybednar/Seedling_Imager/seedling_imager_controller
 ExecStart=/home/sybednar/Seedling_Imager/seedling_imager_controller/start_seedling_imager.sh
 Restart=on-failure
 RestartSec=5
