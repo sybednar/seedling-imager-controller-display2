@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Seedling Imager
+Comment=Start (or restart) the Seedling Imager Controller
+Exec=/home/sybednar/Seedling_Imager/seedling_imager_controller/restart_seedling_imager.sh
+Icon=/home/sybednar/Seedling_Imager/seedling_imager_controller/seedlings.png
+Terminal=false
+Categories=Utility;
