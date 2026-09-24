@@ -431,7 +431,7 @@ class ExperimentRunner(QThread):
         return converged, md, attempts
 
     def _run_focus_ae_baseline_pass(self):
-        print("[baseline] _run_focus_ae_baseline_pass() ENTERED", flush=True)
+        #print("[baseline] _run_focus_ae_baseline_pass() ENTERED", flush=True)
         """
         One-time warm-up pass across every selected plate, run once at the
         very start of an experiment (Picamera2 + manual focus only) BEFORE
@@ -463,9 +463,9 @@ class ExperimentRunner(QThread):
         pass_start = time.time()
 
         self._log(
-            f"One-time focus/AE baseline pass starting across {len(plates)} "
-            f"selected plate(s), minimum {BASELINE_PASS_MIN_DURATION_S:.0f}s -- "
-            f"no images will be saved during this pass."
+            f"Warm-up: establishing focus/AE baseline across {len(plates)} "
+            f"plate(s) (about {BASELINE_PASS_MIN_DURATION_S:.0f}s) -- "
+            f"no images are saved during this step."
         )
 
         while True:
@@ -488,12 +488,12 @@ class ExperimentRunner(QThread):
                     lens_pos_str = f"{lens_pos:.3f}D" if lens_pos is not None else "unknown"
                     if converged:
                         self._log(
-                            f"Baseline plate #{plate_idx}: focus OK at "
+                            f"Warm-up: Plate #{plate_idx} focus OK at "
                             f"{lens_pos_str} ({attempts} re-lock attempt(s))."
                         )
                     else:
                         self._log(
-                            f"Baseline plate #{plate_idx}: focus still {lens_pos_str} "
+                            f"Warm-up: Plate #{plate_idx} focus still {lens_pos_str} "
                             f"vs target {target_pos:.2f}D after {attempts} attempt(s)."
                         )
                 finally:
@@ -504,13 +504,13 @@ class ExperimentRunner(QThread):
             if self._abort or elapsed >= BASELINE_PASS_MIN_DURATION_S:
                 break
             self._log(
-                f"Baseline pass: {elapsed:.0f}s elapsed of "
-                f"{BASELINE_PASS_MIN_DURATION_S:.0f}s minimum -- touring plates again."
+                f"Warm-up: {elapsed:.0f}s of {BASELINE_PASS_MIN_DURATION_S:.0f}s "
+                f"minimum elapsed -- touring plates again."
             )
 
         motor_control.goto_plate(1, status_callback=self.status_signal.emit)
         self.plate_signal.emit(1)
-        self._log("Baseline pass complete. Starting real experiment capture loop.")
+        self._log("Warm-up complete. Starting experiment.")
 
     # ---------- Always-on full re-home at cycle boundary ----------
     def _rehome_at_cycle_boundary(self):
@@ -586,20 +586,12 @@ class ExperimentRunner(QThread):
             _active_backend = camera.get_camera_backend_active_this_process()
         except Exception:
             _active_backend = None
-
-        print(
-            f"[baseline] gating check: backend={_active_backend!r}, "
-            f"manual_focus_enabled={_manual_focus_enabled!r}", flush=True
-        )
-
         if _active_backend == "picamera2" and _manual_focus_enabled:
             # Replaces the plain AE-only pre-warm below for this backend --
             # see _run_focus_ae_baseline_pass()'s docstring. Arducam and
             # continuous-AF Picamera2 runs fall through unchanged.
-            print("[baseline] Taking baseline-pass branch.", flush=True)
             self._run_focus_ae_baseline_pass()
         else:
-            print("[baseline] Taking old plain AE-only pre-warm branch.", flush=True)
             try:
                 if self.led_control_fn:
                     self.led_control_fn(True, self.illumination_mode)
