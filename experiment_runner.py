@@ -56,6 +56,19 @@ AE_GATE_POLL_S       = 0.10  # poll cadence
 AE_GATE_GAIN_TOL     = 0.05  # <5% relative change considered "stable"
 AE_GATE_STABLE_READS = 5     # need this many consecutive stable reads
 
+# One-time focus/AE baseline pass, run once at experiment start before any
+# real image is captured (Picamera2 + manual focus only -- see
+# _run_focus_ae_baseline_pass()'s docstring). Confirmed on real hardware
+# (Sept 2026): the voice-coil lens can report LensPosition metadata as
+# "converged" well before it has actually, physically finished settling
+# after the one big jump at experiment start; every plate imaged within
+# ~40s of that jump came out visibly soft (~8x lower measured sharpness)
+# despite metadata reading exactly on-target throughout, while plates
+# imaged ~3 minutes later were fully sharp. This is a FLOOR on the total
+# time this pass takes, regardless of plate count or metadata readback --
+# increase it if testing shows plate 1 of cycle 1 is still soft.
+BASELINE_PASS_MIN_DURATION_S = 90.0
+
 
 class ExperimentRunner(QThread):
     # ---------- Signals ----------
@@ -386,6 +399,118 @@ class ExperimentRunner(QThread):
             time.sleep(poll_s)
         return False, last_md
 
+        def _lock_manual_focus_with_retry(self, target_pos: float, tol: float = 0.5,
+                                       max_wait_s: float = 1.5, poll_s: float = 0.15):
+        """
+        Re-assert a fixed manual LensPosition and poll metadata until it
+        reads within tol of target_pos, or max_wait_s elapses.
+        Returns (converged: bool, md: dict, attempts: int).
+
+        Used only by _run_focus_ae_baseline_pass() below -- kept separate
+        from the near-identical retry logic already inline in run()'s main
+        per-plate loop so this change doesn't touch that already-tested
+        code path.
+        """
+        md = camera.get_metadata()
+        lens_pos = md.get("LensPosition", None)
+        attempts = 0
+        waited = 0.0
+        while (
+            lens_pos is not None
+            and abs(lens_pos - target_pos) > tol
+            and waited < max_wait_s
+            and not self._abort
+        ):
+            camera.set_manual_focus(target_pos)
+            self._sleep_with_abort(poll_s)
+            waited += poll_s
+            attempts += 1
+            md = camera.get_metadata()
+            lens_pos = md.get("LensPosition", None)
+        converged = lens_pos is not None and abs(lens_pos - target_pos) <= tol
+        return converged, md, attempts
+
+    def _run_focus_ae_baseline_pass(self):
+        """
+        One-time warm-up pass across every selected plate, run once at the
+        very start of an experiment (Picamera2 + manual focus only) BEFORE
+        any real image is captured or written to disk.
+
+        Since LensPosition metadata is exactly the signal that was proven
+        unreliable (see BASELINE_PASS_MIN_DURATION_S's comment), this pass
+        does not rely on it alone: it tours the actual selected plates
+        (real homing/advance, real AE settle, real focus re-lock attempts)
+        AND enforces a minimum total elapsed time
+        (BASELINE_PASS_MIN_DURATION_S) regardless of how quickly each
+        plate's metadata reports convergence -- so an experiment with only
+        one or two selected plates still gets the full settle window
+        instead of finishing in a few seconds.
+
+        No images are captured or written here -- only homing/advance, AE
+        settle, and the manual-focus retry loop are exercised. The
+        carousel is returned to Plate #1 afterward for the real loop.
+
+        Arducam is deliberately NOT covered: that backend's lens is a
+        fixed, purely mechanical manual-focus barrel with no voice-coil
+        actuator, so it has no equivalent settling behavior to protect
+        against, and set_manual_focus()/set_af_mode() are already no-ops
+        for it. Callers should only invoke this when the active backend is
+        picamera2 and ManualFocusEnable is set (see run()).
+        """
+        plates = sorted(self.selected_plates) if self.selected_plates else [1]
+        target_pos = float(self.cam_settings.get("ManualFocusPosition", 7.589))
+        pass_start = time.time()
+
+        self._log(
+            f"One-time focus/AE baseline pass starting across {len(plates)} "
+            f"selected plate(s), minimum {BASELINE_PASS_MIN_DURATION_S:.0f}s -- "
+            f"no images will be saved during this pass."
+        )
+
+        while True:
+            for plate_idx in plates:
+                if self._abort:
+                    break
+                motor_control.goto_plate(plate_idx, status_callback=self.status_signal.emit)
+
+                if self.led_control_fn:
+                    self.led_control_fn(True, self.illumination_mode)
+                try:
+                    camera.set_auto_exposure(True)
+                    self._sleep_with_abort(min(self.wait_seconds_for_camera, 2.0))
+                    if self._abort:
+                        break
+                    converged, md, attempts = self._lock_manual_focus_with_retry(
+                        target_pos, tol=0.5, max_wait_s=3.0, poll_s=0.15
+                    )
+                    lens_pos = md.get("LensPosition", None)
+                    lens_pos_str = f"{lens_pos:.3f}D" if lens_pos is not None else "unknown"
+                    if converged:
+                        self._log(
+                            f"Baseline plate #{plate_idx}: focus OK at "
+                            f"{lens_pos_str} ({attempts} re-lock attempt(s))."
+                        )
+                    else:
+                        self._log(
+                            f"Baseline plate #{plate_idx}: focus still {lens_pos_str} "
+                            f"vs target {target_pos:.2f}D after {attempts} attempt(s)."
+                        )
+                finally:
+                    if self.led_control_fn:
+                        self.led_control_fn(False, self.illumination_mode)
+
+            elapsed = time.time() - pass_start
+            if self._abort or elapsed >= BASELINE_PASS_MIN_DURATION_S:
+                break
+            self._log(
+                f"Baseline pass: {elapsed:.0f}s elapsed of "
+                f"{BASELINE_PASS_MIN_DURATION_S:.0f}s minimum -- touring plates again."
+            )
+
+        motor_control.goto_plate(1, status_callback=self.status_signal.emit)
+        self.plate_signal.emit(1)
+        self._log("Baseline pass complete. Starting real experiment capture loop.")
+
     # ---------- Always-on full re-home at cycle boundary ----------
     def _rehome_at_cycle_boundary(self):
         """
@@ -454,16 +579,28 @@ class ExperimentRunner(QThread):
             self.finished_signal.emit()
             return
 
-        # --- Global pre-warm once per run ---
+                # --- Global pre-warm once per run ---
+        _manual_focus_enabled = self.cam_settings.get("ManualFocusEnable", False)
         try:
-            if self.led_control_fn:
-                self.led_control_fn(True, self.illumination_mode)
-            camera.set_auto_exposure(True)
-            self._log("Global pre-warm: letting AE settle for 2.5s before the first cycle...")
-            self._sleep_with_abort(2.5)
-        finally:
-            if self.led_control_fn:
-                self.led_control_fn(False, self.illumination_mode)
+            _active_backend = camera.get_camera_backend_active_this_process()
+        except Exception:
+            _active_backend = None
+
+        if _active_backend == "picamera2" and _manual_focus_enabled:
+            # Replaces the plain AE-only pre-warm below for this backend --
+            # see _run_focus_ae_baseline_pass()'s docstring. Arducam and
+            # continuous-AF Picamera2 runs fall through unchanged.
+            self._run_focus_ae_baseline_pass()
+        else:
+            try:
+                if self.led_control_fn:
+                    self.led_control_fn(True, self.illumination_mode)
+                camera.set_auto_exposure(True)
+                self._log("Global pre-warm: letting AE settle for 2.5s before the first cycle...")
+                self._sleep_with_abort(2.5)
+            finally:
+                if self.led_control_fn:
+                    self.led_control_fn(False, self.illumination_mode)
 
         # Apply growth-mode germination LEDs (independent of imaging illumination).
         # DAYLIGHT is static and applied once here; DARK is timer-triggered and
