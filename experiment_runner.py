@@ -526,9 +526,47 @@ class ExperimentRunner(QThread):
                         break
 
                     if _manual_focus:
-                        best_fom = None
+                        target_pos = float(self.cam_settings.get("ManualFocusPosition", 7.589))
+                        focus_tol = 0.5  # diopters -- generous enough to not false-trigger on
+                                          # normal read noise, tight enough to catch a real miss
+                        max_focus_wait_s = 1.5
+                        focus_poll_s = 0.15
+
                         md_focus = camera.get_metadata()
+                        lens_pos_now = md_focus.get("LensPosition", None)
                         attempts = 0
+                        waited = 0.0
+                        while (
+                            lens_pos_now is not None
+                            and abs(lens_pos_now - target_pos) > focus_tol
+                            and waited < max_focus_wait_s
+                        ):
+                            # Lens has drifted off the commanded manual position (observed on
+                            # real hardware, Sept 2026 -- suspected stepper-motor vibration
+                            # perturbing the Camera Module 3's voice-coil liquid lens between
+                            # plate advances). Re-assert the fixed position and give it a
+                            # moment to settle back, mirroring the AF path's existing
+                            # retry-until-converged approach instead of trusting a single
+                            # untested metadata read.
+                            camera.set_manual_focus(target_pos)
+                            self._sleep_with_abort(focus_poll_s)
+                            waited += focus_poll_s
+                            attempts += 1
+                            md_focus = camera.get_metadata()
+                            lens_pos_now = md_focus.get("LensPosition", None)
+
+                        if lens_pos_now is not None and abs(lens_pos_now - target_pos) > focus_tol:
+                            self._log(
+                                f"Plate #{plate_idx}: manual focus did not settle -- "
+                                f"LensPosition={lens_pos_now:.3f}D vs target {target_pos:.2f}D "
+                                f"after {attempts} re-lock attempt(s)."
+                            )
+                        elif attempts > 0:
+                            self._log(
+                                f"Plate #{plate_idx}: manual focus re-locked to "
+                                f"{target_pos:.2f}D after {attempts} attempt(s)."
+                            )
+                        best_fom = None                   
                     else:
                         best_fom, md_focus, attempts = self._autofocus_with_retry(
                             threshold=500.0, timeout_s=3.0, poll_s=0.2
