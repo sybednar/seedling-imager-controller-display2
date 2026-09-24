@@ -111,7 +111,7 @@ class ExperimentRunner(QThread):
         self.growth_mode = growth_mode
         self.growth_settings = dict(growth_settings) if growth_settings else {}
         self.germ_led_control_fn = germ_led_control_fn
-        self._dark_triggered = False  # tracks whether DARK-mode LEDs have been switched on yet
+        self._dark_phase = "pre"  # one of: "pre", "pulse", "etiolation", "induction"
 
         self._abort = False
         self.wait_seconds_for_camera = 10
@@ -208,6 +208,9 @@ class ExperimentRunner(QThread):
                     "germ_FarRed",
                     "germ_Red",
                     "germ_Blue",
+                    # DARK-mode protocol phase + elapsed time at capture
+                    "dark_phase",
+                    "dark_elapsed_hours",
                 ]
             )
             # Reset registration references at the start of each run
@@ -228,11 +231,29 @@ class ExperimentRunner(QThread):
     def _current_germ_state(self, name: str) -> bool:
         """Return whether germination channel `name` is currently ON, for
         CSV logging purposes."""
-        if not self.growth_settings.get(name, False):
-            return False
         if self.growth_mode == GROWTH_MODE_DAYLIGHT:
+            return bool(self.growth_settings.get(name, False))
+        # DARK mode: Red is also ON during the germination pulse phase
+        # regardless of whether Red is selected for induction; every
+        # channel reflects its induction selection once that phase starts.
+        if name == "Red" and self._dark_phase == "pulse":
             return True
-        return self._dark_triggered
+        if self._dark_phase == "induction":
+            return bool(self.growth_settings.get(name, False))
+        return False
+
+    def _dark_status_for_csv(self):
+        """
+        Return (dark_phase, dark_elapsed_hours) for the CSV row currently
+        being written -- "" / None outside DARK mode. Lets downstream
+        analysis see exactly which protocol phase (and how far into the
+        experiment) each image was captured under, without needing to
+        cross-reference timestamps against the JSON settings by hand.
+        """
+        if self.growth_mode != GROWTH_MODE_DARK:
+            return "", None
+        elapsed_hours = (datetime.now() - self._growth_start_time).total_seconds() / 3600.0
+        return self._dark_phase, round(elapsed_hours, 3)
 
     def _apply_daylight_leds(self):
         """DAYLIGHT: set germination LEDs once, statically, for the whole run."""
@@ -249,31 +270,65 @@ class ExperimentRunner(QThread):
 
     def _apply_growth_mode_leds(self):
         """
-        DARK mode only: recompute (every cycle, restart-safe) whether
-        elapsed time since timestamp_start has passed the configured
-        trigger hour. Comparing wall-clock elapsed time against a fixed
-        threshold — rather than an in-memory countdown — means an app or
-        Pi restart mid-experiment can't re-arm or skip the trigger.
+        DARK mode only: recompute (every cycle, restart-safe) which phase
+        of the dark-grown protocol we're in, based on wall-clock elapsed
+        time since timestamp_start -- not an in-memory countdown -- so an
+        app or Pi restart mid-experiment can't re-arm or skip a phase.
+
+        Phases, in order:
+          1) pre        -- warm re-equilibration, all germination LEDs off
+          2) pulse      -- brief Red (660nm) germination pulse only
+          3) etiolation -- dark growth, all germination LEDs off
+          4) induction  -- the selected channel(s) switch on and stay on
+             for the rest of the experiment
         """
         if self.growth_mode != GROWTH_MODE_DARK or not self.germ_led_control_fn:
             return
-        trigger_hours = float(self.growth_settings.get("timer_hours", 36))
-        elapsed_hours = (datetime.now() - self._growth_start_time).total_seconds() / 3600.0
-        should_be_on = elapsed_hours >= trigger_hours
-        if should_be_on == self._dark_triggered:
-            return  # no state change needed
-        active = [name for name, pin in GERM_LED_PINS.items() if self.growth_settings.get(name, False)]
+
+        preeq_h      = float(self.growth_settings.get("preequilibration_hours", 0))
+        pulse_on_cfg = bool(self.growth_settings.get("pulse_enabled", True))
+        pulse_h      = (float(self.growth_settings.get("pulse_minutes", 30)) / 60.0) if pulse_on_cfg else 0.0
+        etiolation_h = float(self.growth_settings.get("etiolation_hours", 60))
+
+        pulse_end        = preeq_h + pulse_h
+        induction_start  = pulse_end + etiolation_h
+        elapsed_hours    = (datetime.now() - self._growth_start_time).total_seconds() / 3600.0
+
+        if elapsed_hours < preeq_h:
+            phase = "pre"
+        elif pulse_on_cfg and elapsed_hours < pulse_end:
+            phase = "pulse"
+        elif elapsed_hours < induction_start:
+            phase = "etiolation"
+        else:
+            phase = "induction"
+
+        if phase == self._dark_phase:
+            return  # no change since last check
+
+        induction_active = [name for name, pin in GERM_LED_PINS.items() if self.growth_settings.get(name, False)]
+
         for name, pin in GERM_LED_PINS.items():
-            if self.growth_settings.get(name, False):
-                try:
-                    self.germ_led_control_fn(pin, should_be_on)
-                except Exception as e:
-                    self._log(f"DARK LED error ({name}): {e}")
-        self._dark_triggered = should_be_on
-        if should_be_on:
+            if phase == "pulse":
+                want_on = (name == "Red")
+            elif phase == "induction":
+                want_on = self.growth_settings.get(name, False)
+            else:
+                want_on = False
+            try:
+                self.germ_led_control_fn(pin, want_on)
+            except Exception as e:
+                self._log(f"DARK LED error ({name}): {e}")
+
+        self._dark_phase = phase
+        if phase == "pulse":
+            self._log(f"DARK mode: elapsed {elapsed_hours:.1f}h -- germination pulse ON (Red 660nm).")
+        elif phase == "etiolation":
+            self._log(f"DARK mode: elapsed {elapsed_hours:.1f}h -- pulse ended, etiolation (dark).")
+        elif phase == "induction":
             self._log(
-                f"DARK mode: elapsed {elapsed_hours:.1f}h >= trigger {trigger_hours:.0f}h — "
-                f"germination LED(s) ON (sustained): {active or 'none'}"
+                f"DARK mode: elapsed {elapsed_hours:.1f}h >= induction start {induction_start:.1f}h -- "
+                f"germination LED(s) ON (sustained): {induction_active or 'none'}"
             )
 
     def _clear_growth_mode_leds(self):
@@ -431,7 +486,6 @@ class ExperimentRunner(QThread):
         return converged, md, attempts
 
     def _run_focus_ae_baseline_pass(self):
-        #print("[baseline] _run_focus_ae_baseline_pass() ENTERED", flush=True)
         """
         One-time warm-up pass across every selected plate, run once at the
         very start of an experiment (Picamera2 + manual focus only) BEFORE
@@ -586,6 +640,7 @@ class ExperimentRunner(QThread):
             _active_backend = camera.get_camera_backend_active_this_process()
         except Exception:
             _active_backend = None
+
         if _active_backend == "picamera2" and _manual_focus_enabled:
             # Replaces the plain AE-only pre-warm below for this backend --
             # see _run_focus_ae_baseline_pass()'s docstring. Arducam and
@@ -607,10 +662,18 @@ class ExperimentRunner(QThread):
         # re-checked every cycle via _apply_growth_mode_leds() below.
         self._apply_daylight_leds()
         if self.growth_mode == GROWTH_MODE_DARK:
+            preeq_h      = float(self.growth_settings.get("preequilibration_hours", 0))
+            pulse_on_cfg = bool(self.growth_settings.get("pulse_enabled", True))
+            pulse_min    = float(self.growth_settings.get("pulse_minutes", 30))
+            pulse_h      = (pulse_min / 60.0) if pulse_on_cfg else 0.0
+            etiolation_h = float(self.growth_settings.get("etiolation_hours", 60))
+            induction_start = preeq_h + pulse_h + etiolation_h
             active = [name for name in GERM_LED_PINS if self.growth_settings.get(name, False)]
+            pulse_desc = f"{pulse_min:.0f}min Red pulse" if pulse_on_cfg else "no pulse"
             self._log(
-                f"DARK mode: germination LED(s) will trigger at elapsed "
-                f"{float(self.growth_settings.get('timer_hours', 36)):.0f}h for channels: {active or 'none'}"
+                f"DARK mode: pre-pulse {preeq_h:.1f}h -> {pulse_desc} -> "
+                f"etiolation {etiolation_h:.1f}h -> induction at {induction_start:.1f}h "
+                f"for channels: {active or 'none'}"
             )
 
         self._open_csv()
@@ -890,6 +953,7 @@ class ExperimentRunner(QThread):
                                     self._current_germ_state("FarRed"),
                                     self._current_germ_state("Red"),
                                     self._current_germ_state("Blue"),
+                                    *self._dark_status_for_csv(),
                                 ])
                             self.image_saved_signal.emit(img_path)
                             self._log(f"Saved: {img_path}")
