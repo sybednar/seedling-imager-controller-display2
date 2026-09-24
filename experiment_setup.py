@@ -365,20 +365,36 @@ class ExperimentSetupDialog(QDialog):
         # Initial compute
         self.update_storage_estimate()
 
-    # --- Growth mode dialogs ---
+        # --- Growth mode dialogs ---
     def open_daylight_dialog(self):
-        dlg = DaylightSettingsDialog(self.daylight_settings, self)
-        if dlg.exec() == QDialog.Accepted:
-            self.daylight_settings = dlg.result_settings
-            self.growth_mode = GROWTH_MODE_DAYLIGHT
-            self._apply_growth_mode_styles()
+        # Re-entrancy guard (Sept 2026): a double-click/double-tap -- easy to
+        # trigger over a laggy remote session like Raspberry Pi Connect, where
+        # the dialog's on-screen appearance can lag behind the actual click --
+        # could otherwise queue a second invocation before the first dialog's
+        # exec() call returns, leaving the UI looking frozen until Esc was
+        # pressed. Disabling the button for the duration of exec() makes a
+        # second click on it a no-op instead.
+        self.daylight_btn.setEnabled(False)
+        try:
+            dlg = DaylightSettingsDialog(self.daylight_settings, self)
+            if dlg.exec() == QDialog.Accepted:
+                self.daylight_settings = dlg.result_settings
+                self.growth_mode = GROWTH_MODE_DAYLIGHT
+                self._apply_growth_mode_styles()
+        finally:
+            self.daylight_btn.setEnabled(True)
 
     def open_dark_dialog(self):
-        dlg = DarkSettingsDialog(self.dark_settings, self)
-        if dlg.exec() == QDialog.Accepted:
-            self.dark_settings = dlg.result_settings
-            self.growth_mode = GROWTH_MODE_DARK
-            self._apply_growth_mode_styles()
+        # See open_daylight_dialog() above for why this guard exists.
+        self.dark_btn.setEnabled(False)
+        try:
+            dlg = DarkSettingsDialog(self.dark_settings, self)
+            if dlg.exec() == QDialog.Accepted:
+                self.dark_settings = dlg.result_settings
+                self.growth_mode = GROWTH_MODE_DARK
+                self._apply_growth_mode_styles()
+        finally:
+            self.dark_btn.setEnabled(True)
 
     def _apply_growth_mode_styles(self):
         active_style = "background-color: #43A047; color: white; font-weight: bold; border-radius: 4px;"
