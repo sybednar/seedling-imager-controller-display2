@@ -58,7 +58,9 @@ DEFAULTS = {
     
     
 }
-SETTINGS_PATH = Path("camera_settings.json")
+# See camera_config.py's identical fix for why this must be anchored to
+# this file's directory rather than the process's working directory.
+SETTINGS_PATH = Path(__file__).resolve().parent / "camera_settings.json"
  
 def load_settings() -> dict:
     """Load camera settings from JSON; fall back to DEFAULTS on error."""
