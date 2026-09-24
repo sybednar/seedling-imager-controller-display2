@@ -399,7 +399,7 @@ class ExperimentRunner(QThread):
             time.sleep(poll_s)
         return False, last_md
 
-        def _lock_manual_focus_with_retry(self, target_pos: float, tol: float = 0.5,
+    def _lock_manual_focus_with_retry(self, target_pos: float, tol: float = 0.5,
                                        max_wait_s: float = 1.5, poll_s: float = 0.15):
         """
         Re-assert a fixed manual LensPosition and poll metadata until it
