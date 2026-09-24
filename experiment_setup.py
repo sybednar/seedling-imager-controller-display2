@@ -197,6 +197,15 @@ class DarkSettingsDialog(QDialog):
         return any(cb.isChecked() for cb in self.checks.values())
 
     def _update_timer_enabled(self, *_):
+        # Guard against the checkbox loop's setChecked() firing toggled()
+        # during __init__, before _timer_up_btn/_timer_down_btn exist yet
+        # (only happens when a channel is already saved as True) -- without
+        # this, that raises an AttributeError inside a Qt signal handler
+        # mid-construction, which can leave the dialog wedged instead of
+        # cleanly crashing. The explicit call at the end of __init__ still
+        # sets the correct enabled state once everything is built.
+        if not hasattr(self, "_timer_up_btn"):
+            return
         enabled = self._any_channel_on()
         self.timer_value.setEnabled(enabled)
         self._timer_up_btn.setEnabled(enabled)
