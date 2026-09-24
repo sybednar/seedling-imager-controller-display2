@@ -292,6 +292,37 @@ def get_current_settings() -> dict:
 # =============================================================================
 # Start/stop camera
 # =============================================================================
+def _wait_for_focus_convergence(settings: dict, tol: float = 0.5, max_wait_s: float = 4.0, poll_s: float = 0.15) -> None:
+    """
+    Block until LensPosition metadata reports convergence to the saved
+    target diopter value, or max_wait_s elapses.
+
+    Called ONCE, at experiment/session start, right after the initial
+    set_manual_focus() lock in start_camera(). That first lock has to
+    travel from wherever the voice-coil lens powers on at -- potentially
+    the far end of its range -- to the target, which is a much larger
+    physical excursion than any later per-plate corrective nudge. The
+    per-plate retry loops in experiment_runner.py use a tight ~1.5s budget
+    per attempt because they're only closing small gaps; reusing that
+    budget for this much larger initial move was leaving plate 1's first
+    capture of the experiment with a partially-converged LensPosition
+    (observed e.g. 8.18D vs an 8.40D target) even though every later
+    plate/cycle converged fine. A generous one-time wait here is cheap.
+    """
+    target = float(settings.get("ManualFocusPosition", 7.589))
+    elapsed = 0.0
+    while elapsed < max_wait_s:
+        md = get_metadata()
+        lens_pos = md.get("LensPosition")
+        if lens_pos is not None and abs(lens_pos - target) <= tol:
+            print(f"[camera] Initial focus converged: {lens_pos:.3f}D (target {target:.3f}D) after {elapsed:.2f}s", flush=True)
+            return
+        time.sleep(poll_s)
+        elapsed += poll_s
+    md = get_metadata()
+    print(f"[camera] WARNING: initial focus did not converge within {max_wait_s:.1f}s "
+          f"(last LensPosition={md.get('LensPosition')}, target={target:.3f}D)", flush=True)
+
 def start_camera() -> None:
     """Start Picamera2 pipeline (idempotent). Apply focus mode immediately."""
     try:
@@ -310,6 +341,7 @@ def start_camera() -> None:
     apply_settings(live)
     if settings.get("ManualFocusEnable", False):
         set_manual_focus()              # lock to saved diopter value
+        _wait_for_focus_convergence(settings)
     else:
         set_af_mode(2)                  # continuous AF for live preview
 
