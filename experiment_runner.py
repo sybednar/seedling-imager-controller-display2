@@ -431,6 +431,7 @@ class ExperimentRunner(QThread):
         return converged, md, attempts
 
     def _run_focus_ae_baseline_pass(self):
+        print("[baseline] _run_focus_ae_baseline_pass() ENTERED", flush=True)
         """
         One-time warm-up pass across every selected plate, run once at the
         very start of an experiment (Picamera2 + manual focus only) BEFORE
@@ -579,19 +580,26 @@ class ExperimentRunner(QThread):
             self.finished_signal.emit()
             return
 
-                # --- Global pre-warm once per run ---
+        # --- Global pre-warm once per run ---
         _manual_focus_enabled = self.cam_settings.get("ManualFocusEnable", False)
         try:
             _active_backend = camera.get_camera_backend_active_this_process()
         except Exception:
             _active_backend = None
 
+        print(
+            f"[baseline] gating check: backend={_active_backend!r}, "
+            f"manual_focus_enabled={_manual_focus_enabled!r}", flush=True
+        )
+
         if _active_backend == "picamera2" and _manual_focus_enabled:
             # Replaces the plain AE-only pre-warm below for this backend --
             # see _run_focus_ae_baseline_pass()'s docstring. Arducam and
             # continuous-AF Picamera2 runs fall through unchanged.
+            print("[baseline] Taking baseline-pass branch.", flush=True)
             self._run_focus_ae_baseline_pass()
         else:
+            print("[baseline] Taking old plain AE-only pre-warm branch.", flush=True)
             try:
                 if self.led_control_fn:
                     self.led_control_fn(True, self.illumination_mode)
