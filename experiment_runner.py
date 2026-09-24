@@ -608,6 +608,49 @@ class ExperimentRunner(QThread):
                     af_state     = md_pin.get("AfState", None)
                     focus_fom    = md_pin.get("FocusFoM", None)
 
+                    # Final manual-focus verification, run AFTER the AE-stability
+                    # gate above (Sept 2026 fix, take 2). An earlier per-plate
+                    # focus check placed BEFORE this gate was confirmed on real
+                    # hardware to be stale by the time the real capture happens --
+                    # _ae_stability_gate() polls for up to AE_GATE_MAX_WAIT_S
+                    # seconds and its own last metadata read (md_stable) is what
+                    # actually gets pinned into md_pin above, so the lens could
+                    # (and did) keep drifting during that window, undetected.
+                    # This check instead runs against md_pin itself -- the exact
+                    # metadata that drives the capture -- leaving no gap.
+                    if _manual_focus and lens_pos is not None:
+                        target_pos = float(self.cam_settings.get("ManualFocusPosition", 7.589))
+                        focus_tol = 0.5
+                        max_focus_wait_s = 1.5
+                        focus_poll_s = 0.15
+                        waited = 0.0
+                        refocus_attempts = 0
+                        while abs(lens_pos - target_pos) > focus_tol and waited < max_focus_wait_s:
+                            camera.set_manual_focus(target_pos)
+                            self._sleep_with_abort(focus_poll_s)
+                            waited += focus_poll_s
+                            refocus_attempts += 1
+                            md_pin = camera.get_metadata() or md_pin
+                            lens_pos = md_pin.get("LensPosition", lens_pos)
+                        if refocus_attempts > 0:
+                            if abs(lens_pos - target_pos) > focus_tol:
+                                self._log(
+                                    f"Plate #{plate_idx}: manual focus still off after AE gate -- "
+                                    f"LensPosition={lens_pos:.3f}D vs target {target_pos:.2f}D "
+                                    f"after {refocus_attempts} re-lock attempt(s)."
+                                )
+                            else:
+                                self._log(
+                                    f"Plate #{plate_idx}: manual focus re-locked to "
+                                    f"{target_pos:.2f}D after AE gate ({refocus_attempts} attempt(s))."
+                                )
+                            # Refresh from the same final metadata read, in case
+                            # anything else shifted while re-locking focus.
+                            settled_exp  = md_pin.get("ExposureTime", settled_exp)
+                            settled_gain = md_pin.get("AnalogueGain", settled_gain)
+                            af_state     = md_pin.get("AfState", af_state)
+                            focus_fom    = md_pin.get("FocusFoM", focus_fom)
+
                     # Pin AE and set manual controls
                     camera.set_auto_exposure(False)
                     if settled_exp is not None and settled_gain is not None:
