@@ -669,28 +669,42 @@ class SeedlingImagerGUI(QWidget):
 
     def end_experiment(self):
         if self.experiment_thread and self.experiment_thread.isRunning():
-            reply = QMessageBox.question(
-                self,
-                "Experiment in Progress",
-                "Experiment in Progress: Do you really want to end experiment?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No,
-            )
-            if reply != QMessageBox.Yes:
-                return  # "No" — leave the experiment running untouched
-
-            # Do NOT call self.experiment_thread.wait() here — that blocks the
-            # GUI thread's event loop until the background thread's run()
-            # fully returns, which can take several seconds if ending is
-            # confirmed while the motor is mid-move or the camera is
-            # mid-capture. That block previously caused a full GUI freeze.
-            # Instead, just signal abort and disable the button so it can't
-            # be clicked again; the existing finished_signal ->
-            # on_experiment_finished() connection already re-enables controls
-            # and updates status once the thread exits on its own, non-blocking.
-            self.experiment_thread.abort()
+            # Disable immediately, before the confirmation dialog even opens
+            # (Sept 2026 fix). Previously this button stayed enabled for the
+            # entire time QMessageBox.question() was up waiting for an
+            # answer -- a double-click/double-tap whose second click was
+            # already queued before the dialog visually appeared could
+            # trigger a second call to end_experiment() once the first
+            # returned, stacking a second QMessageBox and leaving the
+            # visible one looking unresponsive until Esc was pressed.
+            # Disabling up front makes a second tap on this button a no-op.
             self.end_experiment_btn.setEnabled(False)
-            self.update_status("Ending experiment... waiting for current motor/camera operation to finish.")
+            try:
+                reply = QMessageBox.question(
+                    self,
+                    "Experiment in Progress",
+                    "Experiment in Progress: Do you really want to end experiment?",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No,
+                )
+                if reply != QMessageBox.Yes:
+                    self.end_experiment_btn.setEnabled(True)
+                    return  # "No" — leave the experiment running untouched
+
+                # Do NOT call self.experiment_thread.wait() here — that blocks the
+                # GUI thread's event loop until the background thread's run()
+                # fully returns, which can take several seconds if ending is
+                # confirmed while the motor is mid-move or the camera is
+                # mid-capture. That block previously caused a full GUI freeze.
+                # Instead, just signal abort; the button is already disabled
+                # above, and the existing finished_signal ->
+                # on_experiment_finished() connection re-enables controls and
+                # updates status once the thread exits on its own, non-blocking.
+                self.experiment_thread.abort()
+                self.update_status("Ending experiment... waiting for current motor/camera operation to finish.")
+            except Exception:
+                self.end_experiment_btn.setEnabled(True)
+                raise
         else:
             self.update_status("No experiment running.")
             self.update_controls_for_experiment(False)
