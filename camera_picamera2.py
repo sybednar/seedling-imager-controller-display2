@@ -292,7 +292,7 @@ def get_current_settings() -> dict:
 # =============================================================================
 # Start/stop camera
 # =============================================================================
-def _wait_for_focus_convergence(settings: dict, tol: float = 0.5, max_wait_s: float = 8.0, poll_s: float = 0.15) -> None:
+def _wait_for_focus_convergence(settings: dict, tol: float = 0.5, max_wait_s: float = 4.0, poll_s: float = 0.15) -> None:
     """
     Block until LensPosition metadata reports convergence to the saved
     target diopter value, or max_wait_s elapses.
@@ -362,40 +362,29 @@ def set_auto_exposure(enabled: bool) -> None:
     except Exception as e:
         print(f"set_auto_exposure error: {e}", flush=True)
  
-_last_requested_focus = None  # module-level: last LensPosition value we actually asked for
-
 def set_manual_focus(position: float = None) -> None:
     """
     Lock the lens to a fixed diopter position.
     If position is None, reads ManualFocusPosition from the persisted settings file.
     Call this after every start_camera() when ManualFocusEnable is True —
     the lens does NOT hold its position across pipeline restarts.
+
+    NOTE (Sept 2026): this previously included a "nudge to a different
+    value first" workaround for a suspected libcamera control-dedup
+    behavior. Real-hardware testing traced the actual first-plate softness
+    to slow physical lens settling after a big jump, not a dropped
+    duplicate command -- see experiment_runner.py's
+    _run_focus_ae_baseline_pass() for the real fix. Removed to avoid
+    non-thread-safe module state with no proven benefit.
     """
-    global _last_requested_focus
     if position is None:
         position = float(load_settings().get("ManualFocusPosition", 7.589))
     try:
-        # Work around an apparent libcamera/picamera2 behavior where a
-        # set_controls() request that repeats the immediately-previous
-        # request verbatim does not appear to re-drive the lens actuator --
-        # only a genuine change in the requested value does. This matters
-        # for the experiment_runner.py retry loops, which re-issue the same
-        # target position when a plate's LensPosition metadata comes back
-        # off-target. Without this, ~20+ identical repeat requests have been
-        # observed to have zero effect on a stuck lens. If we're about to
-        # ask for the same value we asked for last time, nudge to a nearby
-        # value first to force a real drive command, then land on target.
-        if _last_requested_focus is not None and abs(_last_requested_focus - position) < 1e-6:
-            nudge = position - 1.0 if position >= 1.0 else position + 1.0
-            picam.set_controls({"AfMode": 0, "LensPosition": float(nudge)})
-            time.sleep(0.05)
-
         picam.set_controls({
             "AfMode":       0,                 # 0 = manual; disables PDAF/CDAF
             "LensPosition": float(position),
         })
-        _last_requested_focus = float(position)
-        time.sleep(0.15)  # let the voice-coil lens physically settle
+        time.sleep(0.15)  # brief settle before returning
         print(f"[camera] Manual focus locked: {position:.3f} diopters", flush=True)
     except Exception as e:
         print(f"[camera] set_manual_focus error: {e}", flush=True)
