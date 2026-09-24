@@ -45,7 +45,7 @@ PULSE_MIN_MINUTES     = 0
 PULSE_MAX_MINUTES     = 240
 
 ETIOLATION_DEFAULT_HOURS = 60  # Dark growth after the pulse
-ETIOLATION_STEP_HOURS    = 1
+ETIOLATION_STEP_HOURS    = 5
 ETIOLATION_MIN_HOURS     = 0
 ETIOLATION_MAX_HOURS     = 96
 
@@ -167,16 +167,6 @@ class DarkSettingsDialog(QDialog):
         _fs = max(12, int(11 * s))
 
         layout = QVBoxLayout()
-        info = QLabel(
-            "Models the standard dark-grown protocol: a warm dark "
-            "re-equilibration period, a brief red (660nm) germination "
-            "pulse, extended dark etiolation, then hook-opening induction "
-            "with the channel(s) selected below (which stay on for the "
-            "rest of the experiment)."
-        )
-        info.setWordWrap(True)
-        info.setStyleSheet(f"font-size: {_fs}px; color: white;")
-        layout.addWidget(info)
 
         def _spin_row(label_text, initial, step, lo, hi):
             row = QHBoxLayout()
@@ -254,14 +244,19 @@ class DarkSettingsDialog(QDialog):
         layout.addWidget(induction_hdr)
 
         self.checks = {}
+        # Colors match the germination LED buttons on the main GUI page
+        # (self.germ_blue_btn / germ_red_btn / germ_farred_btn in gui.py).
+        _channel_labels = {"FarRed": "FarRed 730nm", "Red": "Red 660nm", "Blue": "Blue 450nm"}
+        _channel_colors = {"FarRed": "#FF5722", "Red": "#D32F2F", "Blue": "#3D5AFE"}
         for name in ("FarRed", "Red", "Blue"):
-            cb = QCheckBox(name)
+            cb = QCheckBox(_channel_labels[name])
             cb.setChecked(bool(current.get(name, False)))
+            _color = _channel_colors[name]
             cb.setStyleSheet(
                 f"QCheckBox {{ color: white; font-size: {_fs}px; }} "
                 f"QCheckBox::indicator {{ width: {max(14, int(14*s))}px; height: {max(14, int(14*s))}px; }} "
                 "QCheckBox::indicator:unchecked { border: 2px solid #BBBBBB; background: #222222; } "
-                "QCheckBox::indicator:checked { border: 2px solid #1E88E5; background: #1E88E5; } "
+                f"QCheckBox::indicator:checked {{ border: 2px solid {_color}; background: {_color}; }} "
             )
             self.checks[name] = cb
             layout.addWidget(cb)
