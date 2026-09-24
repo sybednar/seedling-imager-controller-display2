@@ -24,8 +24,8 @@
 #   4) Dynamic bracket (backlash-robust):
 #        CW→HIGH (escape stripe if needed), CCW→LOW (trailing), CCW→HIGH (past
 #        leading, measure W fresh), CW→LOW (re-validate leading), CW +round(W/2)
-#   5) Persist W, hall→centre to motion_cal.json
-#   6) Each advance (plates 2-6): bracket-centre on arriving stripe (fresh W)
+#   5) Persist W, hall→center to motion_cal.json
+#   6) Each advance (plates 2-6): bracket-center on arriving stripe (fresh W)
 #   7) Plate 1 wrap: same bracket with separate log prefix for clarity
 #
 # Public API (unchanged from v1.0):
@@ -73,8 +73,8 @@ HALL_STEP_BATCH = 40
 DIR_INVERT = True   # True for belt drive;  False for gear/direct drive
 
 # Dynamic bracket backoff fraction.
-# 0.0 = land exactly at geometric centre of stripe (recommended).
-# Small positive value (e.g. 0.05) shifts landing slightly CCW of centre.
+# 0.0 = land exactly at geometric center of stripe (recommended).
+# Small positive value (e.g. 0.05) shifts landing slightly CCW of center.
 CENTER_BACKOFF_FRAC = 0.0
 
 # Optional CW trim after backoff.  Keep 0 — avoids double-applying CW after
@@ -120,7 +120,7 @@ _cal = {
     "opt_window_width":        None,   # W  (µsteps) — last measured stripe width
     "opt_center_from_leading": None,   # C = W // 2  (geometric midpoint offset)
     "hall_to_leading":         None,   # µsteps: Hall trigger → Plate 1 leading edge
-    "hall_to_center":          None,   # µsteps: Hall trigger → Plate 1 centre
+    "hall_to_center":          None,   # µsteps: Hall trigger → Plate 1 center
 }
 
 current_plate = 0   # 0 = unknown / not yet homed
@@ -309,7 +309,7 @@ def rehome_quick_via_hall(status_callback=None, should_abort=None) -> bool:
     Fast per-cycle re-sync using stored calibration:
       1. CW fast -> Hall
       2. CW slow -> stored Hall->Leading offset  (coarse)
-      3. Dynamic bracket -> exact centre  (fine, re-measures W live)
+      3. Dynamic bracket -> exact center  (fine, re-measures W live)
 
     Falls back to full home() if calibration is absent or corrupt.
 
@@ -358,7 +358,7 @@ def rehome_full_from_hall(status_callback=None, should_abort=None) -> bool:
       1. CW fast -> Hall
       2. CW slow -> optical LOW (leading edge)  -> measure steps_to_leading
       3. CW slow -> optical HIGH (trailing edge) -> measure W
-      4. Dynamic bracket -> exact centre
+      4. Dynamic bracket -> exact center
       5. Persist refreshed calibration
 
     Use this when W may drift between cycles (e.g. temperature effects on
@@ -392,10 +392,10 @@ def rehome_full_from_hall(status_callback=None, should_abort=None) -> bool:
         status_callback(
             f"Re-home (full): W={W} µsteps; "
             f"leading={steps_to_leading} µsteps from Hall; "
-            f"centre={steps_to_leading + C} µsteps from Hall"
+            f"center={steps_to_leading + C} µsteps from Hall"
         )
 
-    # Dynamic bracket -> exact centre
+    # Dynamic bracket -> exact center
     if not _center_with_dynamic_bracket(delay=SLOW_DELAY, should_abort=should_abort):
         if status_callback:
             status_callback("Re-home (full): bracket centering failed.")
@@ -422,7 +422,7 @@ def rehome_full_from_hall(status_callback=None, should_abort=None) -> bool:
 def _center_with_dynamic_bracket(delay: float = SLOW_DELAY,
                                   should_abort=None) -> bool:
     """
-    Centre the carousel on the stripe currently near the optical sensor.
+    Center the carousel on the stripe currently near the optical sensor.
 
     Each call measures the stripe width W INDEPENDENTLY from the CCW crossing,
     so adjacent stripes with slightly different widths do not contaminate each
@@ -495,47 +495,47 @@ def _center_with_dynamic_bracket(delay: float = SLOW_DELAY,
 def _recenter_plate1_dynamic(delay: float = SLOW_DELAY,
                               should_abort=None) -> bool:
     """
-    Re-centre Plate 1 after a full carousel wrap.
+    Re-center Plate 1 after a full carousel wrap.
     Identical algorithm to _center_with_dynamic_bracket; kept separate so
     Plate 1 wrap events are clearly identifiable in the log output.
     """
     max_span = steps_per_60_deg   # 3200 µsteps
 
     if _is_low(OPTICAL_PIN):
-        _log("Re-centre P1: sensor LOW — CW -> HIGH to escape stripe")
+        _log("Re-center P1: sensor LOW — CW -> HIGH to escape stripe")
         if _seek_cw_high(delay=delay, limit=max_span,
                          should_abort=should_abort) is None:
-            _log("Re-centre P1: FAILED — CW->HIGH escape")
+            _log("Re-center P1: FAILED — CW->HIGH escape")
             return False
 
-    _log("Re-centre P1: CCW -> LOW  (trailing edge)")
+    _log("Re-center P1: CCW -> LOW  (trailing edge)")
     if _seek_ccw_low(delay=delay, limit=max_span,
                      should_abort=should_abort) is None:
-        _log("Re-centre P1: FAILED — CCW->LOW")
+        _log("Re-center P1: FAILED — CCW->LOW")
         return False
 
-    _log("Re-centre P1: CCW -> HIGH  (past leading edge — measuring W)")
+    _log("Re-center P1: CCW -> HIGH  (past leading edge — measuring W)")
     W_measured = _seek_ccw_high(delay=delay, limit=_W_SEEK_LIM,
                                 should_abort=should_abort)
     if W_measured is None or W_measured < W_MIN_VALID or W_measured > W_MAX_VALID:
-        _log(f"Re-centre P1: FAILED — W_measured={W_measured} "
+        _log(f"Re-center P1: FAILED — W_measured={W_measured} "
              f"outside [{W_MIN_VALID},{W_MAX_VALID}]")
         return False
 
-    _log("Re-centre P1: CW -> LOW  (re-validate leading edge)")
+    _log("Re-center P1: CW -> LOW  (re-validate leading edge)")
     if _seek_cw_low(delay=delay, limit=max_span,
                     should_abort=should_abort) is None:
-        _log("Re-centre P1: FAILED — CW->LOW re-validation")
+        _log("Re-center P1: FAILED — CW->LOW re-validation")
         return False
 
     mid = max(1, int(round(W_measured / 2.0 * (1.0 - CENTER_BACKOFF_FRAC))))
-    _log(f"Re-centre P1: CW +{mid} µsteps to midpoint  "
+    _log(f"Re-center P1: CW +{mid} µsteps to midpoint  "
          f"[W_measured={W_measured}, backoff_frac={CENTER_BACKOFF_FRAC}]")
     if not step_motor(mid, delay=delay, should_abort=should_abort):
         return False
 
     if FINE_CENTER_TRIM > 0:
-        _log(f"Re-centre P1: fine CW trim +{FINE_CENTER_TRIM} µsteps")
+        _log(f"Re-center P1: fine CW trim +{FINE_CENTER_TRIM} µsteps")
         if not step_motor(int(FINE_CENTER_TRIM), delay=delay,
                           should_abort=should_abort):
             return False
@@ -554,7 +554,7 @@ def home(timeout: float = 60.0, status_callback=None, should_abort=None):
       1. CW fast -> Hall sensor
       2. CW slow -> optical LOW  (Plate 1 leading edge)
       3. CW slow -> optical HIGH (trailing edge) -> initial W measurement
-      4. Dynamic bracket -> exact centre
+      4. Dynamic bracket -> exact center
       5. Persist calibration to motion_cal.json
 
     Returns plate number (1) on success; None on failure or abort.
@@ -613,7 +613,7 @@ def home(timeout: float = 60.0, status_callback=None, should_abort=None):
     C = W // 2
     _log(f"Initial window measurement: W={W} µsteps,  C={C} µsteps")
 
-    # -- 4. Dynamic bracket -> exact centre ---------------------------------------
+    # -- 4. Dynamic bracket -> exact center ---------------------------------------
     if not _center_with_dynamic_bracket(delay=SLOW_DELAY,
                                         should_abort=should_abort):
         if status_callback:
@@ -632,7 +632,7 @@ def home(timeout: float = 60.0, status_callback=None, should_abort=None):
         status_callback(
             f"Homing OK — W={W} µsteps  |  "
             f"Hall->leading={steps_to_leading} µsteps  |  "
-            f"Hall->centre={steps_to_leading + C} µsteps"
+            f"Hall->center={steps_to_leading + C} µsteps"
         )
 
     current_plate = 1
@@ -645,7 +645,7 @@ def home(timeout: float = 60.0, status_callback=None, should_abort=None):
 def advance(status_callback=None, should_abort=None) -> int:
     """
     Advance one plate position (steps_per_60_deg µsteps CW), then
-    bracket-centre on the arriving stripe.
+    bracket-center on the arriving stripe.
 
     Each plate independently measures its own W — no shared state between
     plates.  The final CW approach is always consistent, eliminating backlash.
@@ -674,11 +674,11 @@ def advance(status_callback=None, should_abort=None) -> int:
         ok = _recenter_plate1_dynamic(delay=SLOW_DELAY, should_abort=should_abort)
         if ok:
             if status_callback:
-                status_callback("Plate #1 re-centre complete.")
+                status_callback("Plate #1 re-center complete.")
         else:
             if status_callback:
-                status_callback("Plate #1 re-centre FAILED — edge not found.")
-        _log(f"Plate #1 wrap re-centre: backoff={CENTER_BACKOFF_FRAC}, ok={ok}")
+                status_callback("Plate #1 re-center FAILED — edge not found.")
+        _log(f"Plate #1 wrap re-center: backoff={CENTER_BACKOFF_FRAC}, ok={ok}")
     else:
         if status_callback:
             status_callback(f"Plate #{current_plate}: dynamic bracket centering...")
@@ -690,7 +690,7 @@ def advance(status_callback=None, should_abort=None) -> int:
         else:
             if status_callback:
                 status_callback(f"Plate #{current_plate}: centering FAILED.")
-        _log(f"Plate #{current_plate} bracket centre: backoff={CENTER_BACKOFF_FRAC}, ok={ok}")
+        _log(f"Plate #{current_plate} bracket center: backoff={CENTER_BACKOFF_FRAC}, ok={ok}")
 
     return current_plate
 
@@ -722,7 +722,7 @@ def get_current_plate() -> int:
 
 
 def get_calibration() -> dict:
-    """Return the last persisted calibration dict (W, hall->leading, hall->centre)."""
+    """Return the last persisted calibration dict (W, hall->leading, hall->center)."""
     _load_cal()
     return dict(_cal)
 
