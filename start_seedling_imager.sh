@@ -14,6 +14,14 @@ set -euo pipefail
 PROJECT_DIR="/home/sybednar/Seedling_Imager/seedling_imager_controller"
 LOG_FILE="$PROJECT_DIR/autostart.log"
 
+# Ensure relative paths (camera_settings.json, motion_cal.json, etc.)
+# resolve the same way here as they do during manual terminal testing
+# (cd + python3 main.py). Without this, the working directory under XDG
+# autostart defaults to $HOME, not the project folder -- see the matching
+# Sept 2026 fix in camera_config.py/camera_picamera2.py/
+# camera_arducam_usb3.py/camera.py for the full story.
+cd "$PROJECT_DIR" || { echo "FATAL: could not cd to $PROJECT_DIR" >&2; exit 1; }
+
 # Send all stdout/stderr to a log file so autostart failures are debuggable
 # (view with: tail -f "$LOG_FILE")
 exec >> "$LOG_FILE" 2>&1
