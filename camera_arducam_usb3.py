@@ -133,7 +133,9 @@ DEFAULTS = {
     "Arducam_RearIR_LiveView_ExposureUs": 4000,
     "Arducam_RearIR_LiveView_Gain":       100,
 }
-SETTINGS_PATH = Path("camera_settings.json")
+# See camera_config.py's identical fix for why this must be anchored to
+# this file's directory rather than the process's working directory.
+SETTINGS_PATH = Path(__file__).resolve().parent / "camera_settings.json"
 
 
 def load_settings() -> dict:
