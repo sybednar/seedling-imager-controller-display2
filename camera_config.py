@@ -59,7 +59,15 @@ DEFAULTS = {
     "Arducam_RearIR_LiveView_ExposureUs": 4000,
     "Arducam_RearIR_LiveView_Gain": 100,
 }
-SETTINGS_PATH = Path("camera_settings.json")
+# Anchored to this file's own directory rather than the process's working
+# directory (Sept 2026 fix). A relative path here silently broke autostart:
+# start_seedling_imager.sh never cd's into the project directory before
+# launching python3, so under XDG autostart this was resolving against
+# the user's home directory instead -- meaning every setting saved via the
+# Camera Config dialog while testing manually (cd + python3 main.py) was
+# invisible to the app when launched via autostart or the desktop icon,
+# which were silently reading/writing a completely different file.
+SETTINGS_PATH = Path(__file__).resolve().parent / "camera_settings.json"
 def load_settings():
     if SETTINGS_PATH.exists():
         try:
