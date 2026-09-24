@@ -705,10 +705,10 @@ def goto_plate(target_plate, status_callback=None) -> int:
     target_plate = int(target_plate)
     if not (1 <= target_plate <= 6):
         if status_callback:
-            status_callback(f"goto_plate: invalid target {target_plate} (must be 1-6)")
+        status_callback(f"Cannot move to Plate #{target_plate}: must be between 1 and 6")
         return current_plate
     if status_callback:
-        status_callback(f"goto_plate: {current_plate} -> {target_plate}")
+        status_callback(f"Moving to Plate #{target_plate}...")
     steps_remaining = 6
     while current_plate != target_plate and steps_remaining > 0:
         advance(status_callback=status_callback)
