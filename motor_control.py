@@ -575,7 +575,7 @@ def home(timeout: float = 60.0, status_callback=None, should_abort=None):
     while _debounced_read(SWITCH_PIN) == Value.ACTIVE:
         if not step_motor(HALL_STEP_BATCH, delay=FAST_DELAY,
                           should_abort=should_abort):
-            if status_callback:
+        if status_callback:
                 status_callback("Homing aborted during Hall search.")
             _log("Abort during Hall search")
             return None
