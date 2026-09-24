@@ -29,10 +29,25 @@ GERM_LED_PINS = {"FarRed": 19, "Red": 13, "Blue": 12}
 # DARK-mode shared timer bounds (hours). Default of 36h matches the
 # spontaneous dark-opening kinetics discussed for etiolated hook-opening
 # (fast phase ~48-72h; see Burachik et al. 2025 bioRxiv doi:10.1101/2025.02.18.638861).
-DARK_TIMER_DEFAULT_HOURS = 36
-DARK_TIMER_STEP_HOURS = 12
-DARK_TIMER_MIN_HOURS = 0
-DARK_TIMER_MAX_HOURS = 168  # 1 week ceiling
+# Dark-grown seedling protocol phases. Stratification (3-4 days at 4C) is
+# done externally in a cold room before plates reach the imager; these
+# phases model the timeline from that point forward: warm re-equilibration
+# -> brief red germination pulse -> etiolation dark growth -> hook-opening
+# induction.
+PREEQ_DEFAULT_HOURS = 0     # Warm re-equilibration (dark, 20-22C)
+PREEQ_STEP_HOURS    = 4
+PREEQ_MIN_HOURS     = 0
+PREEQ_MAX_HOURS     = 24
+
+PULSE_DEFAULT_MINUTES = 30   # Germination pulse -- Red (660nm) only, per protocol
+PULSE_STEP_MINUTES    = 30
+PULSE_MIN_MINUTES     = 0
+PULSE_MAX_MINUTES     = 240
+
+ETIOLATION_DEFAULT_HOURS = 60  # Dark growth after the pulse
+ETIOLATION_STEP_HOURS    = 5
+ETIOLATION_MIN_HOURS     = 0
+ETIOLATION_MAX_HOURS     = 96
 
 IMAGES_ROOT = Path("/home/sybednar/Seedling_Imager/images")  # for disk-usage estimate
 
@@ -115,14 +130,26 @@ class DaylightSettingsDialog(QDialog):
 
 class DarkSettingsDialog(QDialog):
     """
-    Independent ON/OFF for FarRed/Red/Blue germination LEDs during a
-    DARK-mode (etiolation) experiment, plus ONE shared timer (hours) that
-    applies to whichever channel(s) are turned ON. Once the configured
-    elapsed time is reached, the selected channel(s) switch on and stay on
-    continuously for the rest of the experiment (a sustained exposure, not
-    a brief pulse, is required for the far-red High Irradiance Response —
-    see Liscum & Hangarter, Plant Physiol 1993, doi:10.1104/pp.101.2.567).
-    The timer field is only editable while at least one channel is ON.
+    Models the standard dark-grown seedling protocol (stratification is
+    done externally, in a cold room, before plates reach the imager):
+
+      1) Warm re-equilibration -- dark, 20-22C ("Pre-pulse dark" below)
+      2) Germination pulse -- brief 660nm Red exposure only. Protocol note:
+         an 8h pulse is long enough to act as a structural light treatment
+         and can suppress proper apical hook formation -- keep this brief
+         (15-30 min up to ~2h is typical).
+      3) Etiolation -- extended dark growth; hooks reach maximum curvature
+         ~60-72h after the pulse, then begin opening on their own if held
+         longer.
+      4) Hook-opening induction -- the channel(s) selected below (Red,
+         Blue, and/or Far-Red) switch ON and stay ON continuously for the
+         rest of the experiment (a sustained exposure, not a brief pulse,
+         is required for the far-red High Irradiance Response -- see
+         Liscum & Hangarter, Plant Physiol 1993, doi:10.1104/pp.101.2.567).
+
+    The induction start time is computed automatically as the sum of
+    phases 1-3 (shown live below) rather than set independently, so the
+    whole timeline stays internally consistent.
     """
     def __init__(self, current: dict, parent=None):
         super().__init__(parent)
@@ -137,51 +164,107 @@ class DarkSettingsDialog(QDialog):
         self.setWindowTitle("DARK Settings")
         self.setStyleSheet(dark_style(s))
         self.result_settings = dict(current)
+        _fs = max(12, int(11 * s))
 
         layout = QVBoxLayout()
         info = QLabel(
-            "Select germination LEDs to trigger during this dark-grown experiment, "
-            "and the elapsed time (from experiment start) at which they turn on. "
-            "Once triggered, selected LEDs stay on for the rest of the experiment."
+            "Models the standard dark-grown protocol: a warm dark "
+            "re-equilibration period, a brief red (660nm) germination "
+            "pulse, extended dark etiolation, then hook-opening induction "
+            "with the channel(s) selected below (which stay on for the "
+            "rest of the experiment)."
         )
         info.setWordWrap(True)
-        info.setStyleSheet(f"font-size: {max(12, int(11 * s))}px; color: white;")
+        info.setStyleSheet(f"font-size: {_fs}px; color: white;")
         layout.addWidget(info)
+
+        def _spin_row(label_text, initial, step, lo, hi):
+            row = QHBoxLayout()
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet(f"font-size: {_fs}px; color: white;")
+            value = QLineEdit(str(int(initial)))
+            value.setAlignment(Qt.AlignCenter)
+            value.setFixedSize(int(69 * s), int(38 * s))
+            value.setStyleSheet(f"background-color: white; color: black; font-size: {max(12, int(14 * s))}px;")
+            up = QPushButton("\u25b2"); down = QPushButton("\u25bc")
+            for btn in (up, down):
+                btn.setFixedSize(int(36 * s), int(38 * s))
+                btn.setStyleSheet(f"background-color: #ccc; font-size: {max(12, int(15 * s))}px; font-weight: bold;")
+
+            def _adjust(delta):
+                try:
+                    cur = float(value.text())
+                except ValueError:
+                    cur = initial
+                new_val = max(lo, min(hi, cur + delta))
+                value.setText(str(int(new_val)))
+                self._refresh_induction_estimate()
+
+            up.clicked.connect(lambda: _adjust(step))
+            down.clicked.connect(lambda: _adjust(-step))
+            row.addWidget(lbl)
+            row.addStretch()
+            row.addWidget(down)
+            row.addWidget(value)
+            row.addWidget(up)
+            layout.addLayout(row)
+            return value
+
+        # --- Phase 1: pre-pulse (warm re-equilibration) ---
+        self.preeq_value = _spin_row(
+            "Pre-pulse dark, re-equilibration (h):",
+            current.get("preequilibration_hours", PREEQ_DEFAULT_HOURS),
+            PREEQ_STEP_HOURS, PREEQ_MIN_HOURS, PREEQ_MAX_HOURS,
+        )
+
+        # --- Phase 2: germination pulse (Red 660nm only) ---
+        self.pulse_enable_chk = QCheckBox("Enable germination pulse (Red 660nm)")
+        self.pulse_enable_chk.setChecked(bool(current.get("pulse_enabled", True)))
+        self.pulse_enable_chk.setStyleSheet(
+            f"QCheckBox {{ color: white; font-size: {_fs}px; }} "
+            f"QCheckBox::indicator {{ width: {max(14, int(14*s))}px; height: {max(14, int(14*s))}px; }} "
+            "QCheckBox::indicator:unchecked { border: 2px solid #BBBBBB; background: #222222; } "
+            "QCheckBox::indicator:checked { border: 2px solid #E53935; background: #E53935; } "
+        )
+        self.pulse_enable_chk.toggled.connect(self._update_pulse_enabled)
+        layout.addWidget(self.pulse_enable_chk)
+
+        self.pulse_value = _spin_row(
+            "Pulse duration (min):",
+            current.get("pulse_minutes", PULSE_DEFAULT_MINUTES),
+            PULSE_STEP_MINUTES, PULSE_MIN_MINUTES, PULSE_MAX_MINUTES,
+        )
+
+        # --- Phase 3: etiolation (dark growth) ---
+        self.etiolation_value = _spin_row(
+            "Etiolation, dark growth (h):",
+            current.get("etiolation_hours", ETIOLATION_DEFAULT_HOURS),
+            ETIOLATION_STEP_HOURS, ETIOLATION_MIN_HOURS, ETIOLATION_MAX_HOURS,
+        )
+
+        # --- Computed induction start estimate ---
+        self.induction_estimate_label = QLabel("")
+        self.induction_estimate_label.setStyleSheet(f"font-size: {_fs}px; color: #90CAF9; font-weight: bold;")
+        layout.addWidget(self.induction_estimate_label)
+
+        # --- Phase 4: induction channels ---
+        induction_hdr = QLabel("Hook-opening induction -- channel(s) to switch on and hold:")
+        induction_hdr.setWordWrap(True)
+        induction_hdr.setStyleSheet(f"font-size: {_fs}px; color: white;")
+        layout.addWidget(induction_hdr)
 
         self.checks = {}
         for name in ("FarRed", "Red", "Blue"):
             cb = QCheckBox(name)
             cb.setChecked(bool(current.get(name, False)))
             cb.setStyleSheet(
-                f"QCheckBox {{ color: white; font-size: {max(12, int(11 * s))}px; }} "
+                f"QCheckBox {{ color: white; font-size: {_fs}px; }} "
                 f"QCheckBox::indicator {{ width: {max(14, int(14*s))}px; height: {max(14, int(14*s))}px; }} "
                 "QCheckBox::indicator:unchecked { border: 2px solid #BBBBBB; background: #222222; } "
                 "QCheckBox::indicator:checked { border: 2px solid #1E88E5; background: #1E88E5; } "
             )
-            cb.toggled.connect(self._update_timer_enabled)
             self.checks[name] = cb
             layout.addWidget(cb)
-
-        timer_layout = QHBoxLayout()
-        timer_label = QLabel("Trigger at (hours):")
-        timer_label.setStyleSheet(f"font-size: {max(12, int(11 * s))}px; color: white;")
-        self.timer_value = QLineEdit(str(int(current.get("timer_hours", DARK_TIMER_DEFAULT_HOURS))))
-        self.timer_value.setAlignment(Qt.AlignCenter)
-        self.timer_value.setFixedSize(int(69 * s), int(38 * s))
-        self.timer_value.setStyleSheet(f"background-color: white; color: black; font-size: {max(12, int(14 * s))}px;")
-        timer_up = QPushButton("▲"); timer_down = QPushButton("▼")
-        for btn in (timer_up, timer_down):
-            btn.setFixedSize(int(36 * s), int(38 * s))
-            btn.setStyleSheet(f"background-color: #ccc; font-size: {max(12, int(15 * s))}px; font-weight: bold;")
-        timer_up.clicked.connect(lambda: self._adjust_timer(DARK_TIMER_STEP_HOURS))
-        timer_down.clicked.connect(lambda: self._adjust_timer(-DARK_TIMER_STEP_HOURS))
-        timer_layout.addWidget(timer_label)
-        timer_layout.addStretch()
-        timer_layout.addWidget(timer_down)
-        timer_layout.addWidget(self.timer_value)
-        timer_layout.addWidget(timer_up)
-        layout.addLayout(timer_layout)
-        self._timer_up_btn, self._timer_down_btn = timer_up, timer_down
 
         close_btn = QPushButton("Close")
         close_btn.setStyleSheet(
@@ -191,41 +274,52 @@ class DarkSettingsDialog(QDialog):
         layout.addWidget(close_btn)
 
         self.setLayout(layout)
-        self._update_timer_enabled()
+        self._update_pulse_enabled()
+        self._refresh_induction_estimate()
 
-    def _any_channel_on(self) -> bool:
-        return any(cb.isChecked() for cb in self.checks.values())
-
-    def _update_timer_enabled(self, *_):
-        # Guard against the checkbox loop's setChecked() firing toggled()
-        # during __init__, before _timer_up_btn/_timer_down_btn exist yet
-        # (only happens when a channel is already saved as True) -- without
-        # this, that raises an AttributeError inside a Qt signal handler
-        # mid-construction, which can leave the dialog wedged instead of
-        # cleanly crashing. The explicit call at the end of __init__ still
-        # sets the correct enabled state once everything is built.
-        if not hasattr(self, "_timer_up_btn"):
+    def _update_pulse_enabled(self, *_):
+        if not hasattr(self, "pulse_value"):
             return
-        enabled = self._any_channel_on()
-        self.timer_value.setEnabled(enabled)
-        self._timer_up_btn.setEnabled(enabled)
-        self._timer_down_btn.setEnabled(enabled)
+        self.pulse_value.setEnabled(self.pulse_enable_chk.isChecked())
+        self._refresh_induction_estimate()
 
-    def _adjust_timer(self, step: int):
+    def _refresh_induction_estimate(self):
+        if not hasattr(self, "induction_estimate_label"):
+            return
         try:
-            current = int(self.timer_value.text())
+            preeq_h = float(self.preeq_value.text())
         except ValueError:
-            current = DARK_TIMER_DEFAULT_HOURS
-        new_val = max(DARK_TIMER_MIN_HOURS, min(DARK_TIMER_MAX_HOURS, current + step))
-        self.timer_value.setText(str(new_val))
+            preeq_h = PREEQ_DEFAULT_HOURS
+        try:
+            pulse_min = float(self.pulse_value.text())
+        except ValueError:
+            pulse_min = PULSE_DEFAULT_MINUTES
+        pulse_h = (pulse_min / 60.0) if self.pulse_enable_chk.isChecked() else 0.0
+        try:
+            etiolation_h = float(self.etiolation_value.text())
+        except ValueError:
+            etiolation_h = ETIOLATION_DEFAULT_HOURS
+        total_h = preeq_h + pulse_h + etiolation_h
+        self.induction_estimate_label.setText(
+            f"Induction will begin at approximately {total_h:.1f}h after experiment start."
+        )
 
     def accept(self):
         for name, cb in self.checks.items():
             self.result_settings[name] = cb.isChecked()
         try:
-            self.result_settings["timer_hours"] = int(self.timer_value.text())
+            self.result_settings["preequilibration_hours"] = float(self.preeq_value.text())
         except ValueError:
-            self.result_settings["timer_hours"] = DARK_TIMER_DEFAULT_HOURS
+            self.result_settings["preequilibration_hours"] = PREEQ_DEFAULT_HOURS
+        self.result_settings["pulse_enabled"] = self.pulse_enable_chk.isChecked()
+        try:
+            self.result_settings["pulse_minutes"] = float(self.pulse_value.text())
+        except ValueError:
+            self.result_settings["pulse_minutes"] = PULSE_DEFAULT_MINUTES
+        try:
+            self.result_settings["etiolation_hours"] = float(self.etiolation_value.text())
+        except ValueError:
+            self.result_settings["etiolation_hours"] = ETIOLATION_DEFAULT_HOURS
         super().accept()
 
 
@@ -252,7 +346,13 @@ class ExperimentSetupDialog(QDialog):
         # Growth mode + per-mode germination LED settings.
         self.growth_mode = GROWTH_MODE_DAYLIGHT
         self.daylight_settings = {"FarRed": False, "Red": False, "Blue": False}
-        self.dark_settings = {"FarRed": False, "Red": False, "Blue": False, "timer_hours": DARK_TIMER_DEFAULT_HOURS}
+        self.dark_settings = {
+            "FarRed": False, "Red": False, "Blue": False,
+            "preequilibration_hours": PREEQ_DEFAULT_HOURS,
+            "pulse_enabled": True,
+            "pulse_minutes": PULSE_DEFAULT_MINUTES,
+            "etiolation_hours": ETIOLATION_DEFAULT_HOURS,
+        }
 
         main_layout = QVBoxLayout()
 
