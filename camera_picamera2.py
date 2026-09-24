@@ -292,7 +292,7 @@ def get_current_settings() -> dict:
 # =============================================================================
 # Start/stop camera
 # =============================================================================
-def _wait_for_focus_convergence(settings: dict, tol: float = 0.5, max_wait_s: float = 4.0, poll_s: float = 0.15) -> None:
+def _wait_for_focus_convergence(settings: dict, tol: float = 0.5, max_wait_s: float = 8.0, poll_s: float = 0.15) -> None:
     """
     Block until LensPosition metadata reports convergence to the saved
     target diopter value, or max_wait_s elapses.
