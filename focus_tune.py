@@ -115,27 +115,32 @@ FRONT_VISIBLE_GAIN = 300  # Arducam scale, 100-2200
 
 
 def sharpness_score(gray: np.ndarray) -> float:
-    """Variance of the Laplacian, on a CONTRAST-NORMALIZED copy of the ROI —
-    higher means sharper. Raw variance-of-Laplacian is NOT normalized for
-    brightness: a brighter/higher-contrast capture produces numerically
-    bigger edge transitions and can score higher even when it's actually
-    blurrier, which is exactly the trap that made two visibly blurry frames
-    outscore a visibly sharp one. Stretching each frame's own pixel values
-    to the same 0-1 range before scoring removes that confound, so only
-    genuine edge sharpness — not incidental lighting differences between
-    runs — affects the number. Only meaningful as a RELATIVE score for
-    comparing frames of the same scene."""
-    g = gray.astype(np.float64)
-    lo, hi = float(g.min()), float(g.max())
-    if hi - lo < 1.0:  # essentially flat/blank — nothing to measure
-        return 0.0
-    g_norm = (g - lo) / (hi - lo)
-    lap = cv2.Laplacian(g_norm, cv2.CV_64F)
-    # Scale factor purely for readability — doesn't change what's being
-    # measured, just spreads it into a range where small real differences
-    # (e.g. 10.6 vs 11.0) show up as more digits rather than getting lost
-    # in one decimal place on screen.
-    return float(lap.var()) * 100000.0
+    """Variance of the Laplacian, computed directly on the raw grayscale
+    ROI — higher means sharper. Exposure and gain are locked to fixed
+    manual values before the sweep starts (apply_ir_transmission_preset()
+    for rear_ir, or the forced manual exposure/gain for front_visible), so
+    frame-to-frame brightness is already consistent under fixed
+    illumination. No per-frame renormalization is needed to remove a
+    brightness confound here, and — critically — doing one anyway actively
+    breaks this metric under defocus.
+
+    A previous version of this function stretched each frame's own
+    min/max pixel range to a fixed 0-1 span before scoring, intending to
+    stop a brighter/higher-contrast frame from outscoring a genuinely
+    sharper one. But a Siemens star's black/white spokes blur together
+    toward flat mid-gray as focus is lost, so the frame's true (max-min)
+    range SHRINKS the further out of focus you go. Rescaling that shrunken
+    range back up to a fixed span amplifies whatever is left in it — by
+    that point mostly sensor read noise, not real edge detail — so the
+    reported "sharpness" could climb even as the lens moved further from
+    correct focus. That is the "score keeps increasing past 200 while the
+    image is visibly more blurred" failure. Scoring the raw grayscale
+    directly (no rescaling) removes that noise-amplification path; with
+    exposure/gain already fixed, relative comparisons across the sweep
+    remain valid.
+    """
+    lap = cv2.Laplacian(gray.astype(np.float64), cv2.CV_64F)
+    return float(lap.var())
 
 
 def main():
