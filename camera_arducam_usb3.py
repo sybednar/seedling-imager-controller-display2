@@ -591,6 +591,21 @@ def _open_capture(width: int, height: int):
         if _cap is not None:
             _cap.release()
             _cap = None
+            # Settle delay (Sept 2026). Diagnosed on real hardware across two
+            # separate systems: this camera can go completely unresponsive —
+            # not just to cv2.VideoCapture, but to plain `v4l2-ctl` commands
+            # run from a separate process entirely — immediately after being
+            # released from one resolution and reopened at another (most
+            # consistently: full 5120x3840 capture -> preview 1280x960,
+            # right after a successful save_image()). cap.release() returns
+            # as soon as OpenCV's side is done; it does not guarantee the
+            # USB layer has actually finished tearing down the previous
+            # isochronous stream before a new one is requested. Requesting a
+            # brand-new stream (especially a big bandwidth change) while that
+            # teardown is still in flight is a well-known way to wedge a UVC
+            # device's firmware. This sleep gives the teardown time to
+            # actually finish before the reopen below asks for a new stream.
+            time.sleep(0.5)
 
         cap = None
         device = None
@@ -608,6 +623,10 @@ def _open_capture(width: int, height: int):
                     f"was renumbered.",
                     flush=True,
                 )
+                # Give a wedged device a further moment before the
+                # re-detect/retry — same reasoning as the settle delay
+                # above, just longer, since this is already a failure case.
+                time.sleep(1.0)
 
         if cap is None:
             print(
