@@ -4,3 +4,6 @@ venv/
 Seedling_Imager/
 .DS_Store
 
+autostart.log
+camera_settings.json
+motion_cal.json
