@@ -329,7 +329,7 @@ def disable_liveview_boost() -> None:
 _device_path = None
 
 
-def _find_device() -> str:
+def _find_device(force_refresh: bool = False) -> str:
     """
     Resolve the /dev/videoN node for this camera.
     Priority: explicit 'Arducam_DevicePath' setting > sysfs name auto-detect
@@ -342,10 +342,32 @@ def _find_device() -> str:
     already handles that correctly by matching on device name rather than a
     fixed path. Prefer setting 'Arducam_DevicePath' to a
     /dev/v4l/by-id/... symlink instead if you want to pin it explicitly.
+
+    force_refresh=True (Sept 2026) re-runs auto-detection even if a path
+    was already cached for this process. Confirmed on real hardware: a
+    cached path can go stale MID-RUN, not just across reboots — this camera
+    repeatedly opening/closing the USB3 stream at full 5120x3840 resolution
+    on every single save_image() call is exactly the kind of repeated
+    high-bandwidth mode-switch that can make a UVC device drop off and
+    re-enumerate under a new node while the controller process is still
+    running. Without a way to re-detect, the very first capture after that
+    re-enumeration — and every one after it for the rest of the run — fails
+    with "could not open /dev/videoN" against a node that no longer refers
+    to this camera (or no longer exists at all). _open_capture() calls this
+    with force_refresh=True exactly once, as a retry, whenever opening the
+    currently cached path fails.
     """
     global _device_path
-    if _device_path:
+    if _device_path and not force_refresh:
         return _device_path
+
+    if force_refresh:
+        print(
+            f"[arducam] Re-detecting device (cached path {_device_path!r} "
+            f"failed to open) — checking for USB re-enumeration.",
+            flush=True,
+        )
+        _device_path = None
 
     override = load_settings().get("Arducam_DevicePath")
     if override and Path(override).exists():
@@ -545,20 +567,61 @@ _cap_lock = threading.Lock()
 
 
 def _open_capture(width: int, height: int):
+    """
+    Open (or reuse) the V4L2 capture at the given resolution.
+
+    Sept 2026: now self-heals against USB re-enumeration. Confirmed on real
+    hardware: repeatedly closing and reopening this camera's USB3 stream at
+    full 5120x3840 resolution — which save_image() does on every single
+    capture — can make the device drop off the bus and come back under a
+    DIFFERENT /dev/videoN node mid-run, not just across reboots. Previously,
+    _find_device()'s cached path was never rechecked once resolved, so the
+    first open attempt against a since-changed node failed permanently —
+    and every capture attempt for the rest of the run failed the same way,
+    which is exactly the "one image captured, then nothing else for the
+    rest of the experiment" symptom seen on two separate real test runs.
+    Now, if opening the cached device path fails, this re-runs device
+    auto-detection once (force_refresh=True) and retries against whatever
+    node actually has this camera now, before giving up.
+    """
     global _cap, _cap_size
-    device = _find_device()
     with _cap_lock:
         if _cap is not None and _cap_size == (width, height):
             return
         if _cap is not None:
             _cap.release()
             _cap = None
-        cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
-        if not cap.isOpened():
-            print(f"[arducam] ERROR: could not open {device}", flush=True)
+
+        cap = None
+        device = None
+        for attempt in (1, 2):
+            device = _find_device(force_refresh=(attempt == 2))
+            cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
+            if cap.isOpened():
+                break
+            cap.release()
+            cap = None
+            if attempt == 1:
+                print(
+                    f"[arducam] {device} failed to open (attempt 1/2) — "
+                    f"retrying with a fresh device auto-detect in case it "
+                    f"was renumbered.",
+                    flush=True,
+                )
+
+        if cap is None:
+            print(
+                f"[arducam] ERROR: could not open {device} even after "
+                f"re-detecting the device. Check `ls /dev/video*` and "
+                f"`dmesg | tail` for a USB disconnect/reconnect around this "
+                f"time — this usually means the camera dropped off the USB "
+                f"bus rather than just moving to a new node.",
+                flush=True,
+            )
             _cap = None
             _cap_size = None
             return
+
         # Prefer raw 8-bit grayscale (GREY/Y800) if the driver supports it —
         # this is the natural output for a monochrome sensor. If unsupported,
         # the driver silently keeps its default fourcc and _to_gray() below
