@@ -57,6 +57,7 @@ export WLR_XWAYLAND
 # If the touchscreen shows a black screen or the app fails to open a window,
 # comment the Wayland line and uncomment the xcb (X11) line instead, then
 # re-run this script by hand to confirm which one works before re-enabling
+
 # autostart. Note: in practice this has NOT been the cause of autostart
 # failures seen so far (those were the XAUTHORITY/WLR_XWAYLAND gap above) —
 # only change this if you have a specific, confirmed reason to.
