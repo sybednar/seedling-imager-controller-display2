@@ -5,7 +5,7 @@ Inspired by the SPIRO (Smart Plate Imaging Robot; Ohlsson et al The Plant Journa
 
 # Seedling Imager Controller — Universal
 
-**v1.2.1** · Raspberry Pi 5 · PySide6 · picamera2 (or Arducam USB3) · GT2 belt carousel
+**v1.3.0** · Raspberry Pi 5 · PySide6 · picamera2 (or Arducam USB3) · GT2 belt carousel
 
 A touchscreen controller for automated timelapse imaging of seedling plates using near-infrared (940 nm) transmission and front illumination. A single codebase runs on both supported display configurations without any code changes.
 
@@ -83,6 +83,7 @@ GUI layout, font sizes, button heights, and dialog dimensions all auto-scale via
 
 ### Camera Config Dialog
 - Tabbed interface: General settings (incl. Camera Backend selector) + Focus + IR-specific presets
+- "White LED Front" toggle button (GPIO23, persistent button row next to Apply/Close, not inside the Focus tab so it stays usable for either camera backend) — illuminates a Siemens star target during manual focus calibration; automatically turns off when the dialog closes (Close button, window X, or Escape key)
 - Non-blocking "Read Current Position from Camera" button — `_FocusReader(QThread)` worker prevents GUI freeze when Live View is off
 - Button disabled during read, re-enabled on completion or error
 
@@ -148,8 +149,8 @@ All pins below are on the auxiliary MOSFET board or the motor driver, addressed 
 | 20 | Motor STEP | `motor_control.py` |
 | 21 | Motor driver EN | `motor_control.py` |
 | 22 | Optical sensor (reflective stripe) | `motor_control.py` |
-| 23 | *Reserved* — rear IR940 intensity PWM (AO4805 mosfet, not yet implemented) | — |
-| 24 | *Reserved* — rear IR940 intensity PWM (AO4805 mosfet, not yet implemented) | — |
+| 23 | Front panel White LED strip (Siemens star illumination during manual focus calibration) | `camera_config.py` |
+| 24 | Green front illumination | `gui.py` |
 | 26 | Hall sensor (motor pre-index) | `motor_control.py` |
 | 27 | Rear IR imaging panel (transmission) | `gui.py` |
 
@@ -378,6 +379,23 @@ At the top of `motor_control.py`. Default `0.0` places the carousel at exact geo
 ---
 
 ## Version History
+
+### v1.3.0 — 2026-09-27 — Arducam reliability fixes, White LED Front control, Picamera2 for production
+
+**Reliability fixes**
+- Fixed `focus_tune.py` sharpness score: removed per-frame min/max contrast normalization that was causing the reported score to rise with *increasing* defocus instead of decreasing
+- Fixed Arducam USB3 single-capture failure (root-caused via `dmesg`: `uvcvideo: Failed to resubmit video URB`, a genuine kernel-level USB/firmware wedge triggered by rapid full-res/preview mode switching) — added a settle delay before reopening the device plus self-healing device re-detection (`_find_device(force_refresh=True)`)
+
+**New hardware control**
+- Added a "White LED Front" toggle button (GPIO23) to the Camera Config dialog, placed in the persistent button row so it stays usable regardless of active tab or selected backend. Illuminates a Siemens star target for manual focus calibration on either camera; auto-shuts-off via the dialog's `finished` signal so it turns off no matter how the dialog is closed
+- Corrected GPIO Pin Map: GPIO23 and GPIO24 were previously documented as "reserved, not yet implemented" — GPIO24 was already driving the Green front illumination LED (`gui.py`), and GPIO23 now drives the White LED Front strip above, both via the AO4805 MOSFET auxiliary board
+
+**Hardware/production decision**
+- Head-to-head image-quality comparison on both systems (focus, depth of field, sharpness) showed Picamera2/Camera Module 3 substantially outperforming the Arducam 20MP AR2020 Mono + AICO M12 lens combination for real seedling-plate imaging, after root-causing the Arducam's low sharpness ceiling to a Minimum-Object-Distance violation (measured working distance below the lens's MOD). Both systems switched to Picamera2 for production experiments; the Arducam lens/working-distance problem is tabled for future revisit — the backend and its fixes above remain in the codebase and selectable via Camera Config
+
+**Repo maintenance**
+- Consolidated system 1 onto `origin/main`, resolving stale branch/merge-conflict history
+- Fixed GitHub default branch (was pointing to the archived `archive-pre-arducam-2026-04` branch instead of `main`); deleted stale `arducam-integration` and `archive-pre-arducam-2026-04` branches and the leftover local `main-old-stale`
 
 ### v1.2.1 — 2026-09 — Autostart reliability fix + setup documentation overhaul
 
