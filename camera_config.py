@@ -8,6 +8,26 @@ from PySide6.QtCore import Qt, QThread, Signal
 import json
 from pathlib import Path
 import camera   # needed for "Read from Camera" button and backend get/set helpers
+
+# White LED front-illuminator (Sept 2026) — GPIO23 drives the front panel's
+# white LED strip via the same AO4805 MOSFET board as gui.py's Green LED
+# (GPIO24) — a separate output channel on that board, not previously wired
+# into the software at all. Confirmed useful for illuminating a Siemens
+# star target while manually focusing either camera backend (Picamera2 or
+# Arducam) — see focus_tune.py's front_visible mode for the equivalent
+# standalone-script illuminant note. Imported here (rather than reusing
+# gui.py's gpiod handle) so this dialog can drive it independently and
+# guarantee it's turned off when the dialog closes, regardless of how the
+# main GUI's own LED state is being managed elsewhere.
+try:
+    import gpiod
+    from gpiod.line import Value, Direction
+except Exception:
+    gpiod = None
+
+WHITE_LED_FRONT_PIN = 23
+_WHITE_LED_GPIO_CHIP = "/dev/gpiochip0"
+
 DEFAULTS = {
     "CameraBackend":       "picamera2",   # ADDED 081226 — "picamera2" or "arducam_usb3"
     "AeEnable":            True,
@@ -143,6 +163,7 @@ class CameraConfigDialog(QDialog):
         self.setMinimumWidth(520)
         self.settings = load_settings() if current_settings is None else {**DEFAULTS, **current_settings}
         self._live_apply_worker = None  # holds the in-flight _LiveApplyWorker, if any (see on_apply)
+        self._white_led_request = None  # gpiod line request for the front white LED, if active
         main = QVBoxLayout(self)
         main.setSpacing(6)
         main.setContentsMargins(8, 8, 8, 8)
@@ -375,17 +396,92 @@ class CameraConfigDialog(QDialog):
         self._update_backend_specific_fields()
 
         # ------------------------------------------------------------------ #
-        # Apply / Close buttons (always visible below the tabs)               #
+        # Apply / White LED Front / Close buttons (always visible, all tabs)   #
         # ------------------------------------------------------------------ #
         btns = QHBoxLayout()
         self.apply_btn = QPushButton("Apply")
+        # White LED Front (GPIO23) — deliberately placed in this always-visible
+        # row rather than inside the Focus tab. The Focus tab is entirely
+        # disabled when the Arducam backend is selected (see
+        # _update_backend_specific_fields() below), but this light is just as
+        # useful for illuminating a Siemens star target while manually
+        # focusing the Arducam's fixed lens by hand as it is for Picamera2 —
+        # putting it on a tab that goes unreachable for half the use case
+        # would defeat the point. Checkable so its pressed/released state
+        # directly reflects whether the LED is currently on.
+        self.white_led_btn = QPushButton("White LED Front: OFF")
+        self.white_led_btn.setCheckable(True)
+        self.white_led_btn.setToolTip(
+            "Toggles the front panel's white LED strip (GPIO23) — useful for "
+            "illuminating a Siemens star target while manually focusing "
+            "either camera. Automatically turned off when this dialog closes, "
+            "however it is closed."
+        )
+        self.white_led_btn.toggled.connect(self.on_toggle_white_led)
         self.close_btn = QPushButton("Close")
         btns.addWidget(self.apply_btn)
+        btns.addWidget(self.white_led_btn)
         btns.addStretch()
         btns.addWidget(self.close_btn)
         main.addLayout(btns)
         self.apply_btn.clicked.connect(self.on_apply)
         self.close_btn.clicked.connect(self.accept)
+        # QDialog.finished fires for BOTH accept() (Close button) and
+        # reject() (window's X button, Escape key) — connecting here rather
+        # than only to close_btn.clicked guarantees the LED can never be left
+        # on no matter which of those the user actually uses to leave.
+        self.finished.connect(self._turn_off_white_led)
+    # ---------------------------------------------------------------------- #
+    # White LED Front (GPIO23) toggle                                          #
+    # ---------------------------------------------------------------------- #
+    def on_toggle_white_led(self, checked: bool):
+        if gpiod is None:
+            self.white_led_btn.setChecked(False)
+            self.white_led_btn.setText("White LED Front: unavailable (no gpiod)")
+            return
+        try:
+            if checked:
+                if self._white_led_request is None:
+                    self._white_led_request = gpiod.request_lines(
+                        _WHITE_LED_GPIO_CHIP,
+                        consumer="camera_config_white_led",
+                        config={WHITE_LED_FRONT_PIN: gpiod.LineSettings(
+                            direction=Direction.OUTPUT, output_value=Value.INACTIVE)},
+                    )
+                self._white_led_request.set_value(WHITE_LED_FRONT_PIN, Value.ACTIVE)
+                self.white_led_btn.setText("White LED Front: ON")
+            else:
+                if self._white_led_request is not None:
+                    self._white_led_request.set_value(WHITE_LED_FRONT_PIN, Value.INACTIVE)
+                self.white_led_btn.setText("White LED Front: OFF")
+        except Exception as e:
+            print(f"[camera_config] White LED Front toggle error: {e}", flush=True)
+            self.white_led_btn.setText("White LED Front: error")
+
+    def _turn_off_white_led(self):
+        """
+        Force the white LED off and release its gpiod line request.
+        Connected to self.finished (see __init__) so this runs no matter how
+        the dialog closes — Close button, window X, or Escape — not just the
+        Close button's own clicked signal. Safe to call even if the LED was
+        never turned on this session.
+        """
+        if self._white_led_request is None:
+            return
+        try:
+            self._white_led_request.set_value(WHITE_LED_FRONT_PIN, Value.INACTIVE)
+            self._white_led_request.release()
+        except Exception as e:
+            print(f"[camera_config] White LED Front cleanup error: {e}", flush=True)
+        finally:
+            self._white_led_request = None
+            # Reset the button's visual state without re-entering
+            # on_toggle_white_led (which would try to re-request the line
+            # we just released) — block its signal for this one change.
+            self.white_led_btn.blockSignals(True)
+            self.white_led_btn.setChecked(False)
+            self.white_led_btn.setText("White LED Front: OFF")
+            self.white_led_btn.blockSignals(False)
     # ---------------------------------------------------------------------- #
     # Show backend-appropriate Rear IR fields                                  #
     # ---------------------------------------------------------------------- #
@@ -429,7 +525,9 @@ class CameraConfigDialog(QDialog):
         # trigger_autofocus() are all no-ops in camera_arducam_usb3.py — so
         # every control on this tab (Manual Focus checkbox, Lens Position,
         # Read Current Position from Camera) is meaningless for this
-        # backend.
+        # backend. NOTE: the White LED Front button lives in the persistent
+        # button row below the tabs, not on this tab, specifically so it
+        # stays usable even while this tab is disabled.
         self.tabs.setTabEnabled(self.foc_tab_idx, not is_arducam)
         self.tabs.setTabToolTip(
             self.foc_tab_idx,
