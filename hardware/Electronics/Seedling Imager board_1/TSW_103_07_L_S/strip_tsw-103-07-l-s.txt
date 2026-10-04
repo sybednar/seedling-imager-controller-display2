@@ -1,0 +1,13 @@
+﻿"Symbol";"Value";"Unit";
+"TraceParts.PartNumber";"10-27072017-067003";"";
+"REFERENCE";"TSW-103-07-L-S";"";
+"NUMBER_OF_POSITIONS";"3";"";
+"SERIES";"TSW";"";
+"LEADS_TYPE";"07";"";
+"TraceParts.PartTitle";"TSW - 0.025[0.64] SQ. Post terminal strip assembly";"";
+"SUPPLIER";"Samtec";"";
+"DESIGN";"Post terminal strip assembly TSW-103-07-L-S";"";
+"TraceParts.InstanceId";"10-27072017-0670033ZFSAKPWLAQEVMWYZ9KUJF7QM";"";
+"TRACEPARTS";"TRACEPARTS";"";
+"TraceParts.PartLanguage";"en";"";
+"TraceParts.PartVersion";"1.3.1";"";

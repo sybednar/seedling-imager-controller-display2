@@ -7,3 +7,7 @@ Seedling_Imager/
 autostart.log
 camera_settings.json
 motion_cal.json
+
+# Files over GitHub 100 MB limit: distribute via GitHub Release (see hardware/README.md)
+hardware/seedling imager_full assembly.step
+hardware/seedling imager_full assembly.f3z
