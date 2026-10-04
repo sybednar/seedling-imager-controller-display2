@@ -1,6 +1,14 @@
 <
 # Changelog
 
+## v1.3.1 — 2026-10-04
+- **Hardware**
+  - Added complete hardware design files under `hardware/`: full-assembly STEP (zipped), individual part STEP files by subsystem, KiCad 10 files for board 1, board 2 and the hall sensor board, bill of materials, and assembly render.
+  - Hardware licensed under CERN-OHL-S v2 (`hardware/LICENSE-CERN-OHL-S-v2.txt`, `hardware/NOTICE.txt`).
+  - Fusion archive (`.f3z`) and full-assembly STEP are distributed as GitHub Release assets (over the 100 MB repository file limit).
+- **Licensing**: added root `LICENSE` (MIT) for the software.
+- Software unchanged from v1.3.0. Archived on Zenodo: 10.5281/zenodo.23143807.
+
 
 ## v0.06 — 2026-01-08
 - **Camera & Imaging**

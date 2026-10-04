@@ -128,7 +128,7 @@ Seedling_Imager/                          # top-level project folder (NOT the gi
     ├── seedling-imager.service           # systemd --user service template — optional/alternative (see Setup Step 8)
     ├── Seedling_Imager.desktop           # Desktop icon template — start/restart the controller (see Setup Step 9)
     ├── git_update.sh                     # Convenience script for commit + tag + push
-    ├── hardware/                         # 3D print files / hardware documentation
+    ├── hardware/                         # CAD (STEP), KiCad boards, BOM, render, hardware licence — see hardware/README.md
     ├── logs/                             # Experiment run logs
     └── README.md
 ```
@@ -378,7 +378,22 @@ At the top of `motor_control.py`. Default `0.0` places the carousel at exact geo
 
 ---
 
+## Hardware Design Files
+
+The complete open-source hardware design is in [`hardware/`](hardware/README.md): the full assembly and individual parts in STEP format, KiCad 10 schematics and PCB layouts for the controller boards and hall sensor board, and a bill of materials (`hardware/CAD Files/bill_of_materials.md`). The native Fusion archive (`.f3z`) and full-assembly STEP are too large for the repository and are attached to the [latest GitHub Release](https://github.com/sybednar/seedling-imager-controller-display2/releases/latest). Hardware files are licensed under CERN-OHL-S v2; the software is MIT.
+
+![Seedling imager full assembly render](hardware/images/seedling_imager_full_assembly.png)
+
+---
+
 ## Version History
+
+### v1.3.1 — 2026-10-04 — Complete hardware design files
+
+- Added the complete hardware design (`hardware/`): full-assembly STEP (zipped) and individual part STEP files by subsystem, KiCad 10 files for controller board 1, board 2 and the hall sensor board, bill of materials, assembly render, and CERN-OHL-S v2 licence/notice
+- Fusion archive (`.f3z`) and full-assembly STEP attached to the GitHub Release (files exceed GitHub's 100 MB repository limit)
+- Added root `LICENSE` (MIT) for the software
+- Software unchanged from v1.3.0
 
 ### v1.3.0 — 2026-09-27 — Arducam reliability fixes, White LED Front control, Picamera2 for production
 
@@ -491,4 +506,6 @@ Residual jitter (2–6 px) is intrinsic GT2 belt backlash and stepper microstepp
 
 ## License
 
-MIT — see `LICENSE` file.
+Software: MIT — see `LICENSE` file. Hardware design files (`hardware/`): CERN-OHL-S v2 — see `hardware/LICENSE-CERN-OHL-S-v2.txt`.
+
+Citation: Bednarek, S. Y., Yong, C. W. J., Hoey, E. A. and Murua, K. (2026). *seedling-imager-controller-display2* (v1.3.1). Zenodo. https://doi.org/10.5281/zenodo.23143807 (all versions: https://doi.org/10.5281/zenodo.20738657).

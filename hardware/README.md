@@ -42,7 +42,7 @@ reproducibility for quantitative time-lapse growth analysis.
 | `Drive Base and Frame/` | Base plate, top plate, motor tensioning plate |
 | `Carousel Assembly/` | Six-plate carousel with dual-bearing belt drive, carousel support bracket, adjustable bearing arms (including the optical sensor mount and the hall sensor arm), acrylic plate diffuser, the dual bearing belt drive motor base block, and the magnet and optical carousel position sensor triggers |
 | `Rear Illuminator/` | Rear IR/illumination support hub |
-| `Camera and Controller Mount/` | Display/camera rail light screen mounting hub assembly; Picamera mount with CSI-to-HDMI board |
+| `Camera and Controller Mount/` | Display/camera rail light screen mounting hub assembly; Picamera mount with CSI-to-HDMI board (includes the camera housing, IR long-pass filter holder and rail corner bracket) |
 | `Controller Enclosure/` | Display/touchscreen controller enclosure assembly (hinge, touchscreen compartment, RPi compartment, rear panel) |
 | `Controller Subassembly/` | 3D models of the custom controller boards (Seedling Imager board_1 and board_2) |
 | `Miscellaneous Hardware/` | 2020 T-slot end cap with cover, 2020 T-slot cover wire guide, 2020 8 mm cable guide, 100 mm × 15 mm square Petri dish magnetic fastener (8 mm magnet), M5 thumb screws (15 mm and 25 mm), Meanwell LRS-100-12 power supply enclosure, corner bracket, and fabrication jigs (acrylic diffuser hole-drilling jig, spindle heat-set insert installation jig) |
@@ -86,8 +86,10 @@ extrusion cut list, camera housing hardware, and controller board connectors).
 - An alternate camera/lens configuration (Arducam 20 MP monochrome + Computar M0814-MP2
   C-mount lens) was evaluated but has not yet been built or tested. Its CAD files are not
   included; the Picamera system above is the one running production experiments.
-- A few small camera-mounting components (camera housing bracket, IR-cut filter holder)
-  are not yet included as separate files and will be added in a future update.
+- The camera housing/mount, the IR long-pass filter holder (for the 37 mm 850 nm filter) and the
+  mounting rail corner bracket are modeled as components of
+  `Camera and Controller Mount/picamera mount_with csi to hdmi board.step` (and of the full
+  assembly) rather than as separate files.
 
 ## Build and operation
 
