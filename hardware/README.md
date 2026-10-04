@@ -29,7 +29,7 @@ reproducibility for quantitative time-lapse growth analysis.
 | Path | Description |
 |------|-------------|
 | `seedling imager_full assembly.step.zip` | Complete assembly in neutral STEP format (zipped; unzip before opening). Opens in any CAD package (FreeCAD, SolidWorks, Onshape, etc.). |
-| Fusion archive `seedling imager_full assembly.f3z` | Native Autodesk Fusion archive of the complete assembly (127 MB, too large for the repository). Download from the **[latest GitHub Release](../../../releases/latest)** and open in Fusion. |
+| Fusion archive `seedling imager_full assembly.f3z` | Native Autodesk Fusion archive of the complete assembly (127 MB, too large for the repository). Download from the **[latest GitHub Release](https://github.com/sybednar/seedling-imager-controller-display2/releases/latest)** and open in Fusion. |
 | `CAD Files/` | Individual part and sub-assembly STEP files, organized by subsystem (below), plus `bill_of_materials.md`. |
 | `Electronics/` | KiCad 10 schematic and PCB design files for the controller boards and hall sensor board (below). |
 | `LICENSE-CERN-OHL-S-v2.txt` | Hardware license (see Licensing). |
