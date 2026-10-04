@@ -112,7 +112,10 @@ If you use this hardware or software, please cite the archived release:
 
 > Bednarek, S. Y., Yong, C. W. J., Hoey, E. A. and Murua, K. (2026). *seedling-imager-controller-display2: control and image-acquisition
 > software and hardware design files for an open-source six-plate infrared seedling imaging
-> robot* (v1.1) [Software and hardware design files]. Zenodo. https://doi.org/10.5281/zenodo.20738657
+> robot* (v1.3.1) [Software and hardware design files]. Zenodo. https://doi.org/10.5281/zenodo.23143807
+>
+> The DOI above is for release v1.3.1. To cite all versions (always resolves to the latest
+> release), use https://doi.org/10.5281/zenodo.20738657.
 
 ## Contact
 
