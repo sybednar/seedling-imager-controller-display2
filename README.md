@@ -388,6 +388,12 @@ The complete open-source hardware design is in [`hardware/`](hardware/README.md)
 
 ## Version History
 
+### v1.3.2 — 2026-10-04 — Hardware documentation and naming corrections
+
+- Renamed the IR filter holder component to "850 nm long-pass filter holder" in the CAD (Fusion archive and all STEP files)
+- Clarified that the camera housing, filter holder and rail corner bracket are included in the Picamera mount STEP; updated root README, CHANGELOG and citation
+- Software unchanged from v1.3.0
+
 ### v1.3.1 — 2026-10-04 — Complete hardware design files
 
 - Added the complete hardware design (`hardware/`): full-assembly STEP (zipped) and individual part STEP files by subsystem, KiCad 10 files for controller board 1, board 2 and the hall sensor board, bill of materials, assembly render, and CERN-OHL-S v2 licence/notice
@@ -508,4 +514,4 @@ Residual jitter (2–6 px) is intrinsic GT2 belt backlash and stepper microstepp
 
 Software: MIT — see `LICENSE` file. Hardware design files (`hardware/`): CERN-OHL-S v2 — see `hardware/LICENSE-CERN-OHL-S-v2.txt`.
 
-Citation: Bednarek, S. Y., Yong, C. W. J., Hoey, E. A. and Murua, K. (2026). *seedling-imager-controller-display2* (v1.3.1). Zenodo. https://doi.org/10.5281/zenodo.23143807 (all versions: https://doi.org/10.5281/zenodo.20738657).
+Citation: Bednarek, S. Y., Yong, C. W. J., Hoey, E. A. and Murua, K. (2026). *seedling-imager-controller-display2* (v1.3.2). Zenodo. https://doi.org/10.5281/zenodo.23144486 (all versions: https://doi.org/10.5281/zenodo.20738657).

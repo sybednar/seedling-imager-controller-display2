@@ -1,6 +1,10 @@
 <
 # Changelog
 
+## v1.3.2 — 2026-10-04
+- **Hardware**: renamed the IR filter holder component to "850 nm long-pass filter holder" (Fusion archive and STEP files); clarified camera-mount contents in `hardware/README.md`; updated BOM.
+- Updated root README, CHANGELOG and citation. Software unchanged from v1.3.0. Archived on Zenodo: 10.5281/zenodo.23144486.
+
 ## v1.3.1 — 2026-10-04
 - **Hardware**
   - Added complete hardware design files under `hardware/`: full-assembly STEP (zipped), individual part STEP files by subsystem, KiCad 10 files for board 1, board 2 and the hall sensor board, bill of materials, and assembly render.
