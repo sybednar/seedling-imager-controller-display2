@@ -132,7 +132,39 @@ Custom parts are provided as STEP files in the subsystem folders (see `../README
 
 | Qty | Description | Price | Source / Part No. |
 |---|---|---|---|
-|  | 8 mm diameter neodymium disc magnets (Petri dish fasteners and carousel position triggers; confirm thickness against the CAD pockets) |  | To be specified |
+|  | 8 mm x 3 mm neodymium disc magnets, N35 (Petri dish fasteners and carousel position triggers) |  | https://www.amazon.com/dp/B0G1SXK3VY |
+
+## Additional McMaster-Carr Parts Referenced in the CAD Model
+
+These part numbers appear as components in the full-assembly CAD model but were not yet listed above. Sizes, quantities and pack sizes should be confirmed against the model (open the part in Fusion or check the McMaster page) before ordering.
+
+| Qty | McMaster-Carr No. | Description | Source |
+|---|---|---|---|
+|  | 2349K786 | Permanently Lubricated Ball Bearing | https://www.mcmaster.com/2349K786/ |
+|  | 8215K206 | Load-Rated Adhesive-Back Sorbothane Bumper | https://www.mcmaster.com/8215K206/ |
+|  | 90591A250 | Zinc-Plated Steel Hex Nut | https://www.mcmaster.com/90591A250/ |
+|  | 90591A255 | Zinc-Plated Steel Hex Nut | https://www.mcmaster.com/90591A255/ |
+|  | 90591A260 | Zinc-Plated Steel Hex Nut | https://www.mcmaster.com/90591A260/ |
+|  | 90591A270 | Zinc-Plated Steel Hex Nut | https://www.mcmaster.com/90591A270/ |
+|  | 90593A001 | Black-Oxide Medium-Strength Steel Hex Nut | https://www.mcmaster.com/90593A001/ |
+|  | 90593A004 | Black-Oxide Medium-Strength Steel Hex Nut | https://www.mcmaster.com/90593A004/ |
+|  | 91239A113 | Button Head Hex Drive Screw | https://www.mcmaster.com/91239A113/ |
+|  | 91239A115 | Button Head Hex Drive Screw | https://www.mcmaster.com/91239A115/ |
+|  | 91239A117 | Button Head Hex Drive Screw | https://www.mcmaster.com/91239A117/ |
+|  | 91239A224 | Button Head Hex Drive Screw | https://www.mcmaster.com/91239A224/ |
+|  | 91239A228 | Button Head Hex Drive Screw | https://www.mcmaster.com/91239A228/ |
+|  | 91239A232 | Button Head Hex Drive Screw | https://www.mcmaster.com/91239A232/ |
+|  | 91239A704 | Button Head Hex Drive Screw | https://www.mcmaster.com/91239A704/ |
+|  | 91287A126 | 18-8 Stainless Steel Hex Head Screw | https://www.mcmaster.com/91287A126/ |
+|  | 91290A083 | Black-Oxide Alloy Steel Socket Head Screw | https://www.mcmaster.com/91290A083/ |
+|  | 91290A144 | Black-Oxide Alloy Steel Socket Head Screw | https://www.mcmaster.com/91290A144/ |
+|  | 91290A180 | Black-Oxide Alloy Steel Socket Head Screw | https://www.mcmaster.com/91290A180/ |
+|  | 91290A264 | Black-Oxide Alloy Steel Socket Head Screw | https://www.mcmaster.com/91290A264/ |
+|  | 92314A646 | 18-8 Stainless Steel Hex Head Screw | https://www.mcmaster.com/92314A646/ |
+|  | 93070A064 | Alloy Steel Low-Profile Socket Head Screw | https://www.mcmaster.com/93070A064/ |
+|  | 93070A098 | Alloy Steel Low-Profile Socket Head Screw | https://www.mcmaster.com/93070A098/ |
+|  | 97259A103 | Low-Strength Steel Thin Square Nut | https://www.mcmaster.com/97259A103/ |
+|  | 98687A308 | General Purpose Steel Washer | https://www.mcmaster.com/98687A308/ |
 
 ## ARUCO markers
 
