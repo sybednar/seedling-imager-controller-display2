@@ -42,7 +42,10 @@ HOW TO USE (see MODES below for which command/illumination to use):
      found. Recheck the score after tightening in case it shifted, and
      readjust if needed.
   5. Press 'q' or Esc in the preview window, or Ctrl+C in the terminal, to
-     stop.
+     stop. Press 'r' in the preview window to reset the running peak — do
+     this after changing the iris, exposure/gain, target position or camera
+     distance, because the score depends on contrast and framing and an old
+     peak from different conditions is not a valid target.
 
 RUN IT (same pattern as camera_arducam_usb3.print_diagnostics()):
 
@@ -150,6 +153,10 @@ WHITE_FRONT_GAIN = 150  # Arducam scale, 100-2200
 
 WINDOW_NAME = "Siemens Star Focus"
 
+# Block-average factor applied to the ROI before scoring (see sharpness_score).
+# Set to 1 to restore the old full-resolution behavior.
+SCORE_DOWNSAMPLE = 4
+
 
 def sharpness_score(gray: np.ndarray) -> float:
     """Variance of the Laplacian, computed directly on the raw grayscale
@@ -176,7 +183,18 @@ def sharpness_score(gray: np.ndarray) -> float:
     exposure/gain already fixed, relative comparisons across the sweep
     remain valid.
     """
-    lap = cv2.Laplacian(gray.astype(np.float64), cv2.CV_64F)
+    # Downsample 4x (area average) before scoring. At the full 5120x3840
+    # capture size the pixels (~1.4 um) are finer than any 1.5 MP-class lens
+    # can resolve, so a pixel-level Laplacian is dominated by sensor noise:
+    # in a synthetic test (Siemens star + Gaussian noise) the full-res score
+    # dropped to a flat noise floor after only ~2 px of blur, so it could not
+    # tell "slightly soft" from "very soft". Averaging 4x4 blocks suppresses
+    # noise and keeps the score monotonic with blur over a much wider range.
+    # Absolute values are therefore NOT comparable with older versions.
+    h, w = gray.shape[:2]
+    small = cv2.resize(gray, (max(1, w // SCORE_DOWNSAMPLE), max(1, h // SCORE_DOWNSAMPLE)),
+                       interpolation=cv2.INTER_AREA)
+    lap = cv2.Laplacian(small.astype(np.float64), cv2.CV_64F)
     return float(lap.var())
 
 
@@ -327,7 +345,7 @@ def main():
                 cv2.rectangle(preview_bgr, (pc0, pr0), (pc1, pr1), (0, 0, 255), 2)
                 cv2.putText(preview_bgr, f"score: {score:.2f}   peak: {best:.2f}",
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-                cv2.putText(preview_bgr, f"mode: {MODE}   ({since_peak:.1f}s since peak)",
+                cv2.putText(preview_bgr, f"mode: {MODE}  mean {roi.mean():.0f}  ({since_peak:.1f}s since peak)  [r=reset q=quit]",
                             (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
                 # Live bar graph across the bottom of the frame, filled
                 # proportional to score/peak — gives an at-a-glance visual
@@ -345,6 +363,9 @@ def main():
                     key = cv2.waitKey(1) & 0xFF
                     if key == ord('q') or key == 27:  # 'q' or Esc
                         raise KeyboardInterrupt
+                    if key == ord('r'):  # reset the running peak (do this after
+                        best = 0.0       # any change of iris/exposure/framing)
+                        best_time = time.time()
                 if now - last_snapshot > 1.0:
                     last_snapshot = now
                     cv2.imwrite("focus_debug_snapshot.jpg", preview_bgr)
