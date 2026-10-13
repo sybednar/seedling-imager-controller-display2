@@ -388,6 +388,9 @@ def main():
             except Exception:
                 pass
         cam.stop_camera()
+        # Give the USB layer time to finish tearing the stream down before
+        # this process exits (and before main.py can be started).
+        time.sleep(2.0)
 
 
 if __name__ == "__main__":

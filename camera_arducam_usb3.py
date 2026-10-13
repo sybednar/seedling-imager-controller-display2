@@ -85,7 +85,18 @@ DEFAULTS = {
     "Arducam_FullWidth":     5120,
     "Arducam_FullHeight":    3840,
 
-    "Arducam_AeEnable":      False,  # CONFIRMED on real hardware (Sept 2026): this
+    # Oct 2026: keep ONE stream open at full 5120x3840 for the whole session
+    # and downscale in software for the Live View / snapshot preview, instead
+    # of closing and reopening the device at a different resolution for every
+    # capture. Diagnosed on real hardware: the camera's firmware can wedge
+    # (UVC "Failed to set probe control -71/-110", then no response even to a
+    # USB reset until a reboot) right after a full-res <-> preview mode
+    # switch; a 3.5 h run died on exactly that transition, and so did
+    # starting main.py right after focus_tune.py. Set False to restore the
+    # old close/reopen-per-capture behaviour.
+    "Arducam_KeepFullResStream": True,
+
+    "Arducam_AeEnable":     False,  # CONFIRMED on real hardware (Sept 2026): this
                                      # sensor's onboard AE converges poorly/
                                      # inconsistently on the bright, uniform Rear IR
                                      # scene, and Rear IR is permanently locked to
@@ -232,8 +243,17 @@ def apply_ir_transmission_preset_liveview(base: dict | None) -> dict:
     s = dict(base) if base else load_settings()
     saved = load_settings()
     s["Arducam_AeEnable"] = False
-    s["Arducam_ExposureUs"] = int(saved.get("Arducam_RearIR_LiveView_ExposureUs", 4000))
-    s["Arducam_Gain"] = float(saved.get("Arducam_RearIR_LiveView_Gain", 100))
+    if bool(saved.get("Arducam_KeepFullResStream", True)):
+        # Oct 2026: Live View now comes from the SAME full-resolution stream
+        # as the saved captures (downscaled in software), so there is no
+        # binned low-res readout to compensate for — use the capture
+        # exposure/gain so Live View shows exactly what will be saved. The
+        # separate Live View fields in Camera Config are ignored in this mode.
+        s["Arducam_ExposureUs"] = int(saved.get("RearIR_ExposureTime", 9000))
+        s["Arducam_Gain"] = float(saved.get("Arducam_RearIR_Gain", 100))
+    else:
+        s["Arducam_ExposureUs"] = int(saved.get("Arducam_RearIR_LiveView_ExposureUs", 4000))
+        s["Arducam_Gain"] = float(saved.get("Arducam_RearIR_LiveView_Gain", 100))
     _rear_ir_lock_manual = True
     return s
 
@@ -565,6 +585,35 @@ _cap = None
 _cap_size = None  # (w, h) currently open at
 _cap_lock = threading.Lock()
 
+# Oct 2026: keep-full-res-stream mode (see DEFAULTS["Arducam_KeepFullResStream"]).
+_keep_full_res = True          # refreshed from settings on every _open_capture()
+_preview_size = (1280, 960)    # what get_frame() downscales to in that mode
+_last_release_t = 0.0          # time.monotonic() of the last cap.release()
+_USB_SETTLE_S = 2.0            # min gap between a release and the next open
+_KEEP_FULL_DISCARD_FRAMES = 8  # frames to drop before a capture so stale queued
+                               # frames (old plate / old exposure) are flushed
+
+
+def _release_cap_locked():
+    """Release the capture (caller holds _cap_lock) and note when."""
+    global _cap, _cap_size, _last_release_t
+    if _cap is not None:
+        try:
+            _cap.release()
+        except Exception as e:
+            print(f"[arducam] release error: {e}", flush=True)
+    _cap = None
+    _cap_size = None
+    _last_release_t = time.monotonic()
+
+
+def _wait_usb_settle():
+    """Make sure the USB layer has had time to finish tearing down the
+    previous stream before a new one is requested (wedge avoidance)."""
+    dt = time.monotonic() - _last_release_t
+    if 0 <= dt < _USB_SETTLE_S:
+        time.sleep(_USB_SETTLE_S - dt)
+
 
 def _open_capture(width: int, height: int):
     """
@@ -584,13 +633,22 @@ def _open_capture(width: int, height: int):
     auto-detection once (force_refresh=True) and retries against whatever
     node actually has this camera now, before giving up.
     """
-    global _cap, _cap_size
+    global _cap, _cap_size, _keep_full_res, _preview_size
+    settings = load_settings()
+    _keep_full_res = bool(settings.get("Arducam_KeepFullResStream", True))
+    _preview_size = (int(settings.get("Arducam_PreviewWidth", 1280)),
+                     int(settings.get("Arducam_PreviewHeight", 960)))
+    if _keep_full_res:
+        # Oct 2026: always stream at full resolution; a request for the
+        # preview size is satisfied by downscaling in get_frame() instead of
+        # switching the camera's mode (mode switches wedge its firmware).
+        width = int(settings.get("Arducam_FullWidth", 5120))
+        height = int(settings.get("Arducam_FullHeight", 3840))
     with _cap_lock:
         if _cap is not None and _cap_size == (width, height):
             return
         if _cap is not None:
-            _cap.release()
-            _cap = None
+            _release_cap_locked()
             # Settle delay (Sept 2026). Diagnosed on real hardware across two
             # separate systems: this camera can go completely unresponsive —
             # not just to cv2.VideoCapture, but to plain `v4l2-ctl` commands
@@ -606,6 +664,10 @@ def _open_capture(width: int, height: int):
             # device's firmware. This sleep gives the teardown time to
             # actually finish before the reopen below asks for a new stream.
             time.sleep(0.5)
+
+        # Oct 2026: never request a new stream sooner than _USB_SETTLE_S after
+        # a release (covers stop_camera() -> start_camera() too).
+        _wait_usb_settle()
 
         cap = None
         device = None
@@ -687,11 +749,8 @@ def start_camera() -> None:
 
 
 def stop_camera() -> None:
-    global _cap, _cap_size
     with _cap_lock:
-        if _cap is not None:
-            _cap.release()
-        _cap = None
+        _release_cap_locked()
         _cap_size = None
 
 
@@ -736,7 +795,17 @@ def get_frame() -> QImage:
     frame = _read_raw_frame()
     if frame is None:
         return QImage()
-    gray = np.ascontiguousarray(_to_gray(frame))
+    if _keep_full_res and frame.ndim == 3:
+        # Oct 2026: frames now arrive at full 20 MP. A mono sensor's channels
+        # are identical, so take one channel instead of a full-frame cvtColor.
+        gray = frame[:, :, 0]
+    else:
+        gray = _to_gray(frame)
+    if _keep_full_res:
+        pw, ph = _preview_size
+        if gray.shape[1] != pw or gray.shape[0] != ph:
+            gray = cv2.resize(gray, (pw, ph), interpolation=cv2.INTER_AREA)
+    gray = np.ascontiguousarray(gray)
     h, w = gray.shape[:2]
     qimg = QImage(gray.data, w, h, w, QImage.Format_Grayscale8)
     return qimg.copy()  # detach from numpy buffer
@@ -746,6 +815,29 @@ def get_frame() -> QImage:
 # Saving full-res frames
 # =============================================================================
 _last_saved_shape: tuple[int, int] | None = None
+
+
+def _acquire_from_open_stream(fw: int, fh: int, label: str):
+    """
+    Keep-full-res mode: read one full-resolution frame from the stream that
+    is already open (opening it first if needed). Drops a run-up of frames
+    first so frames queued before the plate moved / exposure changed are
+    flushed. Returns a grayscale numpy frame, or None if nothing was read.
+    """
+    _open_capture(fw, fh)  # no-op when already open at full resolution
+    for _ in range(_KEEP_FULL_DISCARD_FRAMES):
+        _read_raw_frame()
+    frame = _read_raw_frame()
+    if frame is None:
+        return None
+    gray = _to_gray(frame)
+    if gray.shape[1] != fw or gray.shape[0] != fh:
+        print(
+            f"[arducam] {label}: stream delivered {gray.shape[1]}x{gray.shape[0]}, "
+            f"expected {fw}x{fh}.",
+            flush=True,
+        )
+    return gray
 
 
 def _acquire_full_res_frame(fw: int, fh: int, label: str = "save_image"):
@@ -765,6 +857,22 @@ def _acquire_full_res_frame(fw: int, fh: int, label: str = "save_image"):
     suspect blank/flat one if every retry failed), or None if no frame was
     ever returned at all.
     """
+    # Oct 2026 — keep-full-res-stream mode: the stream is already open at
+    # full resolution, so just flush stale queued frames and grab the next
+    # one. No close/reopen and no resolution change, which is what wedged
+    # the camera's firmware. If that yields no frame or a flat one, fall
+    # through to the legacy close+reopen retry loop below as a recovery path.
+    if bool(load_settings().get("Arducam_KeepFullResStream", True)):
+        gray = _acquire_from_open_stream(fw, fh, label)
+        if gray is not None and float(gray.std()) > 2.0:
+            return gray
+        print(
+            f"[arducam] {label}: open-stream capture gave "
+            f"{'no frame' if gray is None else 'a flat frame'} — "
+            f"falling back to a full close+reopen at the same resolution.",
+            flush=True,
+        )
+
     # Capture whatever exposure/gain is CURRENTLY pinned on the hardware
     # right now (e.g. experiment_runner.py's per-plate AE-pin, set directly
     # via set_manual_exposure_gain() and never written to camera_settings.json).

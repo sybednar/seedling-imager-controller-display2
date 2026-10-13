@@ -95,20 +95,24 @@ class DaylightSettingsDialog(QDialog):
         self.result_settings = dict(current)
 
         layout = QVBoxLayout()
-        info = QLabel("Select germination LEDs to hold ON for the entire experiment:")
+        info = QLabel("Select backlight LEDs to hold ON during experiment")
         info.setWordWrap(True)
         info.setStyleSheet(f"font-size: {max(12, int(11 * s))}px; color: white;")
         layout.addWidget(info)
 
         self.checks = {}
+        # Checked-state colors match the DARK Settings dialog's induction
+        # channels (and the germination LED buttons on the main GUI page).
+        _channel_colors = {"FarRed": "#FF5722", "Red": "#D32F2F", "Blue": "#3D5AFE"}
         for name in ("FarRed", "Red", "Blue"):
             cb = QCheckBox(name)
             cb.setChecked(bool(current.get(name, False)))
+            _color = _channel_colors[name]
             cb.setStyleSheet(
                 f"QCheckBox {{ color: white; font-size: {max(12, int(11 * s))}px; }} "
                 f"QCheckBox::indicator {{ width: {max(14, int(14*s))}px; height: {max(14, int(14*s))}px; }} "
                 "QCheckBox::indicator:unchecked { border: 2px solid #BBBBBB; background: #222222; } "
-                "QCheckBox::indicator:checked { border: 2px solid #1E88E5; background: #1E88E5; } "
+                f"QCheckBox::indicator:checked {{ border: 2px solid {_color}; background: {_color}; }} "
             )
             self.checks[name] = cb
             layout.addWidget(cb)
