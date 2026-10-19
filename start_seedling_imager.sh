@@ -27,6 +27,19 @@ cd "$PROJECT_DIR" || { echo "FATAL: could not cd to $PROJECT_DIR" >&2; exit 1; }
 exec >> "$LOG_FILE" 2>&1
 echo "=== $(date) Seedling Imager launch begin ==="
 
+# Single-instance guard (Oct 2026). On System 1 two launchers were active
+# (XDG autostart AND a `systemctl --user start` line in labwc's autostart),
+# so every boot started a second copy that died with "gpiod ... Device or
+# resource busy" and was then restarted every ~17 s by systemd. The lock is
+# held for as long as this script (and so the GUI) runs; a second launch
+# waits up to 20 s (covers restart_seedling_imager.sh's handover) and then
+# exits cleanly with status 0, so systemd's Restart=on-failure won't loop.
+exec 9>"/tmp/seedling_imager.lock"
+if ! flock -w 20 9; then
+    echo "=== $(date) Another Seedling Imager instance is already running; this launch exits ==="
+    exit 0
+fi
+
 { echo "--- NVMe/PCIe state at launch ---"; dmesg | tail -30; } >> "$LOG_FILE" 2>&1
 
 # Let the desktop session finish settling before we grab the display

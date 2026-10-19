@@ -1,0 +1,18 @@
+[Unit]
+Description=Seedling Imager crash-diagnostic logger (health + kernel messages to USB flash drive)
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/seedling-health-usb.sh
+Restart=always
+RestartSec=30
+Nice=-5
+# Never write to the journal: it lives on the NVMe, and if the NVMe hangs a
+# blocked journal write would stall this logger too. Status is in
+# /run/seedling-health/status instead.
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target

@@ -169,6 +169,28 @@ class ExperimentRunner(QThread):
 
     def _log(self, msg):
         self.status_signal.emit(msg)
+        # Oct 2026: also append every status message to run_log.txt in the
+        # experiment folder, written to disk immediately. Before this, the
+        # runner's status went only to the GUI, so after a system freeze
+        # there was no record of which step the run was on.
+        try:
+            with open(self.run_dir / "run_log.txt", "a", encoding="utf-8") as fh:
+                fh.write(f"{datetime.now().isoformat(timespec='seconds')}  {msg}\n")
+                fh.flush()
+                os.fsync(fh.fileno())
+        except Exception:
+            pass  # logging must never interrupt an experiment
+
+    def _sync_csv(self):
+        """Push buffered CSV rows all the way to disk (Oct 2026 fix: rows used
+        to sit in a memory buffer until the run ended, so a system freeze
+        left metadata.csv empty)."""
+        try:
+            if self.csv_file:
+                self.csv_file.flush()
+                os.fsync(self.csv_file.fileno())
+        except Exception:
+            pass
 
     def _sleep_with_abort(self, seconds):
         end = time.time() + seconds
@@ -213,6 +235,7 @@ class ExperimentRunner(QThread):
                     "dark_elapsed_hours",
                 ]
             )
+            self._sync_csv()
             # Reset registration references at the start of each run
             if self._reg is not None:
                 self._reg.reset()
@@ -955,6 +978,7 @@ class ExperimentRunner(QThread):
                                     self._current_germ_state("Blue"),
                                     *self._dark_status_for_csv(),
                                 ])
+                                self._sync_csv()
                             self.image_saved_signal.emit(img_path)
                             self._log(f"Saved: {img_path}")
                         else:

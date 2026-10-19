@@ -1,6 +1,11 @@
 <
 # Changelog
 
+## Unreleased — 2026-10-19 (System 1 freeze diagnostics)
+- **Experiment runner**: `metadata.csv` rows are now flushed and fsync'd to disk as each image is saved (previously buffered until the run ended, so a system freeze left the file empty). Every runner status message is also appended to `run_log.txt` in the experiment folder.
+- **Launcher**: `start_seedling_imager.sh` now holds a single-instance lock; a second launch exits cleanly instead of failing with `gpiod ... Device or resource busy` (System 1 had two launchers active, which caused a restart loop at boot).
+- **Diagnostics** (new `diagnostics/` folder): `seedling-health-usb` logger writes a health line every minute (including an uncached NVMe read probe) plus all kernel messages to a USB flash drive, so evidence survives an NVMe/storage hang. Install with `sudo bash diagnostics/install_health_monitor.sh`, which also removes the duplicate labwc launcher and disables the old systemd --user unit.
+
 ## v1.3.2 — 2026-10-04
 - **Hardware**: renamed the IR filter holder component to "850 nm long-pass filter holder" (Fusion archive and STEP files); clarified camera-mount contents in `hardware/README.md`; updated BOM.
 - Updated root README, CHANGELOG and citation. Software unchanged from v1.3.0. Archived on Zenodo: 10.5281/zenodo.23144486.
