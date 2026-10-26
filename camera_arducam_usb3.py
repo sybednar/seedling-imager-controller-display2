@@ -601,7 +601,7 @@ _KEEP_FULL_DISCARD_FRAMES = 8  # frames to drop before a capture so stale queued
 # camera (release + re-detect + reopen) after a short run of failures.
 _READ_TIMEOUT_MS = 4000          # per-read wait before giving up on a frame
 _STALL_FAILS_BEFORE_RECOVER = 2  # consecutive failed reads -> reconnect
-_RECOVER_MIN_INTERVAL_S = 30.0   # don't retry a reconnect more often than this
+_RECOVER_MIN_INTERVAL_S = 10.0   # don't retry a reconnect more often than this
 _consecutive_read_failures = 0
 _last_recover_t = -1e9
 
@@ -797,6 +797,11 @@ def _read_raw_frame():
     global _consecutive_read_failures
     with _cap_lock:
         if _cap is None:
+            # Count this too (fix, Oct 2026): after a reconnect attempt that
+            # found no camera (e.g. still unplugged), the stream stays closed;
+            # without counting these reads the failure count stayed at 0 and
+            # no further reconnect was ever attempted.
+            _consecutive_read_failures += 1
             return None
         ok, frame = _cap.read()
     if not ok or frame is None:
@@ -804,6 +809,23 @@ def _read_raw_frame():
         return None
     _consecutive_read_failures = 0
     return frame
+
+
+def _arducam_node_by_name():
+    """Return /dev/videoN of the Arducam if it is currently on the USB bus
+    (matched by its sysfs name), else None. Unlike _find_device() this never
+    falls back to /dev/video0, which on a Pi 5 may be an unrelated node."""
+    try:
+        for node in sorted(Path("/sys/class/video4linux").glob("video*"),
+                           key=lambda n: int(n.name[5:]) if n.name[5:].isdigit() else 999):
+            nf = node / "name"
+            if nf.exists():
+                name = nf.read_text().strip().lower()
+                if "arducam" in name or "ar2020" in name:
+                    return f"/dev/{node.name}"
+    except Exception:
+        pass
+    return None
 
 
 def recover_camera() -> bool:
@@ -817,7 +839,7 @@ def recover_camera() -> bool:
     May block for several seconds (or longer if the device is badly
     wedged) -- call it from a background thread, never the GUI thread.
     """
-    global _consecutive_read_failures, _last_recover_t
+    global _consecutive_read_failures, _last_recover_t, _device_path
     _last_recover_t = time.monotonic()
     size = _cap_size
     print(
@@ -828,7 +850,19 @@ def recover_camera() -> bool:
     with _cap_lock:
         _release_cap_locked()
     time.sleep(1.0)
-    _find_device(force_refresh=True)
+    if load_settings().get("Arducam_DevicePath"):
+        _find_device(force_refresh=True)          # user pinned a path explicitly
+    else:
+        node = _arducam_node_by_name()
+        if node is None:
+            # Camera is not on the USB bus right now (unplugged, or still
+            # re-enumerating). Don't open some other /dev/video node; leave
+            # the stream closed and try again shortly.
+            _consecutive_read_failures = 0
+            print("[arducam] Reconnect: camera not found on the USB bus yet -- "
+                  f"will retry in {_RECOVER_MIN_INTERVAL_S:.0f} s.", flush=True)
+            return False
+        _device_path = node
     if size is not None:
         _open_capture(*size)
     else:
@@ -841,6 +875,14 @@ def recover_camera() -> bool:
             apply_settings()
         except Exception as e:
             print(f"[arducam] re-apply settings after reconnect failed: {e}", flush=True)
+        # Only call it a success if the reopened stream actually delivers.
+        ok = False
+        for _ in range(3):
+            with _cap_lock:
+                got, fr = _cap.read() if _cap is not None else (False, None)
+            if got and fr is not None:
+                ok = True
+                break
     _consecutive_read_failures = 0
     print(f"[arducam] Reconnect {'succeeded' if ok else 'FAILED'}.", flush=True)
     return ok
