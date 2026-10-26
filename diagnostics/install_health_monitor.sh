@@ -4,8 +4,9 @@
 # Run from the project folder with:
 #     sudo bash diagnostics/install_health_monitor.sh
 #
-# Does three things, and is safe to run more than once:
-#   1. Installs the USB crash-diagnostic logger (seedling-health-usb.service).
+# Does four things, and is safe to run more than once:
+#   1. Installs the USB crash-diagnostic logger (seedling-health-usb.service),
+#      and makes the system journal persistent so logs survive a reboot.
 #   2. Removes the duplicate app launcher from labwc's autostart, leaving XDG
 #      autostart (~/.config/autostart/seedling-imager.desktop) as the only one.
 #   3. Makes sure the old systemd --user unit is disabled.
@@ -26,6 +27,20 @@ systemctl daemon-reload
 systemctl enable seedling-health-usb.service >/dev/null 2>&1
 systemctl restart seedling-health-usb.service
 echo "   installed and started"
+
+echo "== 1b. Persistent system journal"
+# Raspberry Pi OS (Trixie) ships a drop-in that forces Storage=volatile, so
+# just creating /var/log/journal is NOT enough -- logs were still lost at
+# every reboot on the new System 1 (Oct 2026). Override it explicitly.
+mkdir -p /etc/systemd/journald.conf.d /var/log/journal
+printf '[Journal]\nStorage=persistent\n' > /etc/systemd/journald.conf.d/99-seedling-persistent.conf
+systemctl restart systemd-journald
+journalctl --flush 2>/dev/null || true
+if ls /var/log/journal/*/system.journal >/dev/null 2>&1; then
+    echo "   persistent journal ON (logs now survive reboots)"
+else
+    echo "   WARNING: journal still not on disk -- check /etc/systemd/journald.conf.d/"
+fi
 
 echo "== 2. Duplicate launcher in labwc autostart"
 LABWC="$APP_HOME/.config/labwc/autostart"
