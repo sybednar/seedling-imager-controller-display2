@@ -1,7 +1,7 @@
 #gui.py fixing image rescaling issue during experimental run
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QDialog, QSizePolicy, QMessageBox
+    QTextEdit, QDialog, QSizePolicy, QMessageBox, QFrame
 )
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEventLoop
 from PySide6.QtGui import QPixmap, QGuiApplication
@@ -163,6 +163,9 @@ class SeedlingImagerGUI(QWidget):
         setup_led_layout.setSpacing(max(4, int(6 * s)))
         setup_led_layout.setContentsMargins(0, 0, 0, 0)
         setup_btn_w = (button_width - setup_led_layout.spacing()) // 2
+        # Last button absorbs the rounding remainder so the row is exactly
+        # button_width and lines up with the full-width buttons (Oct 2026).
+        setup_btn_w_last = button_width - setup_led_layout.spacing() - setup_btn_w
 
         self.rear_ir_btn = QPushButton("Rear IR")
         self.rear_ir_btn.setCheckable(True)
@@ -172,7 +175,7 @@ class SeedlingImagerGUI(QWidget):
 
         self.green_btn = QPushButton("Green")
         self.green_btn.setCheckable(True)
-        self.green_btn.setFixedWidth(setup_btn_w)
+        self.green_btn.setFixedWidth(setup_btn_w_last)
         self.green_btn.setFixedHeight(button_height)
         self.green_btn.toggled.connect(
             lambda checked: self._toggle_manual_led(LED_GREEN_PIN, checked, self.green_btn, "#4CAF50", "Green")
@@ -194,6 +197,7 @@ class SeedlingImagerGUI(QWidget):
         germ_layout.setSpacing(max(4, int(6 * s)))
         germ_layout.setContentsMargins(0, 0, 0, 0)
         germ_btn_w = (button_width - 2 * germ_layout.spacing()) // 3
+        germ_btn_w_last = button_width - 2 * germ_layout.spacing() - 2 * germ_btn_w
 
         self.germ_blue_btn = QPushButton("Blue")
         self.germ_blue_btn.setCheckable(True)
@@ -213,7 +217,7 @@ class SeedlingImagerGUI(QWidget):
 
         self.germ_farred_btn = QPushButton("FarRed")
         self.germ_farred_btn.setCheckable(True)
-        self.germ_farred_btn.setFixedWidth(germ_btn_w)
+        self.germ_farred_btn.setFixedWidth(germ_btn_w_last)
         self.germ_farred_btn.setFixedHeight(button_height)
         self.germ_farred_btn.toggled.connect(
             lambda checked: self._toggle_manual_led(LED_GERM_FARRED_PIN, checked, self.germ_farred_btn, "#FF5722", "FarRed")
@@ -229,15 +233,20 @@ class SeedlingImagerGUI(QWidget):
         ha_layout = QHBoxLayout()
         ha_layout.setSpacing(max(6,int(10 * s)))
         ha_layout.setContentsMargins(0, 0, 0, 0)
+        # Oct 2026: these used to be (button_width//2 - 5) each, which plus the
+        # row spacing made this row 6-14 px WIDER than every other button
+        # (more so on larger screens). Size them from the spacing instead.
+        ha_btn_w = (button_width - ha_layout.spacing()) // 2
+        ha_btn_w_last = button_width - ha_layout.spacing() - ha_btn_w
 
         self.home_btn = QPushButton("Home")
         self.home_btn.setObjectName("homeBtn")
-        self.home_btn.setFixedWidth(button_width // 2 - 5)
+        self.home_btn.setFixedWidth(ha_btn_w)
         self.home_btn.setFixedHeight(button_height)
         self.home_btn.clicked.connect(self.on_home_clicked)
 
         self.advance_btn = QPushButton("Advance")
-        self.advance_btn.setFixedWidth(button_width // 2 - 5)
+        self.advance_btn.setFixedWidth(ha_btn_w_last)
         self.advance_btn.setFixedHeight(button_height)
         self.advance_btn.clicked.connect(lambda: self.run_motor_action("advance"))
 
@@ -364,6 +373,12 @@ class SeedlingImagerGUI(QWidget):
 
         self.log_panel = QTextEdit()
         self.log_panel.setReadOnly(True)
+        # No frame around the message log (Oct 2026): newer Raspberry Pi OS /
+        # Qt6 images draw the default QTextEdit frame as a light border on the
+        # dark theme; older images didn't. Remove it explicitly so it looks the
+        # same on every unit.
+        self.log_panel.setFrameShape(QFrame.NoFrame)
+        self.log_panel.setStyleSheet("QTextEdit { border: none; }")
 
         # Keep right-side stack but give preview more space than log
         right_layout.addWidget(self.status_label, stretch=0)
