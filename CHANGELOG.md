@@ -5,6 +5,7 @@
 - **Live View no longer freezes the GUI if the camera stalls.** Frames are now fetched on a background thread (`_LiveFrameWorker` in `gui.py`); previously a stalled Arducam blocked the screen for 10 s per frame and queued-up taps (e.g. on Home) were replayed as start/stop pairs.
 - **Automatic camera reconnect** (`recover_camera()` in `camera_arducam_usb3.py`, re-exported by `camera.py`): reads time out after 4 s, and after 2 consecutive failed reads the stream is released, the device re-detected and reopened (at most once per 30 s). Status line shows "Camera not responding … reconnecting" / "Camera reconnected".
 - **GUI**: removed the light border around the message log on newer OS images; all left-column button rows are now exactly the same width.
+- **DARK mode timing fix**: the protocol phase (pulse / etiolation / induction) is now re-checked every 30 s during the wait between cycles, not only at the start of each cycle. Previously a 30 min germination pulse with a 90 min interval stayed on ~90 min, and induction could start up to one interval late.
 - **Installer**: makes the system journal persistent (Raspberry Pi OS defaults it to memory-only).
 
 ## Unreleased — 2026-10-19 (System 1 freeze diagnostics)

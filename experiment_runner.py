@@ -192,6 +192,25 @@ class ExperimentRunner(QThread):
         except Exception:
             pass
 
+    def _wait_between_cycles(self, seconds):
+        """
+        Inter-cycle wait that keeps DARK-mode phase changes on time (Oct 2026).
+
+        The DARK protocol phase was only re-checked at the START of each
+        cycle, so every transition was delayed until the next cycle: with a
+        90 min interval a 30 min germination pulse actually stayed on ~90 min,
+        and etiolation/induction could start up to a full interval late. Now
+        the phase is re-checked every 30 s during the wait as well.
+        """
+        end = time.time() + seconds
+        while not self._abort:
+            remaining = end - time.time()
+            if remaining <= 0:
+                break
+            self._sleep_with_abort(min(30.0, remaining))
+            if not self._abort:
+                self._apply_growth_mode_leds()
+
     def _sleep_with_abort(self, seconds):
         end = time.time() + seconds
         while time.time() < end and not self._abort:
@@ -1053,7 +1072,7 @@ class ExperimentRunner(QThread):
 
                     self._log(f"Cycle complete. Waiting {self.frequency_minutes} min...")
                     self.cycle_wait_started.emit(self.frequency_minutes)
-                    self._sleep_with_abort(self.frequency_minutes * 60)
+                    self._wait_between_cycles(self.frequency_minutes * 60)
 
         finally:
             self._log("Experiment finished." if not self._abort else "Experiment aborted.")
