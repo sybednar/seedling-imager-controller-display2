@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QThread, Signal, QTimer, QEventLoop
 from PySide6.QtGui import QPixmap, QGuiApplication
 from datetime import datetime, timedelta
+import time
 from styles import dark_style
 from experiment_setup import (
     ExperimentSetupDialog, ILLUM_REAR_IR,
@@ -80,6 +81,59 @@ class _CameraCallWorker(QThread):
             self.finished_ok.emit(True, "")
         except Exception as e:
             self.finished_ok.emit(False, str(e))
+
+
+class _LiveFrameWorker(QThread):
+    """
+    Fetches Live View frames on a background thread (Oct 2026).
+
+    Before this, a QTimer called camera.get_frame() on the GUI thread every
+    100 ms. When the Arducam stopped delivering frames (seen on the new
+    System 1 right after a USB flash drive was hot-plugged), each call
+    blocked for the camera's read timeout, so the whole screen froze and
+    button taps queued up -- several taps on Home were then processed at
+    once as start/stop/start/stop and the carousel never moved. Now the GUI
+    only receives finished frames, and stays responsive whatever the camera
+    does. get_frame() itself reconnects a stalled camera (camera backend).
+    """
+    frame_ready = Signal(object)     # QImage
+    stalled = Signal(int)            # seconds without a frame
+    recovered = Signal()
+
+    STALL_REPORT_S = 6.0             # report a stall after this long without frames
+
+    def __init__(self, interval_ms=100, parent=None):
+        super().__init__(parent)
+        self._interval_ms = interval_ms
+        self._stop = False
+
+    def request_stop(self):
+        self._stop = True
+
+    def run(self):
+        last_good = time.monotonic()
+        reported = False
+        while not self._stop:
+            t0 = time.monotonic()
+            try:
+                img = camera.get_frame()
+            except Exception as e:
+                print(f"[gui] live view get_frame error: {e}", flush=True)
+                img = None
+            if self._stop:
+                break
+            if img is not None and not img.isNull():
+                last_good = time.monotonic()
+                if reported:
+                    reported = False
+                    self.recovered.emit()
+                self.frame_ready.emit(img)
+            elif not reported and time.monotonic() - last_good >= self.STALL_REPORT_S:
+                reported = True
+                self.stalled.emit(int(time.monotonic() - last_good))
+            wait_ms = self._interval_ms - int((time.monotonic() - t0) * 1000)
+            if wait_ms > 0:
+                self.msleep(wait_ms)
 
 
 class SeedlingImagerGUI(QWidget):
@@ -389,7 +443,10 @@ class SeedlingImagerGUI(QWidget):
         main_layout.addLayout(right_layout, stretch=1)
         self.setLayout(main_layout)
 
-        self.timer = QTimer(); self.timer.timeout.connect(self.update_camera_frame)
+        # Live View frames come from a background thread (_LiveFrameWorker)
+        # rather than a GUI-thread QTimer -- see that class (Oct 2026).
+        self._live_worker = None
+        self._old_live_workers = []   # kept alive until their threads finish
         self.live_view_active = False
 
         # Experiment progress info timer — deliberately coarse (1 min) per
@@ -967,7 +1024,7 @@ class SeedlingImagerGUI(QWidget):
 
             camera.set_af_mode(2)  # Continuous AF for preview
 
-            self.timer.start(100)
+            self._start_live_worker()
             self.live_view_active = True
             self._update_live_view_button()
 
@@ -978,7 +1035,7 @@ class SeedlingImagerGUI(QWidget):
             self.update_status("Live View started. Rear IR LED ON.")
 
         else:
-            self.timer.stop()
+            self._stop_live_worker()
 
             # Always clear any preview boost when leaving Live View — guarded, same reasoning as above.
             self._run_camera_call_guarded(
@@ -1088,13 +1145,39 @@ class SeedlingImagerGUI(QWidget):
         # Optional: make it explicit what the user is seeing
         self.status_label.setText(f"Plate #{plate_idx} (snapshot)")
 
-    def update_camera_frame(self):
-        frame = camera.get_frame()
-        if frame.isNull():
+    def update_camera_frame(self, frame=None):
+        """Show one Live View frame (delivered by _LiveFrameWorker)."""
+        if frame is None or frame.isNull():
             return
+        if not self.live_view_active:
+            return  # late frame from a worker that is shutting down
+        self._set_preview_pixmap(QPixmap.fromImage(frame))
 
-        pixmap = QPixmap.fromImage(frame)
-        self._set_preview_pixmap(pixmap)
+    def _start_live_worker(self):
+        self._stop_live_worker()
+        w = _LiveFrameWorker(interval_ms=100)
+        w.frame_ready.connect(self.update_camera_frame)
+        w.stalled.connect(lambda secs: self.update_status(
+            f"Camera not responding ({secs} s) -- reconnecting automatically..."))
+        w.recovered.connect(lambda: self.update_status("Camera reconnected. Live View resumed."))
+        w.finished.connect(lambda w=w: self._forget_live_worker(w))
+        self._live_worker = w
+        self._old_live_workers.append(w)
+        w.start()
+
+    def _stop_live_worker(self):
+        """Ask the frame thread to stop; never blocks the GUI waiting for it."""
+        if self._live_worker is not None:
+            self._live_worker.request_stop()
+            self._live_worker = None
+
+    def _forget_live_worker(self, w):
+        # Drop our reference only after Qt reports the thread has fully
+        # finished (avoids "QThread: Destroyed while thread is still running").
+        try:
+            self._old_live_workers.remove(w)
+        except ValueError:
+            pass
 
     def open_camera_config(self):
         # Camera pipeline stays running while the dialog is open so that:
@@ -1202,6 +1285,11 @@ class SeedlingImagerGUI(QWidget):
             self.homing_worker.wait()
         if self.live_view_active:
             self.toggle_live_view()
+        # Give any Live View frame thread a bounded moment to finish so Qt
+        # doesn't abort on exit with a thread still running.
+        for w in list(self._old_live_workers):
+            w.request_stop()
+            w.wait(6000)
         event.accept()
 
 

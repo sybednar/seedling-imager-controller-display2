@@ -593,6 +593,18 @@ _USB_SETTLE_S = 2.0            # min gap between a release and the next open
 _KEEP_FULL_DISCARD_FRAMES = 8  # frames to drop before a capture so stale queued
                                # frames (old plate / old exposure) are flushed
 
+# Stall detection / auto-recovery (Oct 2026). On the new System 1 the camera
+# stopped delivering frames after a USB flash drive was hot-plugged; every
+# read then blocked for OpenCV's default 10 s V4L2 select() timeout and the
+# stream never came back without restarting the app. Reads now time out
+# sooner, consecutive failures are counted, and get_frame() reconnects the
+# camera (release + re-detect + reopen) after a short run of failures.
+_READ_TIMEOUT_MS = 4000          # per-read wait before giving up on a frame
+_STALL_FAILS_BEFORE_RECOVER = 2  # consecutive failed reads -> reconnect
+_RECOVER_MIN_INTERVAL_S = 30.0   # don't retry a reconnect more often than this
+_consecutive_read_failures = 0
+_last_recover_t = -1e9
+
 
 def _release_cap_locked():
     """Release the capture (caller holds _cap_lock) and note when."""
@@ -735,6 +747,16 @@ def _open_capture(width: int, height: int):
         # staleness described above would persist and need a different fix.
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
+        # Shorter per-read timeout (Oct 2026) so a stalled camera is noticed
+        # in seconds rather than 10 s per attempt. Ignored harmlessly by
+        # OpenCV builds/backends that don't support the property.
+        _rt = getattr(cv2, "CAP_PROP_READ_TIMEOUT_MSEC", None)
+        if _rt is not None:
+            try:
+                cap.set(_rt, _READ_TIMEOUT_MS)
+            except Exception:
+                pass
+
         _cap = cap
         _cap_size = (width, height)
 
@@ -772,13 +794,56 @@ def get_current_settings() -> dict:
 # Frame capture
 # =============================================================================
 def _read_raw_frame():
+    global _consecutive_read_failures
     with _cap_lock:
         if _cap is None:
             return None
         ok, frame = _cap.read()
     if not ok or frame is None:
+        _consecutive_read_failures += 1
         return None
+    _consecutive_read_failures = 0
     return frame
+
+
+def recover_camera() -> bool:
+    """
+    Reconnect a camera that has stopped delivering frames (Oct 2026):
+    release the stream, wait for the USB layer to settle, re-detect the
+    device node (it may have re-enumerated under a new /dev/videoN), reopen
+    at the same resolution and re-apply the persisted settings.
+    Returns True if the stream is open again afterwards.
+
+    May block for several seconds (or longer if the device is badly
+    wedged) -- call it from a background thread, never the GUI thread.
+    """
+    global _consecutive_read_failures, _last_recover_t
+    _last_recover_t = time.monotonic()
+    size = _cap_size
+    print(
+        f"[arducam] Camera stopped delivering frames "
+        f"({_consecutive_read_failures} failed reads) -- reconnecting.",
+        flush=True,
+    )
+    with _cap_lock:
+        _release_cap_locked()
+    time.sleep(1.0)
+    _find_device(force_refresh=True)
+    if size is not None:
+        _open_capture(*size)
+    else:
+        settings = load_settings()
+        _open_capture(int(settings.get("Arducam_PreviewWidth", 1280)),
+                      int(settings.get("Arducam_PreviewHeight", 960)))
+    ok = _cap is not None
+    if ok:
+        try:
+            apply_settings()
+        except Exception as e:
+            print(f"[arducam] re-apply settings after reconnect failed: {e}", flush=True)
+    _consecutive_read_failures = 0
+    print(f"[arducam] Reconnect {'succeeded' if ok else 'FAILED'}.", flush=True)
+    return ok
 
 
 def _to_gray(frame: np.ndarray) -> np.ndarray:
@@ -791,9 +856,17 @@ def _to_gray(frame: np.ndarray) -> np.ndarray:
 
 
 def get_frame() -> QImage:
-    """Return a QImage (Grayscale8) for the preview label from the live stream."""
+    """Return a QImage (Grayscale8) for the preview label from the live stream.
+
+    Returns a null QImage if no frame arrived. After a short run of failed
+    reads it reconnects the camera itself (see recover_camera()), at most
+    once every _RECOVER_MIN_INTERVAL_S seconds.
+    """
     frame = _read_raw_frame()
     if frame is None:
+        if (_consecutive_read_failures >= _STALL_FAILS_BEFORE_RECOVER
+                and time.monotonic() - _last_recover_t >= _RECOVER_MIN_INTERVAL_S):
+            recover_camera()
         return QImage()
     if _keep_full_res and frame.ndim == 3:
         # Oct 2026: frames now arrive at full 20 MP. A mono sensor's channels

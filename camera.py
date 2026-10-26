@@ -96,4 +96,19 @@ else:
         get_frame, save_image, get_metadata, get_last_saved_shape,
     )
 
+# recover_camera() (Oct 2026): reconnect a camera that stopped delivering
+# frames. The Arducam backend has a full release/re-detect/reopen version;
+# for Picamera2 a plain stop/start is the equivalent.
+if _ACTIVE_BACKEND == "arducam_usb3":
+    from camera_arducam_usb3 import recover_camera
+else:
+    def recover_camera() -> bool:
+        try:
+            stop_camera()
+            start_camera()
+            return True
+        except Exception as e:
+            print(f"[camera] recover_camera error: {e}", flush=True)
+            return False
+
 print(f"[camera] Active backend: {_ACTIVE_BACKEND}", flush=True)

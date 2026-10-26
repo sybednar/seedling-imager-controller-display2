@@ -1,6 +1,12 @@
 <
 # Changelog
 
+## Unreleased — 2026-10-26 (camera stall handling, new System 1 hardware)
+- **Live View no longer freezes the GUI if the camera stalls.** Frames are now fetched on a background thread (`_LiveFrameWorker` in `gui.py`); previously a stalled Arducam blocked the screen for 10 s per frame and queued-up taps (e.g. on Home) were replayed as start/stop pairs.
+- **Automatic camera reconnect** (`recover_camera()` in `camera_arducam_usb3.py`, re-exported by `camera.py`): reads time out after 4 s, and after 2 consecutive failed reads the stream is released, the device re-detected and reopened (at most once per 30 s). Status line shows "Camera not responding … reconnecting" / "Camera reconnected".
+- **GUI**: removed the light border around the message log on newer OS images; all left-column button rows are now exactly the same width.
+- **Installer**: makes the system journal persistent (Raspberry Pi OS defaults it to memory-only).
+
 ## Unreleased — 2026-10-19 (System 1 freeze diagnostics)
 - **Experiment runner**: `metadata.csv` rows are now flushed and fsync'd to disk as each image is saved (previously buffered until the run ended, so a system freeze left the file empty). Every runner status message is also appended to `run_log.txt` in the experiment folder.
 - **Launcher**: `start_seedling_imager.sh` now holds a single-instance lock; a second launch exits cleanly instead of failing with `gpiod ... Device or resource busy` (System 1 had two launchers active, which caused a restart loop at boot).
