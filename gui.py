@@ -137,6 +137,32 @@ class _LiveFrameWorker(QThread):
 
 
 class SeedlingImagerGUI(QWidget):
+    # Emitted (from any thread) when the experiment runner switches a
+    # germination LED, so the matching manual button can be synced on the
+    # GUI thread (Oct 2026).
+    _germ_led_state = Signal(int, bool)
+
+    def _btn_qss(self, bg, fg="white", bold=False, checked_bg=None):
+        """
+        Stylesheet for a coloured button (Oct 2026 fix).
+
+        The app-wide dark_style() has `QPushButton:hover { #1565C0 }`. A
+        :hover rule outranks a plain `QPushButton {...}` rule, so whenever
+        the pointer rested on a coloured button -- which on a touchscreen is
+        wherever you last tapped -- the button was painted hover-blue instead
+        of its own colour. That's why the LED buttons sometimes didn't seem
+        to change colour on/off. Every coloured button now restates its
+        colour for :hover too, and checkable buttons take their ON colour
+        from :checked, so the colour always follows the button's real state.
+        """
+        w = "font-weight: bold;" if bold else ""
+        qss = (dark_style(self._s)
+               + f" QPushButton, QPushButton:hover {{ background-color: {bg}; color: {fg}; {w} }}")
+        if checked_bg:
+            qss += (f" QPushButton:checked, QPushButton:checked:hover"
+                    f" {{ background-color: {checked_bg}; color: white; font-weight: bold; }}")
+        return qss
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Time_Lapse Seedling Imager")
@@ -199,9 +225,7 @@ class SeedlingImagerGUI(QWidget):
         self.live_view_btn = QPushButton("Turn Live View On")
         #self.live_view_btn.setFixedWidth(button_width)
         style_and_size(self.live_view_btn)
-        self.live_view_btn.setStyleSheet(
-            dark_style(s) + " QPushButton { background-color: #FFD600; color: black; font-weight: bold; }"
-        )
+        self.live_view_btn.setStyleSheet(self._btn_qss("#FFD600", fg="black", bold=True))
         self.live_view_btn.clicked.connect(self.toggle_live_view)
         #button_layout.addWidget(self.live_view_btn)
 
@@ -235,8 +259,9 @@ class SeedlingImagerGUI(QWidget):
             lambda checked: self._toggle_manual_led(LED_GREEN_PIN, checked, self.green_btn, "#4CAF50", "Green")
         )
 
+        self.rear_ir_btn.setStyleSheet(self._btn_qss("#37474F", checked_bg="#C2185B"))
+        self.green_btn.setStyleSheet(self._btn_qss("#37474F", checked_bg="#4CAF50"))
         for _btn in (self.rear_ir_btn, self.green_btn):
-            _btn.setStyleSheet(dark_style(s) + " QPushButton { background-color: #37474F; color: white; }")
             setup_led_layout.addWidget(_btn)
 
         # Germination/photomorphogenesis LED strip — independent on/off per
@@ -277,11 +302,20 @@ class SeedlingImagerGUI(QWidget):
             lambda checked: self._toggle_manual_led(LED_GERM_FARRED_PIN, checked, self.germ_farred_btn, "#FF5722", "FarRed")
         )
 
+        self.germ_blue_btn.setStyleSheet(self._btn_qss("#37474F", checked_bg="#3D5AFE"))
+        self.germ_red_btn.setStyleSheet(self._btn_qss("#37474F", checked_bg="#D32F2F"))
+        self.germ_farred_btn.setStyleSheet(self._btn_qss("#37474F", checked_bg="#FF5722"))
         for _btn in (self.germ_blue_btn, self.germ_red_btn, self.germ_farred_btn):
-            _btn.setStyleSheet(
-                dark_style(s) + " QPushButton { background-color: #37474F; color: white; }"
-            )
             germ_layout.addWidget(_btn)
+        # pin -> button, so experiment-driven LED changes can sync the buttons
+        # (uses GERM_LED_PINS, which always exists, so a GPIO init failure
+        # can't stop the window from opening)
+        self._germ_buttons = {
+            GERM_LED_PINS["Blue"]: self.germ_blue_btn,
+            GERM_LED_PINS["Red"]: self.germ_red_btn,
+            GERM_LED_PINS["FarRed"]: self.germ_farred_btn,
+        }
+        self._germ_led_state.connect(self._sync_germ_button)
 
         # Home + Advance row (layout preserved)
         ha_layout = QHBoxLayout()
@@ -309,17 +343,17 @@ class SeedlingImagerGUI(QWidget):
 
         self.experiment_btn = QPushButton("Experiment Setup")
         style_and_size(self.experiment_btn)
-        self.experiment_btn.setStyleSheet(dark_style(s) + " QPushButton { background-color: #8E24AA; color: white; }")
+        self.experiment_btn.setStyleSheet(self._btn_qss("#8E24AA"))
         self.experiment_btn.clicked.connect(self.open_experiment_setup)
 
         self.end_experiment_btn = QPushButton("End Experiment")
         style_and_size(self.end_experiment_btn)
-        self.end_experiment_btn.setStyleSheet(dark_style(s) + " QPushButton { background-color: #E53935; color: white; }")
+        self.end_experiment_btn.setStyleSheet(self._btn_qss("#E53935"))
         self.end_experiment_btn.clicked.connect(self.end_experiment)
 
         self.camera_config_btn = QPushButton("Camera Config")
         style_and_size(self.camera_config_btn)
-        self.camera_config_btn.setStyleSheet(dark_style(s) + " QPushButton { background-color: #546E7A; color: white; }")
+        self.camera_config_btn.setStyleSheet(self._btn_qss("#546E7A"))
         self.camera_config_btn.clicked.connect(self.open_camera_config)
 
         # Focus mode indicator — updates on startup and after Camera Config Apply
@@ -331,16 +365,14 @@ class SeedlingImagerGUI(QWidget):
 
         self.file_manager_btn = QPushButton("File Manager")
         style_and_size(self.file_manager_btn)
-        self.file_manager_btn.setStyleSheet(dark_style(s) + " QPushButton { background-color: #455A64; color: white; }")
+        self.file_manager_btn.setStyleSheet(self._btn_qss("#455A64"))
         self.file_manager_btn.clicked.connect(self.open_file_manager)
 
 
         # Exit to Desktop (touch-friendly)
         self.exit_btn = QPushButton("Exit to Desktop")
         style_and_size(self.exit_btn)
-        self.exit_btn.setStyleSheet(
-            dark_style(s) + " QPushButton { background-color: #D32F2F; color: white; font-weight: bold; }"
-        )
+        self.exit_btn.setStyleSheet(self._btn_qss("#D32F2F", bold=True))
         self.exit_btn.clicked.connect(self.close)
 
 
@@ -484,17 +516,9 @@ class SeedlingImagerGUI(QWidget):
         """GUI-thread only: sync the manual button's look to actual GPIO state."""
         if not hasattr(self, "rear_ir_btn"):
             return
-        s = self._s
+        # Colour follows the checked state via the button's :checked style.
         self.rear_ir_btn.blockSignals(True)
         self.rear_ir_btn.setChecked(on)
-        if on:
-            self.rear_ir_btn.setStyleSheet(
-                dark_style(s) + " QPushButton { background-color: #C2185B; color: white; font-weight: bold; }"
-            )
-        else:
-            self.rear_ir_btn.setStyleSheet(
-                dark_style(s) + " QPushButton { background-color: #37474F; color: white; }"
-            )
         self.rear_ir_btn.blockSignals(False)
 
     def _on_rear_ir_button_toggled(self, checked: bool):
@@ -518,15 +542,8 @@ class SeedlingImagerGUI(QWidget):
         else:
             print("[manual LED] led_request unavailable — GPIO not initialized.", flush=True)
 
-        s = self._s
-        if checked:
-            btn.setStyleSheet(
-                dark_style(s) + f" QPushButton {{ background-color: {on_color}; color: white; font-weight: bold; }}"
-            )
-        else:
-            btn.setStyleSheet(
-                dark_style(s) + " QPushButton { background-color: #37474F; color: white; }"
-            )
+        # Button colour follows its checked state via its :checked style
+        # (see _btn_qss); on_color is kept in the signature for callers.
         self.update_status(f"{label} LED: {'ON' if checked else 'OFF'}")
 
     # ---------- Germination LED control for automated DAYLIGHT/DARK runs ----------
@@ -535,10 +552,11 @@ class SeedlingImagerGUI(QWidget):
         Direct GPIO control for a germination-strip channel, used by
         ExperimentRunner to apply DAYLIGHT (static) or DARK (timer-
         triggered) settings during an automated run. Does not update the
-        manual Blue/Red/FarRed button state/style — those buttons reflect
-        manual toggles only; a channel switched on by the experiment runner
-        won't visually flip the corresponding button (cosmetic limitation,
-        flagged for a future pass).
+        Oct 2026: also emits _germ_led_state so the matching Blue/Red/FarRed
+        button is synced (on the GUI thread) to what the experiment did --
+        previously the buttons kept showing the last MANUAL state, e.g. Red
+        looked off during a DARK-mode pulse and stayed lit after the run
+        switched the strip off.
         """
         if not led_request:
             print("[germination LED raw] led_request unavailable — GPIO not initialized.", flush=True)
@@ -547,6 +565,17 @@ class SeedlingImagerGUI(QWidget):
             led_request.set_value(pin, Value.ACTIVE if on else Value.INACTIVE)
         except Exception as e:
             print(f"[germination LED raw] set_value error on pin {pin}: {e}", flush=True)
+            return
+        self._germ_led_state.emit(pin, bool(on))
+
+    def _sync_germ_button(self, pin: int, on: bool):
+        """GUI thread: show an experiment-driven germination LED change on its button."""
+        btn = getattr(self, "_germ_buttons", {}).get(pin)
+        if btn is None or btn.isChecked() == on:
+            return
+        btn.blockSignals(True)      # reflect the state; don't re-drive the GPIO
+        btn.setChecked(on)
+        btn.blockSignals(False)
 
     # ---------- Home/Stop logic (manual use via Home button) ----------
     def on_home_clicked(self):
@@ -970,14 +999,10 @@ class SeedlingImagerGUI(QWidget):
         s = self._s
         if self.live_view_active:
             self.live_view_btn.setText("Turn Live View Off")
-            self.live_view_btn.setStyleSheet(
-                dark_style(s) + " QPushButton { background-color: #43A047; color: white; font-weight: bold; }"
-            )
+            self.live_view_btn.setStyleSheet(self._btn_qss("#43A047", bold=True))
         else:
             self.live_view_btn.setText("Turn Live View On")
-            self.live_view_btn.setStyleSheet(
-                dark_style(s) + " QPushButton { background-color: #FFD600; color: black; font-weight: bold; }"
-            )
+            self.live_view_btn.setStyleSheet(self._btn_qss("#FFD600", fg="black", bold=True))
 
     def set_live_view(self, enable: bool):
         """
