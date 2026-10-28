@@ -1,0 +1,22 @@
+title: ArabidopsisAnalysisV2
+description: >-
+  Root and hypocotyl phenotyping for Arabidopsis and tomato timelapse
+  imaging. A maintained fork of ChronoRoot2.
+repository: calvinyong1/ArabidopsisAnalysisV2
+baseurl: "/ArabidopsisAnalysisV2"
+url: "https://calvinyong1.github.io"
+
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+
+defaults:
+  - scope:
+      path: "docs"
+    values:
+      layout: "default"
+
+exclude:
+  - README.md
+  - content-inventory.md

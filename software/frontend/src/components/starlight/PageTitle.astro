@@ -1,0 +1,17 @@
+---
+// Page h1 with the mockup's "DOC_0N" eyebrow, numbered by sidebar order.
+const { entry, sidebar } = Astro.locals.starlightRoute;
+const flatten = (items: any[]): any[] => items.flatMap((i) => (i.type === 'group' ? flatten(i.entries) : [i]));
+const links = flatten(sidebar);
+const idx = links.findIndex((l) => l.isCurrent);
+const eyebrows: Record<string, string> = {
+  'docs/install': ' · SETUP',
+  'docs/image-aligner': ' · APP 1 · OPTIONAL',
+  'docs/segmentation': ' · APP 2',
+  'docs/single-plant-analysis': ' · APP 3',
+};
+const eyebrow = idx >= 0 ? `DOC_${String(idx + 1).padStart(2, '0')}${eyebrows[entry.id] ?? ''}` : null;
+---
+
+{eyebrow && <div class="doc-eyebrow">{eyebrow}</div>}
+<h1 id="_top">{Astro.locals.starlightRoute.entry.data.title}</h1>

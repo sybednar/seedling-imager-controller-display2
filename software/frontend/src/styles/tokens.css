@@ -1,0 +1,32 @@
+/* Design tokens: single source of truth. Starlight's --sl-* vars map to these
+   in starlight.css. */
+:root {
+  --paper: #F6F7F3;
+  --paper-grid: #F8F9F5;
+  --surface: #FFFFFF;
+  --ink: #14201A;
+  --ink-2: #3B4A41;
+  --ink-3: #5E6B62;
+  --line: #DDE2D9;
+  --moss: #2F6B3F;
+  --moss-dark: #1E4A2A;
+  --sage: #DCE8E0;
+  --sage-line: #B6CBBC;
+  --tag-bg: #E3EEE5;
+  --amber-bg: #FBF1E4;
+  --amber-line: #E2BF92;
+  --amber-ink: #8A4A0F;
+  --code-head: #1E2B24;
+  --orange: #C2701E;
+
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+  --font-accent: 'Chakra Petch', system-ui, sans-serif;
+
+  --radius-card: 14px;  /* landing page */
+  --radius-ui: 4px;     /* docs UI */
+  --w-landing: 1200px;
+  --w-docs: 1320px;
+  --w-article: 820px;
+}

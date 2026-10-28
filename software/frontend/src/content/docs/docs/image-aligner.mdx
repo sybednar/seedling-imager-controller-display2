@@ -1,0 +1,185 @@
+---
+title: "Image Aligner"
+tableOfContents:
+  minHeadingLevel: 2
+  maxHeadingLevel: 2
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+import beforeGif from '../../../assets/aligner-before.gif';
+import afterGif from '../../../assets/aligner-after.gif';
+
+<Aside type="note" title="Optional step">
+Run the Image Aligner only if your experiment shows horizontal drift between
+frames, meaning the plate or camera shifted sideways during the timelapse. If your
+frames are already lined up, skip this app and go straight to
+[Segmentation](../segmentation/).
+</Aside>
+
+<div class="doc-box">
+
+## At a Glance
+
+**What it does:** Detects an ArUco marker in every frame and shifts each frame
+**horizontally** so the marker sits where it was in the first frame. Use it when
+the plate or camera shifted sideways during the timelapse.
+
+</div>
+
+<figure class="app-shot">
+  <div class="shot-row">
+    <div class="shot-cell">
+      <img class="shot-gif" src={beforeGif.src} width={beforeGif.width} height={beforeGif.height} alt="Timelapse of a plate before running the Image Aligner. The plate and its ArUco marker drift sideways between frames." loading="lazy" decoding="async" />
+      <span class="shot-label bad">Before alignment</span>
+    </div>
+    <div class="shot-cell">
+      <img class="shot-gif" src={afterGif.src} width={afterGif.width} height={afterGif.height} alt="The same timelapse after running the Image Aligner. The plate and its ArUco marker stay in place from frame to frame." loading="lazy" decoding="async" />
+      <span class="shot-label good">After alignment</span>
+    </div>
+  </div>
+  <figcaption><span class="fig-label">FIG_01 · Before and after</span><span>The same timelapse before and after running the Image Aligner.</span></figcaption>
+</figure>
+
+## Before You Start
+
+- An ArUco marker from the **`DICT_4X4_1000`** dictionary must be visible in the
+  images. This is the same marker family the Analysis app uses for scale calibration.
+- Images are `.png`, `.tif` or `.tiff`, directly inside each plate folder.
+- **The marker must be detected in the first frame.** It is the reference. If it
+  is not, the app warns "No ArUco marker detected in the first frame — images left
+  unaligned." and writes unmodified copies.
+
+## Launch the App
+
+Launch the app through the provided "ChronoRoot Image Aligner" desktop shortcut created by the installer
+
+Alternatively: Launch the program through the CLI using this bash script
+
+```bash title="BASH"
+conda activate ChronoRoot
+cd imageAligner
+python run.py
+```
+
+## How to Use It
+
+<Steps>
+
+1. #### Load your plate folders
+
+   Click **Load Folder** (green button, top left). A folder picker opens, and you
+   can select more than one.
+
+   Pick the **parent** folder that holds your plate folders. Every **immediate
+   subfolder** becomes one row in the table. The parent folder itself is not added.
+
+   The log shows "Loaded N folder(s) from …".
+
+2. #### Start the alignment
+
+   For each row, click **Align**. The row becomes **Queued**, then **Aligning**.
+   Folders are processed **one at a time**, in the order you queued them.
+
+3. #### Watch the progress
+
+   Follow the **Progress** column and the log at the bottom. Progress covers two phases:
+
+   1. Detecting markers (first half of the bar).
+   2. Writing aligned images (second half of the bar).
+
+   Frames with no marker are logged as `Warning: no marker detected in <file>`.
+
+4. #### Check the result
+
+   When the row turns **Complete** (green), the aligned images are in
+   `<folder>/aligned/`, each renamed `<original name>_aligned.<ext>`.
+
+</Steps>
+
+<Aside type="note" title="Note">
+Source images are never modified. All output goes to the `aligned/` subfolder.
+</Aside>
+
+## Interface Reference
+
+### Top bar
+
+| Control | What it does |
+|---|---|
+| **Load Folder** | Add the subfolders of one or more chosen folders as rows |
+| `Queue: N \| Idle` label | Number of folders waiting, and which folder is processing |
+| **Clear Queue** (red) | Removes all *pending* folders from the queue. Does not stop the one running |
+
+### Status values
+
+| Status | Meaning | Action button |
+|---|---|---|
+| Not Started | No `aligned/` folder yet | **Align** (green) |
+| Queued | Waiting its turn | **Cancel** |
+| Aligning | Currently running | **Kill Process** (red) |
+| Incomplete | `aligned/` has fewer images than the source | **Re-align** (blue) |
+| Complete | `aligned/` has at least as many images as the source | **Re-align** (blue) |
+| Error | Worker raised an error (e.g. unreadable image) | **Retry** (orange) |
+| No Images | Folder has no png/tif/tiff | none |
+
+- **Remove** (per row) stops tracking the folder in the app. Files are not deleted.
+- The table refreshes automatically (about every 1–3 s), so it picks up changes made on disk.
+- Closing the window while a job runs asks "Force quit?"
+
+## Things to Know
+
+- **Horizontal only.** The shift is computed from the marker centroid in x. There is
+  no vertical correction, rotation or scale correction.
+- **Frames with no marker detected** are copied unchanged (no shift) into `aligned/`.
+- **Re-align** on a Complete folder overwrites files in `aligned/` that share the same names.
+
+## Using the Output
+
+The aligned images sit in an `aligned/` subfolder of each plate. The
+[Segmentation app](../segmentation/) detects it automatically: when you load the
+experiment folder, each plate's `aligned` subfolder gets its own row (shown as
+`plate1/aligned`) next to the plate itself.
+
+1. Segment the `plate1/aligned` row in the Segmentation app.
+2. In the Analysis app, point **Select Video Folder** at `<plate>/aligned`.
+
+## Troubleshooting
+
+<div class="troubleshoot">
+
+<details>
+<summary>"No ArUco marker detected in the first frame"</summary>
+
+The marker is missing, occluded or out of focus in frame 1. Crop or re-shoot, or skip alignment.
+
+</details>
+
+<details>
+<summary>Many "no marker detected" warnings</summary>
+
+The marker may be partly hidden, there may be glare, or the marker is from the wrong dictionary (it must be 4×4_1000).
+
+</details>
+
+<details>
+<summary>Row says "No Images"</summary>
+
+The folder holds its images in a subfolder, or uses another file extension.
+
+</details>
+
+<details>
+<summary>Row stuck at Error</summary>
+
+Check the log for `Failed to read image: <file>`. Fix or remove the file, then click **Retry**.
+
+</details>
+
+<details>
+<summary>Frames still look misaligned after alignment</summary>
+
+Click **Verify** to check that the ArUco marker corners are detected accurately. If they aren’t, the marker may be poorly placed on the plate, or the image quality may be too low.
+
+</details>
+
+</div>

@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Field lab, light</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Chakra+Petch:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2F6B3F}a:hover{color:#1E4A2A}
+</style>
+</helmet>
+<div style="font-family: 'IBM Plex Sans', sans-serif; color: #14201A; background: #F6F7F3; min-height: 100vh">
+
+<header style="border-bottom: 1px solid #DDE2D9; background: #F6F7F3">
+<nav style="max-width: 1200px; margin: 0 auto; padding: 18px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px" aria-label="Main">
+<a href="#" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #14201A; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px">
+<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2F6B3F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22V10"></path><path d="M12 14c-3 0-5-2-5-5 3 0 5 2 5 5z"></path><path d="M12 11c0-3 2-6 6-6 0 4-3 6-6 6z"></path></svg>
+ArabidopsisAnalysisV2
+</a>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<a href="#apps" style="padding: 10px 14px; border-radius: 8px; text-decoration: none; color: #3B4A41; font-weight: 500; font-size: 15px">Apps</a>
+<a href="#whats-new" style="padding: 10px 14px; border-radius: 8px; text-decoration: none; color: #3B4A41; font-weight: 500; font-size: 15px">What's new</a>
+<a href="#docs" style="padding: 10px 14px; border-radius: 8px; text-decoration: none; color: #3B4A41; font-weight: 500; font-size: 15px">Docs</a>
+<a href="https://github.com/calvinyong1/ArabidopsisAnalysisV2" style="padding: 10px 16px; border-radius: 8px; text-decoration: none; color: #FFFFFF; background: #14201A; font-weight: 600; font-size: 15px">GitHub</a>
+</div>
+</nav>
+</header>
+
+<section style="max-width: 1200px; margin: 0 auto; padding: 80px 24px 72px; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 56px; align-items: center">
+<div style="display: flex; flex-direction: column; gap: 24px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #2F6B3F">Root &amp; hypocotyl phenotyping</div>
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: clamp(40px, 5.2vw, 64px); line-height: 1.04; letter-spacing: -0.02em">Plant phenotyping, tracked plant by plant.</h1>
+<p style="margin: 0; font-size: 19px; line-height: 1.6; color: #3B4A41; max-width: 560px">A GUI pipeline for segmenting and measuring root and hypocotyl growth from Arabidopsis timelapse plates: image alignment, nnU-Net segmentation, and per-plant growth curves, end to end.</p>
+<div style="display: flex; flex-wrap: wrap; gap: 12px; padding-top: 8px">
+<a href="https://calvinyong1.github.io/ArabidopsisAnalysisV2/docs/install.html" style="padding: 14px 22px; border-radius: 10px; background: #2F6B3F; color: #FFFFFF; text-decoration: none; font-weight: 600; font-size: 16px">Install guide</a>
+<a href="https://huggingface.co/calvinyong1/arabidopsis-segmentation-model" style="padding: 14px 22px; border-radius: 10px; border: 1px solid #C9D1C4; background: #FFFFFF; color: #14201A; text-decoration: none; font-weight: 600; font-size: 16px">Model</a>
+<a href="https://huggingface.co/datasets/calvinyong1/ArabidopsisDataset" style="padding: 14px 22px; border-radius: 10px; border: 1px solid #C9D1C4; background: #FFFFFF; color: #14201A; text-decoration: none; font-weight: 600; font-size: 16px">Dataset</a>
+</div>
+<p style="margin: 0; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E6B62">Fork of ngaggion/ChronoRoot2 · maintained at calvinyong1/ArabidopsisAnalysisV2</p>
+</div>
+
+<figure style="margin: 0; background: #FFFFFF; border: 1px solid #DDE2D9; border-radius: 16px; padding: 24px; display: flex; flex-direction: column; gap: 16px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #5E6B62">
+<span>plate3 / plant_2</span>
+<span style="display: flex; gap: 16px"><span style="display: flex; align-items: center; gap: 6px"><span style="width: 14px; height: 3px; background: #2F6B3F; display: inline-block"></span>MainRootLength</span><span style="display: flex; align-items: center; gap: 6px"><span style="width: 14px; height: 3px; background: #C2701E; display: inline-block"></span>HypocotylLength</span></span>
+</div>
+<svg viewBox="0 0 480 280" style="width: 100%; height: auto" role="img" aria-label="Illustrative growth curves for main root and hypocotyl length">
+<g stroke="#E6EAE3" stroke-width="1"><line x1="40" y1="40" x2="470" y2="40"></line><line x1="40" y1="100" x2="470" y2="100"></line><line x1="40" y1="160" x2="470" y2="160"></line><line x1="40" y1="220" x2="470" y2="220"></line></g>
+<line x1="40" y1="250" x2="470" y2="250" stroke="#8A968E" stroke-width="1"></line>
+<line x1="40" y1="20" x2="40" y2="250" stroke="#8A968E" stroke-width="1"></line>
+<path d="M40 248 C 120 244, 170 225, 230 180 S 360 70, 470 46" fill="none" stroke="#2F6B3F" stroke-width="3" stroke-linecap="round"></path>
+<path d="M40 249 C 100 238, 150 200, 210 190 S 340 182, 470 178" fill="none" stroke="#C2701E" stroke-width="3" stroke-linecap="round"></path>
+<text x="255" y="272" font-family="IBM Plex Mono, monospace" font-size="11" fill="#5E6B62" text-anchor="middle">time</text>
+<text x="14" y="140" font-family="IBM Plex Mono, monospace" font-size="11" fill="#5E6B62" text-anchor="middle" transform="rotate(-90 14 140)">length</text>
+</svg>
+</figure>
+</section>
+
+<section id="apps" style="background: #FFFFFF; border-top: 1px solid #DDE2D9; border-bottom: 1px solid #DDE2D9">
+<div style="max-width: 1200px; margin: 0 auto; padding: 80px 24px; display: flex; flex-direction: column; gap: 40px">
+<div style="display: flex; flex-direction: column; gap: 12px; max-width: 640px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #2F6B3F">The pipeline</div>
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 40px; line-height: 1.1; letter-spacing: -0.01em">Three GUI apps, each with its own run.py</h2>
+</div>
+<ol style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 24px">
+<li style="display: flex; flex-direction: column; gap: 14px; padding: 28px; border: 1px solid #DDE2D9; border-radius: 14px; background: #F6F7F3">
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 36px; height: 36px; border-radius: 50%; background: #2F6B3F; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-weight: 500">1</span><h3 style="margin: 0; font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500">imageAligner</h3></div>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3B4A41">Aligns raw plate timelapses frame to frame before segmentation. Falls back to an identity transform when a reference-frame marker can't be found, so one bad frame doesn't block the whole plate.</p>
+</li>
+<li style="display: flex; flex-direction: column; gap: 14px; padding: 28px; border: 1px solid #DDE2D9; border-radius: 14px; background: #F6F7F3">
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 36px; height: 36px; border-radius: 50%; background: #2F6B3F; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-weight: 500">2</span><h3 style="margin: 0; font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500">segmentationApp</h3></div>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3B4A41">Runs nnU-Net inference over aligned frames (root, lateral root, hypocotyl, seed, leaf, and petiole classes) with GPU detection and a CPU fallback.</p>
+</li>
+<li style="display: flex; flex-direction: column; gap: 14px; padding: 28px; border: 1px solid #DDE2D9; border-radius: 14px; background: #F6F7F3">
+<div style="display: flex; align-items: center; gap: 12px"><span style="width: 36px; height: 36px; border-radius: 50%; background: #2F6B3F; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'IBM Plex Mono', monospace; font-weight: 500">3</span><h3 style="margin: 0; font-family: 'IBM Plex Mono', monospace; font-size: 18px; font-weight: 500">singlePlantAnalysis</h3></div>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3B4A41">Turns segmentation masks into per-plant growth curves (main/lateral root length, lateral count, hypocotyl length) and generates the final report.</p>
+</li>
+</ol>
+</div>
+</section>
+
+<section id="whats-new" style="max-width: 1200px; margin: 0 auto; padding: 80px 24px; display: flex; flex-direction: column; gap: 40px">
+<div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: #2F6B3F">Changes from ChronoRoot2</div>
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 40px; line-height: 1.1; letter-spacing: -0.01em">What's new in this fork</h2>
+</div>
+<a href="https://calvinyong1.github.io/ArabidopsisAnalysisV2/docs/model-and-improvements.html" style="font-weight: 600; font-size: 16px; padding: 10px 0">Read all improvements →</a>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap: 24px">
+<article style="display: flex; flex-direction: column; gap: 12px; padding: 32px; border-radius: 14px; background: #FFFFFF; border: 1px solid #DDE2D9">
+<span style="align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #E3EEE5; color: #1E4A2A; font-family: 'IBM Plex Mono', monospace; font-size: 12px">Model</span>
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 22px">Accurate segmentation of elongated hypocotyls</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3B4A41">The original model often mislabeled long hypocotyls, cutting them short and throwing off their length. The retrained model segments them correctly.</p>
+</article>
+<article style="display: flex; flex-direction: column; gap: 12px; padding: 32px; border-radius: 14px; background: #FFFFFF; border: 1px solid #DDE2D9">
+<span style="align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #E3EEE5; color: #1E4A2A; font-family: 'IBM Plex Mono', monospace; font-size: 12px">macOS</span>
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 22px">Native macOS app</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3B4A41">One installer sets up everything and adds clickable apps to Applications. On Apple Silicon, segmentation runs on the Mac's graphics chip. The original supported Macs only through Docker.</p>
+</article>
+<article style="display: flex; flex-direction: column; gap: 12px; padding: 32px; border-radius: 14px; background: #FFFFFF; border: 1px solid #DDE2D9">
+<span style="align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #E3EEE5; color: #1E4A2A; font-family: 'IBM Plex Mono', monospace; font-size: 12px">Alignment</span>
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 22px">New imageAligner app</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3B4A41">Corrects small plate shifts between timelapse photos using printed markers, before anything is measured. A frame without a detectable marker is flagged instead of stopping the run.</p>
+</article>
+<article style="display: flex; flex-direction: column; gap: 12px; padding: 32px; border-radius: 14px; background: #FFFFFF; border: 1px solid #DDE2D9">
+<span style="align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: #E3EEE5; color: #1E4A2A; font-family: 'IBM Plex Mono', monospace; font-size: 12px">Measurements</span>
+<h3 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 22px">Fewer silent measurement errors</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.6; color: #3B4A41">Hypocotyls are no longer borrowed from neighboring plants or zeroed before the root is found, and growth charts now work at any photo interval.</p>
+</article>
+</div>
+</section>
+
+<section id="docs" style="background: #DCE8E0; color: #14201A; border-top: 1px solid #C3D5C8">
+<div style="max-width: 1200px; margin: 0 auto; padding: 80px 24px; display: flex; flex-direction: column; gap: 32px">
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="font-family: 'Chakra Petch', sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: #2F6B3F">// Reference</div>
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 40px; line-height: 1.1">Documentation</h2>
+</div>
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px">
+<a href="https://calvinyong1.github.io/ArabidopsisAnalysisV2/docs/install.html" style="display: flex; flex-direction: column; gap: 10px; padding: 26px; background: #F6F7F3; border: 1px solid #B6CBBC; border-radius: 4px; color: #14201A; text-decoration: none"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #2F6B3F">DOC_01</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0.01em; text-transform: uppercase">Installation guide →</span><span style="font-size: 15px; line-height: 1.55; color: #3B4A41">Step-by-step setup for Windows via WSL, including the WSL1-vs-WSL2 GUI gotcha.</span></a>
+<a href="https://calvinyong1.github.io/ArabidopsisAnalysisV2/docs/model-and-improvements.html" style="display: flex; flex-direction: column; gap: 10px; padding: 26px; background: #F6F7F3; border: 1px solid #B6CBBC; border-radius: 4px; color: #14201A; text-decoration: none"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #2F6B3F">DOC_02</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0.01em; text-transform: uppercase">What's new in this fork →</span><span style="font-size: 15px; line-height: 1.55; color: #3B4A41">A plain-language rundown of what the plant-recognition model can do now, and how the pipeline got more reliable.</span></a>
+<a href="https://calvinyong1.github.io/ArabidopsisAnalysisV2/docs/training.html" style="display: flex; flex-direction: column; gap: 10px; padding: 26px; background: #F6F7F3; border: 1px solid #B6CBBC; border-radius: 4px; color: #14201A; text-decoration: none"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #2F6B3F">DOC_03</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0.01em; text-transform: uppercase">Training the model →</span><span style="font-size: 15px; line-height: 1.55; color: #3B4A41">Dataset prep, splits, VM training, and checkpoint handling for the segmentation model.</span></a>
+<a href="https://calvinyong1.github.io/ArabidopsisAnalysisV2/docs/architecture.html" style="display: flex; flex-direction: column; gap: 10px; padding: 26px; background: #F6F7F3; border: 1px solid #B6CBBC; border-radius: 4px; color: #14201A; text-decoration: none"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #2F6B3F">DOC_04</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0.01em; text-transform: uppercase">Architecture notes →</span><span style="font-size: 15px; line-height: 1.55; color: #3B4A41">Seed position vs. root base, class labels, path structure, and how main/lateral classification actually works.</span></a>
+<a href="https://calvinyong1.github.io/ArabidopsisAnalysisV2/changelog.html" style="display: flex; flex-direction: column; gap: 10px; padding: 26px; background: #F6F7F3; border: 1px solid #B6CBBC; border-radius: 4px; color: #14201A; text-decoration: none"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #2F6B3F">DOC_05</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 22px; font-weight: 700; letter-spacing: 0.01em; text-transform: uppercase">Full changelog →</span><span style="font-size: 15px; line-height: 1.55; color: #3B4A41">The dated history of bug fixes applied to the analysis pipeline.</span></a>
+</div>
+<footer style="display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-top: 24px; border-top: 1px solid #B6CBBC; font-family: 'Chakra Petch', sans-serif; font-weight: 500; font-size: 14px; letter-spacing: 0.04em; color: #3B4A41">
+<span>ArabidopsisAnalysisV2</span>
+<a href="https://github.com/calvinyong1/ArabidopsisAnalysisV2" style="color: #2F6B3F">source</a>
+</footer>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>

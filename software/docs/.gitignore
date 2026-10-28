@@ -1,0 +1,9 @@
+_site/
+.jekyll-cache/
+.jekyll-metadata
+.sass-cache/
+Gemfile
+Gemfile.lock
+WORKFLOW.md
+# Jekyll/editor extras
+.DS_Store

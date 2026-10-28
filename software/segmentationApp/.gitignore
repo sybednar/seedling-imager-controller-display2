@@ -1,0 +1,3 @@
+models/Arabidopsis/*
+models/Tomato/*
+backup_model_weight/
