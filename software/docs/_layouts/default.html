@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ page.title }} | {{ site.title }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="{{ '/' | relative_url }}">Arabidopsis<span>Analysis</span>V2</a>
+    <nav class="top">
+      <a href="{{ '/#apps' | relative_url }}">Apps</a>
+      <a href="{{ '/docs/model-and-improvements.html' | relative_url }}">What's new</a>
+      <a href="{{ '/#docs' | relative_url }}">Docs</a>
+      <a href="https://github.com/{{ site.repository }}">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<article class="doc-body">
+  <div class="wrap">
+    <div class="doc-main">
+      <p class="back-link"><a href="{{ '/#docs' | relative_url }}">&larr; All docs</a></p>
+      {{ content }}
+    </div>
+  </div>
+</article>
+
+<footer class="site">
+  <div class="wrap">
+    ArabidopsisAnalysisV2  &middot; <a href="https://github.com/{{ site.repository }}">source</a>
+  </div>
+</footer>
+
+<script src="{{ '/assets/js/docs.js' | relative_url }}" defer></script>
+
+</body>
+</html>

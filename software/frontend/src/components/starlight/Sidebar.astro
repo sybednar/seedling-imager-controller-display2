@@ -1,0 +1,111 @@
+---
+// Docs sidebar: "// DOCS" label, numbered page list, then "On this page".
+import Default from '@astrojs/starlight/components/Sidebar.astro';
+import TableOfContents from 'virtual:starlight/components/TableOfContents';
+
+const { toc } = Astro.locals.starlightRoute;
+---
+
+<div class="sidebar-label" aria-hidden="true">// DOCS</div>
+<Default><slot /></Default>
+{
+  toc && (
+    <div class="sidebar-toc">
+      <TableOfContents />
+    </div>
+  )
+}
+
+<script>
+  // Install guide: "Prerequisites" / "Installation" exist once per platform tab
+  // (ids prerequisites, prerequisites-1, prerequisites-2, ...). Point the sidebar
+  // links at the copy inside the tab that's currently open.
+  const tabs = document.querySelector('.sl-markdown-content starlight-tabs');
+  const links = [...document.querySelectorAll<HTMLAnchorElement>(
+    '.sidebar-toc a[href="#prerequisites"], .sidebar-toc a[href="#installation"]',
+  )];
+
+  if (tabs && links.length) {
+    for (const link of links) link.dataset.base = link.hash.slice(1);
+
+    const retarget = () => {
+      const panel = tabs.querySelector('[role="tabpanel"]:not([hidden])');
+      if (!panel) return;
+      for (const link of links) {
+        const base = link.dataset.base!;
+        const heading = panel.querySelector(`h3[id="${base}"], h3[id^="${base}-"]`);
+        if (heading) link.setAttribute('href', `#${heading.id}`);
+      }
+    };
+
+    retarget();
+    new MutationObserver(retarget).observe(tabs, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['hidden'],
+    });
+  }
+</script>
+
+<script>
+  // Training page: the "Training on a VM / Local Machine" buttons (built by
+  // src/plugins/remark-steps.mjs) show one walkthrough at a time. Without JS both
+  // walkthroughs stay visible and the buttons stay hidden.
+  const toggle = document.querySelector<HTMLElement>('.path-toggle');
+  const panels = [...document.querySelectorAll<HTMLElement>('.training-path')];
+
+  if (toggle && panels.length) {
+    const KEY = 'training-path';
+    const buttons = [...toggle.querySelectorAll<HTMLButtonElement>('button[data-path]')];
+    const valid = (v: string | null | undefined): v is string => !!v && panels.some((p) => p.dataset.path === v);
+
+    const read = () => {
+      try { return localStorage.getItem(KEY); } catch { return null; }
+    };
+    const write = (v: string) => {
+      try { localStorage.setItem(KEY, v); } catch { /* storage blocked */ }
+    };
+
+    // "On this page" lists headings from both walkthroughs; show only the visible one's.
+    const syncToc = () => {
+      for (const a of document.querySelectorAll<HTMLAnchorElement>('.sidebar-toc a[href^="#"]')) {
+        const target = document.getElementById(decodeURIComponent(a.hash.slice(1)));
+        const panel = target?.closest<HTMLElement>('.training-path');
+        const li = a.closest('li');
+        if (li) li.hidden = !!panel && panel.hidden;
+      }
+    };
+
+    const show = (path: string, save = true) => {
+      for (const p of panels) p.hidden = p.dataset.path !== path;
+      for (const b of buttons) b.setAttribute('aria-selected', String(b.dataset.path === path));
+      if (save) write(path);
+      syncToc();
+    };
+
+    // A link or URL hash that points into the hidden walkthrough opens it first.
+    const revealHash = () => {
+      const id = decodeURIComponent(location.hash.slice(1));
+      const panel = id ? document.getElementById(id)?.closest<HTMLElement>('.training-path') : null;
+      if (panel?.hidden && panel.dataset.path) {
+        show(panel.dataset.path);
+        document.getElementById(id)?.scrollIntoView();
+      }
+    };
+
+    toggle.classList.add('ready');
+    const saved = read();
+    show(valid(saved) ? saved : panels[0].dataset.path!, false);
+    revealHash();
+
+    for (const b of buttons) b.addEventListener('click', () => show(b.dataset.path!));
+    toggle.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const i = buttons.findIndex((b) => b.getAttribute('aria-selected') === 'true');
+      const next = buttons[(i + (e.key === 'ArrowRight' ? 1 : buttons.length - 1)) % buttons.length];
+      next.focus();
+      show(next.dataset.path!);
+    });
+    window.addEventListener('hashchange', revealHash);
+  }
+</script>

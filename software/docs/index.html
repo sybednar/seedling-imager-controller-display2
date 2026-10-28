@@ -1,0 +1,166 @@
+---
+layout: none
+---
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ArabidopsisAnalysisV2 | root &amp; hypocotyl phenotyping</title>
+<meta name="description" content="A maintained fork of ChronoRoot2 for Arabidopsis and tomato root/hypocotyl phenotyping from timelapse imaging.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="{{ '/' | relative_url }}">Arabidopsis<span>Analysis</span>V2</a>
+    <nav class="top">
+      <a href="#apps">Apps</a>
+      <a href="#whats-new">What's new</a>
+      <a href="#docs">Docs</a>
+      <a href="https://github.com/{{ site.repository }}">GitHub</a>
+    </nav>
+  </div>
+  <div class="scroll-progress" aria-hidden="true"></div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <h1>Plant phenotyping,<br>tracked plant by plant.</h1>
+      <p class="lede">
+        A GUI pipeline for segmenting and measuring root and hypocotyl growth
+        from Arabidopsis timelapse plates: image alignment,
+        nnU-Net segmentation, and per-plant growth curves, end to end.
+      </p>
+      <p class="hero-meta">
+        Fork of <code>ngaggion/ChronoRoot2</code> &middot; maintained at
+        <code>calvinyong1/ArabidopsisAnalysisV2</code>
+      </p>
+      <div class="cta-row">
+        <a class="btn primary" href="{{ '/docs/install.html' | relative_url }}">Install guide</a>
+        <a class="btn ghost" href="https://huggingface.co/calvinyong1/arabidopsis-segmentation-model">Model Site</a>
+        <a class="btn primary" href="https://huggingface.co/datasets/calvinyong1/ArabidopsisDataset">Dataset Site</a>
+      </div>
+    </div>
+
+    <div class="chart-panel">
+      <div class="label">
+        <span>MainRootLength &amp; HypocotylLength</span>
+        <span>plate3 / plant_2</span>
+      </div>
+      <svg viewBox="0 0 460 240" role="img" aria-label="Example root and hypocotyl growth curves over time">
+        <line class="chart-grid" x1="0" y1="60" x2="460" y2="60"></line>
+        <line class="chart-grid" x1="0" y1="120" x2="460" y2="120"></line>
+        <line class="chart-grid" x1="0" y1="180" x2="460" y2="180"></line>
+        <path class="chart-line"
+          d="M10,210 C 60,205 90,195 120,178 C 160,155 190,140 220,118
+             C 260,92 300,80 340,58 C 380,40 410,28 450,18" />
+        <path class="chart-line secondary"
+          d="M10,220 C 50,218 80,214 110,205 C 150,192 180,182 220,168
+             C 260,152 300,142 340,128 C 380,116 410,108 450,96" />
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section class="apps" id="apps">
+  <div class="wrap">
+    <p class="section-head">Three GUI Apps, Each With Its Own run.py</p>
+    <div class="apps-grid">
+      <div class="app-card">
+        <h3>imageAligner</h3>
+        <p>Aligns raw plate timelapses frame to frame before segmentation. Falls back to an identity transform when a reference-frame marker can't be found, so one bad frame doesn't block the whole plate.</p>
+      </div>
+      <div class="app-card">
+        <h3>segmentationApp</h3>
+        <p>Runs nnU-Net inference over aligned frames (root, lateral root, hypocotyl, seed, leaf, and petiole classes) with GPU detection and a CPU fallback.</p>
+      </div>
+      <div class="app-card">
+        <h3>singlePlantAnalysis</h3>
+        <p>Turns segmentation masks into per-plant growth curves (main/lateral root length, lateral count, hypocotyl length) and generates the final report.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="changelog whats-new" id="whats-new">
+  <div class="wrap">
+    <p class="section-head">What's New in This Fork</p>
+
+    <div class="entry">
+      <div class="date">Model</div>
+      <div>
+        <h4>Accurate Segmentation of Elongated Hypocotyls</h4>
+        <p>The original model often mislabeled long hypocotyls, cutting them short and throwing off their length. The retrained model segments them correctly.</p>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="date">macOS</div>
+      <div>
+        <h4>Native macOS App</h4>
+        <p>One installer sets up everything and adds clickable apps to Applications. On Apple Silicon, segmentation runs on the Mac's graphics chip. The original supported Macs only through Docker.</p>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="date">Alignment</div>
+      <div>
+        <h4>New imageAligner App</h4>
+        <p>Corrects small plate shifts between timelapse photos using printed markers, before anything is measured. A frame without a detectable marker is flagged instead of stopping the run.</p>
+      </div>
+    </div>
+
+    <div class="entry">
+      <div class="date">Measurements</div>
+      <div>
+        <h4>Fewer Silent Measurement Errors</h4>
+        <p>Hypocotyls are no longer borrowed from neighboring plants or zeroed before the root is found, and growth charts now work at any photo interval.</p>
+      </div>
+    </div>
+
+    <p class="back-link"><a href="{{ '/docs/model-and-improvements.html' | relative_url }}">Read all improvements &rarr;</a></p>
+  </div>
+</section>
+
+<section class="docs-index" id="docs">
+  <div class="wrap">
+    <p class="section-head">Documentation</p>
+    <div class="docs-grid">
+      <a class="doc-card" href="{{ '/docs/install.html' | relative_url }}">
+        <h3>Installation Guide</h3>
+        <p>Step-by-step setup for Windows via WSL, including the WSL1-vs-WSL2 GUI gotcha.</p>
+      </a>
+      <a class="doc-card" href="{{ '/docs/model-and-improvements.html' | relative_url }}">
+        <h3>What's New in This Fork</h3>
+        <p>A plain-language rundown of what the plant-recognition model can do now, and how the pipeline got more reliable.</p>
+      </a>
+      <a class="doc-card" href="{{ '/docs/training.html' | relative_url }}">
+        <h3>Training the Model</h3>
+        <p>Dataset prep, splits, VM training, and checkpoint handling for the segmentation model.</p>
+      </a>
+      <a class="doc-card" href="{{ '/docs/architecture.html' | relative_url }}">
+        <h3>Architecture Notes</h3>
+        <p>Seed position vs. root base, class labels, path structure, and how main/lateral classification actually works.</p>
+      </a>
+      <a class="doc-card" href="{{ '/changelog.html' | relative_url }}">
+        <h3>Full Changelog</h3>
+        <p>The dated history of bug fixes applied to the analysis pipeline.</p>
+      </a>
+    </div>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap">
+    ArabidopsisAnalysisV2 &middot; <a href="https://github.com/{{ site.repository }}">source</a>
+  </div>
+</footer>
+
+<script src="{{ '/assets/js/landing.js' | relative_url }}" defer></script>
+</body>
+</html>

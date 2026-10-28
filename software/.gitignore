@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+.claude/
+CLAUDE.md
+.vscode/
+tempCodeRunnerFile.*
+.ipynb_checkpoints/
+*.log

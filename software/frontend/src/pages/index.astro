@@ -1,0 +1,352 @@
+---
+import '../styles/tokens.css';
+import SiteNav from '../components/SiteNav.astro';
+import scrollEffects from '../scripts/scroll-effects.js?raw';
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+const repo = 'https://github.com/calvinyong1/ArabidopsisAnalysisV2';
+const url = (path: string) => `${base}${path}`;
+
+// Axis tick positions in the 480x280 SVG plot area (x 40-470, y 250 = 0 mm).
+const X0 = 40, X1 = 470, Y0 = 250, Y1 = 40;
+const yTicks = [0, 5, 10, 15, 20].map((v) => ({ v, y: Y0 - (v / 20) * (Y0 - Y1) }));
+const xTicks = [0, 48, 96, 144].map((h) => ({ h, x: X0 + (h / 166) * (X1 - X0) }));
+
+const apps = [
+  {
+    name: 'imageAligner',
+    href: '/docs/image-aligner/',
+    body: "Aligns raw plate timelapses frame to frame before segmentation. Falls back to an identity transform when a reference-frame marker can't be found, so one bad frame doesn't block the whole plate.",
+  },
+  {
+    name: 'segmentationApp',
+    href: '/docs/segmentation/',
+    body: 'Runs nnU-Net inference over aligned frames (root, lateral root, hypocotyl, seed, leaf, and petiole classes) with GPU detection and a CPU fallback.',
+  },
+  {
+    name: 'singlePlantAnalysis',
+    href: '/docs/single-plant-analysis/',
+    body: 'Turns segmentation masks into per-plant growth curves (main/lateral root length, lateral count, hypocotyl length) and generates the final report.',
+  },
+];
+
+const whatsNew = [
+  {
+    tag: 'Model',
+    title: 'Accurate Segmentation of Elongated Hypocotyls',
+    body: 'The original model often mislabeled long hypocotyls, cutting them short and throwing off their length. The retrained model segments them correctly.',
+  },
+  {
+    tag: 'macOS',
+    title: 'Native macOS App',
+    body: "One installer sets up everything and adds clickable apps to Applications. On Apple Silicon, segmentation runs on the Mac's graphics chip. The original supported Macs only through Docker.",
+  },
+  {
+    tag: 'Alignment',
+    title: 'New imageAligner App',
+    body: 'Corrects small plate shifts between timelapse photos using printed markers, before anything is measured. A frame without a detectable marker is flagged instead of stopping the run.',
+  },
+  {
+    tag: 'Measurements',
+    title: 'Fewer Silent Measurement Errors',
+    body: 'Hypocotyls are no longer borrowed from neighboring plants or zeroed before the root is found, and growth charts now work at any photo interval.',
+  },
+];
+
+const docs = [
+  {
+    label: 'DOC_01',
+    title: 'Installation Guide',
+    body: 'Step-by-step setup for Windows via WSL, including the WSL1-vs-WSL2 GUI gotcha.',
+    href: '/docs/install/',
+  },
+  {
+    label: 'DOC_02',
+    title: 'Image Aligner',
+    body: 'Removes horizontal drift between timelapse frames using an ArUco marker.',
+    href: '/docs/image-aligner/',
+  },
+  {
+    label: 'DOC_03',
+    title: 'Segmentation',
+    body: 'Runs the nnU-Net model on every frame, then temporally smooths the masks.',
+    href: '/docs/segmentation/',
+  },
+  {
+    label: 'DOC_04',
+    title: 'Single Plant Analysis',
+    body: "Tracks one plant's root over time, measures it, and builds statistical reports.",
+    href: '/docs/single-plant-analysis/',
+  },
+  {
+    label: 'DOC_05',
+    title: "What's New in This Fork",
+    body: 'A plain-language rundown of what the plant-recognition model can do now, and how the pipeline got more reliable.',
+    href: '/docs/model-and-improvements/',
+  },
+  {
+    label: 'DOC_06',
+    title: 'Training the Model',
+    body: 'Dataset prep, splits, VM training, and checkpoint handling for the segmentation model.',
+    href: '/docs/training/',
+  },
+  {
+    label: 'DOC_07',
+    title: 'Architecture Notes',
+    body: 'Seed position vs. root base, class labels, path structure, and how main/lateral classification actually works.',
+    href: '/docs/architecture/',
+  },
+];
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ArabidopsisAnalysisV2 | root &amp; hypocotyl phenotyping</title>
+    <meta
+      name="description"
+      content="A maintained fork of ChronoRoot2 for Arabidopsis and tomato root/hypocotyl phenotyping from timelapse imaging."
+    />
+    <link rel="icon" type="image/svg+xml" href={url('/favicon.svg')} />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap"
+    />
+    <script is:inline set:html={scrollEffects} />
+  </head>
+  <body>
+    <header class="site">
+      <SiteNav />
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="wrap hero-grid">
+          <div class="hero-copy">
+            <p class="eyebrow mono">Root &amp; hypocotyl phenotyping</p>
+            <h1>Plant phenotyping, tracked plant by plant.</h1>
+            <p class="lede">
+              A GUI pipeline for segmenting and measuring root and hypocotyl growth from Arabidopsis
+              timelapse plates: image alignment, nnU-Net segmentation, and per-plant growth curves,
+              end to end.
+            </p>
+            <div class="cta-row">
+              <a class="btn moss" href={url('/docs/install/')}>Install guide</a>
+              <a class="btn outline" href="https://huggingface.co/calvinyong1/arabidopsis-segmentation-model">Model Site</a>
+              <a class="btn outline" href="https://huggingface.co/datasets/calvinyong1/ArabidopsisDataset">Dataset Site</a>
+            </div>
+            <p class="fork-line">
+              Fork of <code>ngaggion/ChronoRoot2</code> &middot; maintained at
+              <code>calvinyong1/ArabidopsisAnalysisV2</code>
+            </p>
+          </div>
+
+          <figure class="chart-panel">
+            <div class="chart-head">
+              <span>plate3 / plant_2</span>
+              <span class="legend">
+                <span><i class="sw"></i>MainRootLength</span>
+                <span><i class="sw second"></i>HypocotylLength</span>
+              </span>
+            </div>
+            <svg viewBox="0 0 480 280" role="img" aria-label="Placeholder growth curves for main root and hypocotyl length; real singlePlantAnalysis export pending">
+              <g class="gridlines">
+                {yTicks.slice(1).map((t) => <line x1="40" y1={t.y} x2="470" y2={t.y} />)}
+              </g>
+              <line class="axis" x1="40" y1="250" x2="470" y2="250" />
+              <line class="axis" x1="40" y1="20" x2="40" y2="250" />
+              <path class="series" pathLength="1" d="M40 248 C 120 244, 170 225, 230 180 S 360 70, 470 46" />
+              <path class="series second" pathLength="1" d="M40 249 C 100 238, 150 200, 210 190 S 340 182, 470 178" />
+              {yTicks.map((t) => <text x="34" y={t.y + 4} text-anchor="end">{t.v}</text>)}
+              {xTicks.map((t) => <text x={t.x} y="266" text-anchor="middle">{t.h}</text>)}
+              <text x="255" y="278" text-anchor="middle">time (h)</text>
+              <text x="12" y="140" text-anchor="middle" transform="rotate(-90 12 140)">length (mm)</text>
+            </svg>
+          </figure>
+        </div>
+      </section>
+
+      <section class="band" id="apps">
+        <div class="wrap stack">
+          <div class="head">
+            <p class="eyebrow mono">The pipeline</p>
+            <h2>Three GUI Apps, Each With Its Own run.py</h2>
+          </div>
+          <ol class="grid3">
+            {
+              apps.map((app, i) => (
+                <li class="card on-paper">
+                  <div class="card-top">
+                    <span class="badge">{i + 1}</span>
+                    <h3 class="mono">
+                      <a class="app-link" href={url(app.href)}>{app.name}</a>
+                    </h3>
+                  </div>
+                  <p>{app.body}</p>
+                </li>
+              ))
+            }
+          </ol>
+        </div>
+      </section>
+
+      <section class="section" id="whats-new">
+        <div class="wrap stack">
+          <div class="head row">
+            <div>
+              <p class="eyebrow mono">Changes from ChronoRoot2</p>
+              <h2>What's New in This Fork</h2>
+            </div>
+            <a class="more" href={url('/docs/model-and-improvements/')}>Read all improvements &rarr;</a>
+          </div>
+          <div class="grid2">
+            {
+              whatsNew.map((item) => (
+                <article class="card">
+                  <span class="tag mono">{item.tag}</span>
+                  <h3>{item.title}</h3>
+                  <p>{item.body}</p>
+                </article>
+              ))
+            }
+          </div>
+        </div>
+      </section>
+
+      <section class="sage" id="docs">
+        <div class="wrap stack">
+          <div class="head">
+            <p class="eyebrow accent">// Reference</p>
+            <h2>Documentation</h2>
+          </div>
+          <div class="doc-grid">
+            {
+              docs.map((doc) => (
+                <a class="doc-card" href={url(doc.href)}>
+                  <span class="doc-label">{doc.label}</span>
+                  <span class="doc-title">{doc.title} &rarr;</span>
+                  <span class="doc-body">{doc.body}</span>
+                </a>
+              ))
+            }
+          </div>
+          <footer class="site-foot">
+            <span>ArabidopsisAnalysisV2</span>
+            <a href={repo}>source</a>
+          </footer>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>
+
+<style is:global>
+  :root { --nav-max: var(--w-landing); }
+  html { scroll-padding-top: 24px; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(--font-body); font-size: 17px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+  a { color: var(--moss); }
+  a:hover { color: var(--moss-dark); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--moss); outline-offset: 2px; }
+  .mono { font-family: var(--font-mono); }
+  header.site { border-bottom: 1px solid var(--line); background: var(--paper); }
+  .wrap { max-width: var(--w-landing); margin: 0 auto; padding-inline: 24px; }
+  code { font-family: var(--font-mono); font-size: 0.95em; }
+
+  .eyebrow { margin: 0; font-size: 13px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--moss); }
+  .eyebrow.accent { font-family: var(--font-accent); font-weight: 600; letter-spacing: 0.12em; }
+  h1, h2, h3 { font-family: var(--font-display); font-weight: 700; margin: 0; color: var(--ink); }
+
+  /* hero */
+  .hero-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 56px; align-items: center; padding-block: 80px 72px; }
+  .hero-copy { display: flex; flex-direction: column; gap: 24px; }
+  .hero h1 { font-size: clamp(40px, 5.2vw, 64px); line-height: 1.04; letter-spacing: -0.02em; }
+  .lede { margin: 0; font-size: 19px; line-height: 1.6; color: var(--ink-2); max-width: 560px; }
+  .cta-row { display: flex; flex-wrap: wrap; gap: 12px; padding-top: 8px; }
+  .btn { display: inline-flex; align-items: center; min-height: 48px; padding: 0 22px; border-radius: 10px; font-weight: 600; font-size: 16px; text-decoration: none; }
+  .btn.moss { background: var(--moss); color: #fff; }
+  .btn.moss:hover { background: var(--moss-dark); color: #fff; }
+  .btn.outline { background: var(--surface); color: var(--ink); border: 1px solid #C9D1C4; }
+  .btn.outline:hover { border-color: var(--moss); color: var(--ink); }
+  .fork-line { margin: 0; font-family: var(--font-mono); font-size: 13px; color: var(--ink-3); }
+  .fork-line code { font-size: inherit; }
+
+  .chart-panel { margin: 0; display: flex; flex-direction: column; gap: 16px; padding: 24px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; }
+  .chart-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-family: var(--font-mono); font-size: 13px; color: var(--ink-3); }
+  .legend { display: flex; flex-wrap: wrap; gap: 16px; }
+  .legend > span { display: flex; align-items: center; gap: 6px; }
+  .sw { width: 14px; height: 3px; background: var(--moss); display: inline-block; }
+  .sw.second { background: var(--orange); }
+  .chart-panel svg { width: 100%; height: auto; display: block; }
+  .gridlines { stroke: #E6EAE3; stroke-width: 1; }
+  .axis { stroke: #8A968E; stroke-width: 1; }
+  .series { fill: none; stroke: var(--moss); stroke-width: 3; stroke-linecap: round; }
+  .series.second { stroke: var(--orange); }
+  .chart-panel text { font-family: var(--font-mono); font-size: 11px; fill: var(--ink-3); }
+  .chart-panel figcaption { font-size: 13px; color: var(--ink-3); }
+
+  /* Growth curves draw in left to right on every page load; axes fade in first.
+     pathLength="1" on the paths lets one dash value work for any curve length. */
+  @keyframes chart-draw { to { stroke-dashoffset: 0; } }
+  @keyframes chart-fade { from { opacity: 0; } to { opacity: 1; } }
+  .chart-panel .gridlines, .chart-panel .axis, .chart-panel text { animation: chart-fade 0.6s ease-out both; }
+  .chart-panel .series {
+    stroke-dasharray: 1; stroke-dashoffset: 1;
+    animation: chart-draw 1.8s cubic-bezier(0.22, 0.7, 0.2, 1) 0.3s forwards;
+  }
+  .chart-panel .series.second { animation-delay: 0.6s; }
+  @media (prefers-reduced-motion: reduce) {
+    .chart-panel .gridlines, .chart-panel .axis, .chart-panel text { animation: none; }
+    .chart-panel .series { stroke-dasharray: none; stroke-dashoffset: 0; animation: none; }
+  }
+
+  /* sections */
+  .section { padding-block: 80px; }
+  .band { background: var(--surface); border-block: 1px solid var(--line); padding-block: 80px; }
+  .sage { background: var(--sage); border-top: 1px solid var(--sage-line); padding-block: 80px 40px; }
+  .stack { display: flex; flex-direction: column; gap: 40px; }
+  .sage .stack { gap: 32px; }
+  .head { display: flex; flex-direction: column; gap: 12px; max-width: 640px; }
+  .head.row { max-width: none; flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 16px; }
+  .head.row > div { display: flex; flex-direction: column; gap: 12px; }
+  h2 { font-size: 40px; line-height: 1.1; letter-spacing: -0.01em; }
+  .more { font-weight: 600; font-size: 16px; min-height: 44px; display: inline-flex; align-items: center; }
+
+  .card { display: flex; flex-direction: column; gap: 12px; padding: 32px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); }
+  .card.on-paper { padding: 28px; gap: 14px; background: var(--paper); }
+  .card h3 { font-size: 22px; line-height: 1.25; }
+  .card h3.mono { font-weight: 500; font-size: 18px; }
+  .card p { margin: 0; font-size: 16px; line-height: 1.6; color: var(--ink-2); }
+  .card-top { display: flex; align-items: center; gap: 12px; }
+  .app-link { display: inline-flex; align-items: center; min-height: 44px; color: var(--ink); text-decoration: underline; text-decoration-color: var(--moss); text-decoration-thickness: 2px; text-underline-offset: 5px; }
+  .app-link::after { content: '\2192'; margin-left: 8px; color: var(--moss); transition: transform 0.15s; }
+  .app-link:hover { color: var(--moss-dark); }
+  .app-link:hover::after { transform: translateX(3px); }
+  @media (prefers-reduced-motion: reduce) { .app-link::after { transition: none; } }
+  .badge { width: 36px; height: 36px; border-radius: 50%; background: var(--moss); color: #fff; display: flex; align-items: center; justify-content: center; font-family: var(--font-mono); font-weight: 500; flex: none; }
+  .tag { align-self: flex-start; padding: 4px 10px; border-radius: 999px; background: var(--tag-bg); color: var(--moss-dark); font-size: 12px; }
+  .grid3, .grid2 { display: grid; gap: 24px; list-style: none; margin: 0; padding: 0; }
+  .grid3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); }
+  .grid2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr)); }
+
+  /* docs cards (docs UI radius) */
+  .doc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 16px; }
+  .doc-card { display: flex; flex-direction: column; gap: 10px; padding: 26px; background: var(--paper); border: 1px solid var(--sage-line); border-radius: var(--radius-ui); color: var(--ink); text-decoration: none; }
+  .doc-card:hover { border-color: var(--moss); color: var(--ink); }
+  .doc-label { font-family: var(--font-accent); font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: var(--moss); }
+  .doc-title { font-family: var(--font-accent); font-size: 22px; font-weight: 700; letter-spacing: 0.01em; text-transform: uppercase; line-height: 1.2; }
+  .doc-body { font-size: 15px; line-height: 1.55; color: var(--ink-2); }
+  .site-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding-top: 24px; border-top: 1px solid var(--sage-line); font-family: var(--font-accent); font-weight: 500; font-size: 14px; letter-spacing: 0.04em; color: var(--ink-2); }
+  .site-foot a { color: var(--moss); display: inline-flex; align-items: center; min-height: 44px; }
+
+  @media (max-width: 640px) {
+    .hero-grid { padding-block: 48px; gap: 40px; }
+    .section, .band { padding-block: 56px; }
+    .sage { padding-block: 56px 24px; }
+    h2 { font-size: 32px; }
+    .card { padding: 24px; }
+  }
+</style>

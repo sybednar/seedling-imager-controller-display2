@@ -1,0 +1,18 @@
+---
+import SiteNav from '../SiteNav.astro';
+---
+
+<div class="docs-header">
+  <SiteNav active="docs" />
+</div>
+
+<style is:global>
+  /* Starlight's fixed <header>: keep the mockup's centered 1320px bar. */
+  .docs-header { --nav-max: var(--w-docs); }
+  .docs-header .site-nav { padding-top: 10px; padding-bottom: 10px; }
+  @media (max-width: 49.99rem) {
+    /* leave room for Starlight's menu button on the right */
+    .docs-header .site-nav { padding-inline-end: 64px; }
+    .docs-header .site-nav .links { display: none; }
+  }
+</style>

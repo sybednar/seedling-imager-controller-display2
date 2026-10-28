@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Docs page, Install guide</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&amp;family=IBM+Plex+Sans:wght@400;500;600&amp;family=IBM+Plex+Mono:wght@400;500&amp;family=Chakra+Petch:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2F6B3F}a:hover{color:#1E4A2A}
+</style>
+</helmet>
+<div style="font-family: 'IBM Plex Sans', sans-serif; color: #14201A; background-color: #F8F9F5; background-image: linear-gradient(rgba(47, 107, 63, 0.13) 1px, transparent 1px), linear-gradient(90deg, rgba(47, 107, 63, 0.13) 1px, transparent 1px), linear-gradient(rgba(47, 107, 63, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(47, 107, 63, 0.06) 1px, transparent 1px); background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px; background-position: -1px -1px; min-height: 100vh">
+
+<header style="border-bottom: 1px solid #DDE2D9; background: #F6F7F3">
+<nav style="max-width: 1320px; margin: 0 auto; padding: 18px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px" aria-label="Main">
+<a href="Main.dc.html" style="display: flex; align-items: center; gap: 10px; text-decoration: none; color: #14201A; font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px">
+<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2F6B3F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22V10"></path><path d="M12 14c-3 0-5-2-5-5 3 0 5 2 5 5z"></path><path d="M12 11c0-3 2-6 6-6 0 4-3 6-6 6z"></path></svg>
+ArabidopsisAnalysisV2
+</a>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px">
+<a href="Main.dc.html" style="padding: 10px 14px; text-decoration: none; color: #3B4A41; font-weight: 500; font-size: 15px">Apps</a>
+<a href="Main.dc.html" style="padding: 10px 14px; text-decoration: none; color: #3B4A41; font-weight: 500; font-size: 15px">What's new</a>
+<a href="#" style="padding: 10px 14px; text-decoration: none; color: #14201A; font-weight: 600; font-size: 15px; border-bottom: 2px solid #2F6B3F">Docs</a>
+<a href="https://github.com/calvinyong1/ArabidopsisAnalysisV2" style="padding: 10px 16px; border-radius: 8px; text-decoration: none; color: #FFFFFF; background: #14201A; font-weight: 600; font-size: 15px">GitHub</a>
+</div>
+</nav>
+</header>
+
+<div style="max-width: 1320px; margin: 0 auto; padding: 40px 24px 96px; display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start">
+
+<aside style="flex: 1 1 240px; max-width: 300px; display: flex; flex-direction: column; gap: 20px; padding: 20px 16px; background: #F6F7F3; border: 1px solid #DDE2D9; border-radius: 4px" aria-label="Documentation">
+<div style="font-family: 'Chakra Petch', sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 0.12em; color: #2F6B3F">// DOCS</div>
+<div style="display: flex; flex-direction: column; gap: 4px">
+<a href="#" aria-current="page" style="display: flex; gap: 12px; align-items: baseline; padding: 12px 14px; border-radius: 4px; background: #DCE8E0; border: 1px solid #B6CBBC; text-decoration: none; color: #14201A"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; color: #2F6B3F">01</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 15px; font-weight: 700; text-transform: uppercase">Installation guide</span></a>
+<a href="#" style="display: flex; gap: 12px; align-items: baseline; padding: 12px 14px; border: 1px solid transparent; text-decoration: none; color: #3B4A41"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; color: #5E6B62">02</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 15px; font-weight: 600; text-transform: uppercase">What's new in this fork</span></a>
+<a href="#" style="display: flex; gap: 12px; align-items: baseline; padding: 12px 14px; border: 1px solid transparent; text-decoration: none; color: #3B4A41"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; color: #5E6B62">03</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 15px; font-weight: 600; text-transform: uppercase">Training the model</span></a>
+<a href="#" style="display: flex; gap: 12px; align-items: baseline; padding: 12px 14px; border: 1px solid transparent; text-decoration: none; color: #3B4A41"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; color: #5E6B62">04</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 15px; font-weight: 600; text-transform: uppercase">Architecture notes</span></a>
+<a href="#" style="display: flex; gap: 12px; align-items: baseline; padding: 12px 14px; border: 1px solid transparent; text-decoration: none; color: #3B4A41"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; color: #5E6B62">05</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 15px; font-weight: 600; text-transform: uppercase">Full changelog</span></a>
+</div>
+<div style="display: flex; flex-direction: column; gap: 8px; padding-top: 16px; border-top: 1px solid #DDE2D9">
+<div style="font-family: 'Chakra Petch', sans-serif; font-weight: 600; font-size: 12px; letter-spacing: 0.12em; color: #5E6B62">ON THIS PAGE</div>
+<a href="#before" style="font-size: 14px; padding: 4px 0; color: #3B4A41; text-decoration: none">Before you start</a>
+<a href="#prereq" style="font-size: 14px; padding: 4px 0; color: #3B4A41; text-decoration: none">Prerequisites</a>
+<a href="#install" style="font-size: 14px; padding: 4px 0; color: #3B4A41; text-decoration: none">Install</a>
+<a href="#trouble" style="font-size: 14px; padding: 4px 0; color: #3B4A41; text-decoration: none">Troubleshooting</a>
+<a href="#update" style="font-size: 14px; padding: 4px 0; color: #3B4A41; text-decoration: none">Updating</a>
+</div>
+</aside>
+
+<main style="flex: 999 1 560px; min-width: 0; max-width: 880px; display: flex; flex-direction: column; gap: 32px; padding: clamp(24px, 4vw, 48px); background: #FFFFFF; border: 1px solid #DDE2D9; border-radius: 4px; box-sizing: border-box">
+
+<div style="display: flex; flex-direction: column; gap: 14px">
+<div style="font-family: 'Chakra Petch', sans-serif; font-weight: 600; font-size: 13px; letter-spacing: 0.12em; color: #2F6B3F">DOC_01 · SETUP</div>
+<h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: clamp(36px, 4.4vw, 52px); line-height: 1.05; letter-spacing: -0.02em">Install guide</h1>
+<p style="margin: 0; font-size: 19px; line-height: 1.6; color: #3B4A41">This guide walks through getting the system running on a clean machine, all the way to launching the apps. Pick your platform below.</p>
+</div>
+
+<div role="tablist" aria-label="Platform" style="display: flex; flex-wrap: wrap; gap: 0; border: 1px solid #B6CBBC; border-radius: 4px; overflow: hidden; align-self: flex-start">
+<sc-for list="{{tabs}}" as="tab" hint-placeholder-count="3">
+<button role="tab" aria-selected="{{tab.selected}}" onClick="{{tab.pick}}" style="{{tab.style}}">{{tab.label}}</button>
+</sc-for>
+</div>
+
+<section id="before" style="display: flex; flex-direction: column; gap: 12px; padding: 24px; background: #F6F7F3; border: 1px solid #DDE2D9; border-radius: 4px">
+<h2 style="margin: 0; font-family: 'Chakra Petch', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase">Before you start</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.65; color: #3B4A41">The system includes three GUI apps, <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #EEF2EC; padding: 2px 6px; border-radius: 3px">imageAligner</code>, <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #EEF2EC; padding: 2px 6px; border-radius: 3px">segmentationApp</code> and <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #EEF2EC; padding: 2px 6px; border-radius: 3px">singlePlantAnalysis</code>, each with its own <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #EEF2EC; padding: 2px 6px; border-radius: 3px">run.py</code>. Installer scripts set up conda environments with platform-specific handling.</p>
+</section>
+
+<sc-if value="{{isWin}}" hint-placeholder-val="{{ true }}">
+<div style="display: flex; flex-direction: column; gap: 32px">
+<section id="prereq" style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">Prerequisites</h2>
+<div style="display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><span style="width: 38px; height: 38px; flex: none; border-radius: 4px; background: #2F6B3F; box-shadow: 3px 3px 0 #14201A; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'Chakra Petch', sans-serif; font-weight: 700">01</span><span aria-hidden="true" style="flex: 1; width: 2px; margin-bottom: -30px; background: repeating-linear-gradient(to bottom, #2F6B3F 0 6px, transparent 6px 12px)"></span></div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 7px 0 0; font-family: 'Chakra Petch', sans-serif; font-size: 18px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase">Install WSL2 + Ubuntu</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.65; color: #3B4A41">In PowerShell as Administrator. If WSL is already installed, add Ubuntu with <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #EEF2EC; padding: 2px 6px; border-radius: 3px">wsl --install -d Ubuntu</code>. Windows 11 includes WSLg; on Windows 10, run <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #EEF2EC; padding: 2px 6px; border-radius: 3px">wsl --update</code>.</p>
+<div style="border-radius: 4px; overflow: hidden; border: 1px solid #14201A">
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px 6px 14px; background: #1E2B24; font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #B5C2B9"><span>POWERSHELL</span><button style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; padding: 8px 12px; background: transparent; color: #9FD3AC; border: 1px solid #3A4A40; border-radius: 3px; cursor: pointer">COPY</button></div>
+<pre style="margin: 0; padding: 16px; background: #14201A; color: #E8EEE9; font-family: 'IBM Plex Mono', monospace; font-size: 14px; overflow-x: auto">wsl --install</pre>
+</div>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><span style="width: 38px; height: 38px; flex: none; border-radius: 4px; background: #2F6B3F; box-shadow: 3px 3px 0 #14201A; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'Chakra Petch', sans-serif; font-weight: 700">02</span><span aria-hidden="true" style="flex: 1; width: 2px; margin-bottom: -30px; background: repeating-linear-gradient(to bottom, #2F6B3F 0 6px, transparent 6px 12px)"></span></div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 7px 0 0; font-family: 'Chakra Petch', sans-serif; font-size: 18px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase">GPU setup (NVIDIA only)</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.65; color: #3B4A41">Install the Windows-side NVIDIA driver from nvidia.com, then verify with <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #EEF2EC; padding: 2px 6px; border-radius: 3px">nvidia-smi</code>.</p>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; background: #FBF1E4; border: 1px solid #E2BF92; border-radius: 4px">
+<span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #8A4A0F">⚠ WARNING</span>
+<span style="font-size: 15px; line-height: 1.55; color: #4A3218">Do not install a separate NVIDIA Linux driver inside WSL.</span>
+</div>
+</div>
+</div>
+<div style="display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><span style="width: 38px; height: 38px; flex: none; border-radius: 4px; background: #2F6B3F; box-shadow: 3px 3px 0 #14201A; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'Chakra Petch', sans-serif; font-weight: 700">03</span></div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 7px 0 0; font-family: 'Chakra Petch', sans-serif; font-size: 18px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase">Install Miniconda</h3>
+<p style="margin: 0; font-size: 16px; line-height: 1.65; color: #3B4A41">Run the three download-and-init commands in your WSL terminal.</p>
+<pre style="margin: 0; padding: 16px; background: #14201A; color: #E8EEE9; font-family: 'IBM Plex Mono', monospace; font-size: 14px; border-radius: 4px; overflow-x: auto">[Miniconda commands from current guide]</pre>
+</div>
+</div>
+</section>
+
+<section id="install" style="display: flex; flex-direction: column; gap: 20px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">Install</h2>
+<div style="display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 16px">
+<div style="display: flex; flex-direction: column; align-items: center; gap: 8px"><span style="width: 38px; height: 38px; flex: none; border-radius: 4px; background: #14201A; box-shadow: 3px 3px 0 #2F6B3F; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-family: 'Chakra Petch', sans-serif; font-weight: 700">04</span></div>
+<div style="display: flex; flex-direction: column; gap: 10px">
+<h3 style="margin: 7px 0 0; font-family: 'Chakra Petch', sans-serif; font-size: 18px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase">Clone and run the installer</h3>
+<div style="border-radius: 4px; overflow: hidden; border: 1px solid #14201A">
+<div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 8px 6px 14px; background: #1E2B24; font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #B5C2B9"><span>WSL · BASH</span><button style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; padding: 8px 12px; background: transparent; color: #9FD3AC; border: 1px solid #3A4A40; border-radius: 3px; cursor: pointer">COPY</button></div>
+<pre style="margin: 0; padding: 16px; background: #14201A; color: #E8EEE9; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.7; overflow-x: auto">git clone https://github.com/calvinyong1/ArabidopsisAnalysisV2.git
+cd ArabidopsisAnalysisV2
+bash installer_conda_wsl.sh</pre>
+</div>
+<p style="margin: 0; font-size: 16px; line-height: 1.65; color: #3B4A41">The script detects your GPU, installs system libraries, asks for an install directory (default <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #EEF2EC; padding: 2px 6px; border-radius: 3px">~/.local/chronoroot</code>), and lets you choose a Full Node (GPU + segmentation) or Lite Node (analysis only).</p>
+</div>
+</div>
+</section>
+
+<section id="trouble" style="display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">Troubleshooting</h2>
+<div style="display: flex; flex-direction: column; border: 1px solid #DDE2D9; border-radius: 4px; background: #F6F7F3">
+<details style="padding: 16px 20px; border-bottom: 1px solid #DDE2D9"><summary style="cursor: pointer; font-weight: 600; font-size: 16px">GUI windows don't appear / empty $DISPLAY</summary><p style="margin: 10px 0 0; font-size: 15px; line-height: 1.6; color: #3B4A41">Usually WSL1 instead of WSL2. Check your WSL version and run <code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; background: #EEF2EC; padding: 2px 6px; border-radius: 3px">wsl --update</code>.</p></details>
+<details style="padding: 16px 20px; border-bottom: 1px solid #DDE2D9"><summary style="cursor: pointer; font-weight: 600; font-size: 16px">"no Qt platform plugin could be initialized"</summary></details>
+<details style="padding: 16px 20px; border-bottom: 1px solid #DDE2D9"><summary style="cursor: pointer; font-weight: 600; font-size: 16px">PyTorch can't see CUDA</summary></details>
+<details style="padding: 16px 20px"><summary style="cursor: pointer; font-weight: 600; font-size: 16px">Shortcuts weren't created</summary></details>
+</div>
+</section>
+</div>
+</sc-if>
+
+<sc-if value="{{isLinux}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">Linux</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.65; color: #3B4A41">Uses <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #EEF2EC; padding: 2px 6px; border-radius: 3px">installer_conda_linux.sh</code>, which works like the Windows installer and creates <code style="font-family: 'IBM Plex Mono', monospace; font-size: 14px; background: #EEF2EC; padding: 2px 6px; border-radius: 3px">.desktop</code> launchers for your app menu.</p>
+<pre style="margin: 0; padding: 16px; background: #14201A; color: #E8EEE9; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.7; border-radius: 4px; overflow-x: auto">bash installer_conda_linux.sh</pre>
+</section>
+</sc-if>
+
+<sc-if value="{{isMac}}" hint-placeholder-val="{{ false }}">
+<section style="display: flex; flex-direction: column; gap: 14px">
+<h2 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 28px">macOS</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.65; color: #3B4A41">macOS installs in place, running from the folder you clone into. On Apple Silicon, segmentation uses the MPS backend automatically.</p>
+<div style="display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; background: #DCE8E0; border: 1px solid #B6CBBC; border-radius: 4px">
+<span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: #1E4A2A">NOTE</span>
+<span style="font-size: 15px; line-height: 1.55; color: #14201A">Don't delete this clone afterward. It's the copy the app runs from.</span>
+</div>
+<pre style="margin: 0; padding: 16px; background: #14201A; color: #E8EEE9; font-family: 'IBM Plex Mono', monospace; font-size: 14px; line-height: 1.7; border-radius: 4px; overflow-x: auto">xcode-select --install
+bash installer_conda_mac.sh</pre>
+</section>
+</sc-if>
+
+<section id="update" style="display: flex; flex-direction: column; gap: 10px; padding: 24px; background: #DCE8E0; border: 1px solid #B6CBBC; border-radius: 4px">
+<h2 style="margin: 0; font-family: 'Chakra Petch', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase">Updating</h2>
+<p style="margin: 0; font-size: 16px; line-height: 1.65; color: #14201A">Re-run the installer for your platform. It detects the existing install, pulls the latest changes, and updates the environment.</p>
+</section>
+
+<nav aria-label="Next page" style="display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12px; padding-top: 16px; border-top: 1px solid #DDE2D9">
+<a href="#" style="display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; border: 1px solid #B6CBBC; border-radius: 4px; background: #FFFFFF; text-decoration: none; color: #14201A; text-align: right"><span style="font-family: 'Chakra Petch', sans-serif; font-size: 12px; font-weight: 600; letter-spacing: 0.1em; color: #2F6B3F">NEXT · DOC_02</span><span style="font-family: 'Chakra Petch', sans-serif; font-size: 18px; font-weight: 700; text-transform: uppercase">What's new in this fork →</span></a>
+</nav>
+
+</main>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":2700}}'>
+class Component extends DCLogic {
+constructor(props) {
+super(props);
+this.state = { os: 'win' };
+}
+renderVals() {
+const os = this.state.os;
+const base = "font-family: 'Chakra Petch', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.08em; padding: 12px 20px; min-height: 44px; border: none; cursor: pointer; ";
+const tabs = [
+{ id: 'win', label: 'WINDOWS · WSL2' },
+{ id: 'linux', label: 'LINUX' },
+{ id: 'mac', label: 'MACOS' }
+].map((t) => ({
+...t,
+selected: os === t.id ? 'true' : 'false',
+style: base + (os === t.id ? 'background: #2F6B3F; color: #FFFFFF;' : 'background: #FFFFFF; color: #3B4A41;'),
+pick: () => this.setState({ os: t.id })
+}));
+return { tabs, isWin: os === 'win', isLinux: os === 'linux', isMac: os === 'mac' };
+}
+}
+</script>
+</body>
+</html>
