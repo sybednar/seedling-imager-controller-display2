@@ -130,6 +130,9 @@ repository themselves into `~/.local/chronoroot/seedling-imager-controller-displ
 its `image-analysis-pipeline/` folder. For WSL setup details see
 [`WSL_INSTALL.md`](WSL_INSTALL.md).
 
+> **Trouble installing?** A full install guide for every platform is on the
+> website: https://calvinyong1.github.io/ArabidopsisAnalysisV2/docs/install/
+
 ---
 
 ## Directory Structure
