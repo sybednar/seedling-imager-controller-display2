@@ -24,7 +24,9 @@ print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 # --- Configuration ---
-REPO_URL="https://github.com/calvinyong1/ArabidopsisAnalysisV2.git"
+REPO_URL="https://github.com/sybednar/seedling-imager-controller-display2.git"
+REPO_NAME="seedling-imager-controller-display2"
+PIPELINE_SUBDIR="image-analysis-pipeline"
 INSTALL_DIR="$HOME/.local/chronoroot"
 DESKTOP_ENTRY_DIR="$HOME/.local/share/applications"
 
@@ -72,14 +74,15 @@ main() {
     # 4. Repository Setup
     section_title "4. Downloading Repository"
     cd "$INSTALL_DIR"
-    if [ ! -d "ChronoRoot2" ]; then
+    if [ ! -d "$REPO_NAME" ]; then
         print_status "Cloning repository..."
-        git clone "$REPO_URL" ChronoRoot2
+        git clone "$REPO_URL" "$REPO_NAME"
     else
         print_status "Updating existing repository..."
-        (cd ChronoRoot2 && git pull)
+        (cd "$REPO_NAME" && git pull)
     fi
-    REPO_DIR="$INSTALL_DIR/ChronoRoot2"
+    REPO_DIR="$INSTALL_DIR/$REPO_NAME"
+    PIPELINE_DIR="$REPO_DIR/$PIPELINE_SUBDIR"
 
     # 5. Environment & Capability Selection
     section_title "5. Configuration Selection"
@@ -102,14 +105,14 @@ main() {
             read -p "Proceed anyway? [y/N]: " proceed
             [[ ! $proceed =~ ^[Yy]$ ]] && exit 1
         fi
-        ENV_FILE="$REPO_DIR/environment.yml"
+        ENV_FILE="$PIPELINE_DIR/environment.yml"
         INSTALL_SEG_GUI=true
         DOWNLOAD_WEIGHTS=true
         print_status "Selected: Full Installation"
 
     else
         # -- LITE MODE --
-        ENV_FILE="$REPO_DIR/environment_no_nnunet.yml"
+        ENV_FILE="$PIPELINE_DIR/environment_no_nnunet.yml"
         print_status "Selected: Lite Installation"
 
         # Ask about Monitoring GUI
@@ -155,7 +158,7 @@ main() {
     if [ "$DOWNLOAD_WEIGHTS" = true ]; then
         section_title "7. Downloading Segmentation Weights"
         
-        WEIGHTS_SCRIPT="$REPO_DIR/segmentationApp/download_weights.sh"
+        WEIGHTS_SCRIPT="$PIPELINE_DIR/segmentationApp/download_weights.sh"
         
         if [ -f "$WEIGHTS_SCRIPT" ]; then
             chmod +x "$WEIGHTS_SCRIPT"
@@ -188,7 +191,7 @@ main() {
 umask 002
 source "$CONDA_BASE/etc/profile.d/conda.sh"
 conda activate $ENV_NAME
-cd "$REPO_DIR/$subdir"
+cd "$PIPELINE_DIR/$subdir"
 python run.py
 EOF
         chmod +x "$wrapper"
@@ -200,7 +203,7 @@ Version=1.0
 Type=Application
 Name=$name
 Exec=$wrapper
-Icon=$REPO_DIR/$icon
+Icon=$PIPELINE_DIR/$icon
 Terminal=true
 Categories=Science;Education;
 EOF

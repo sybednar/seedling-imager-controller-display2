@@ -23,7 +23,9 @@ print_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
 # --- Configuration ---
-REPO_URL="https://github.com/calvinyong1/ArabidopsisAnalysisV2.git"
+REPO_URL="https://github.com/sybednar/seedling-imager-controller-display2.git"
+REPO_NAME="seedling-imager-controller-display2"
+PIPELINE_SUBDIR="image-analysis-pipeline"
 DEFAULT_INSTALL_DIR="$HOME/.local/chronoroot"
 
 main() {
@@ -76,7 +78,8 @@ main() {
 
     # 4. Repository Setup
     section_title "4. Downloading Repository"
-    REPO_DIR="$INSTALL_DIR/ChronoRoot2"
+    REPO_DIR="$INSTALL_DIR/$REPO_NAME"
+    PIPELINE_DIR="$REPO_DIR/$PIPELINE_SUBDIR"
     
     if [ ! -d "$REPO_DIR" ]; then
         print_status "Cloning repository..."
@@ -106,14 +109,14 @@ main() {
             read -p "Proceed anyway? [y/N]: " proceed
             [[ ! $proceed =~ ^[Yy]$ ]] && exit 1
         fi
-        ENV_FILE="$REPO_DIR/environment.yml"
+        ENV_FILE="$PIPELINE_DIR/environment.yml"
         INSTALL_SEG_GUI=true
         DOWNLOAD_WEIGHTS=true
         print_status "Selected: Full Installation"
 
     else
         # -- LITE MODE --
-        ENV_FILE="$REPO_DIR/environment_no_nnunet.yml"
+        ENV_FILE="$PIPELINE_DIR/environment_no_nnunet.yml"
         print_status "Selected: Lite Installation"
 
         # Ask about Monitoring GUI
@@ -158,7 +161,7 @@ main() {
     if [ "$DOWNLOAD_WEIGHTS" = true ]; then
         section_title "7. Downloading Segmentation Weights"
         
-        WEIGHTS_SCRIPT="$REPO_DIR/segmentationApp/download_weights.sh"
+        WEIGHTS_SCRIPT="$PIPELINE_DIR/segmentationApp/download_weights.sh"
         
         if [ -f "$WEIGHTS_SCRIPT" ]; then
             chmod +x "$WEIGHTS_SCRIPT"
@@ -202,13 +205,13 @@ main() {
 [ -z "\$DISPLAY" ] && export DISPLAY=:0
 source "$CONDA_BASE/etc/profile.d/conda.sh"
 conda activate $ENV_NAME
-cd "$REPO_DIR/$folder"
+cd "$PIPELINE_DIR/$folder"
 python run.py
 EOF
         chmod +x "$sh_file"
 
         # B. Copy Icon to Windows
-        local source_icon="$REPO_DIR/$icon_name"
+        local source_icon="$PIPELINE_DIR/$icon_name"
         local dest_icon="$WIN_ICON_STORE/$icon_name"
         local win_icon_path=""
 
