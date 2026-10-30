@@ -170,7 +170,7 @@ Ensure the printed marker uses the `DICT_4X4_250` dictionary (IDs 0–249). The 
 Ensure `libzbar` is installed via Homebrew: `brew install zbar`. The `DYLD_LIBRARY_PATH` in the `.app` launcher points to `/opt/homebrew/lib` automatically. QR code support is retained for backward compatibility; new experiments should use ArUco markers.
 
 **Segmentation is slow**
-Expected on macOS — nnU-Net runs on CPU. For GPU-accelerated segmentation, use a Linux machine with a CUDA-capable GPU and the Linux installer.
+Expected on macOS — nnU-Net runs on CPU (MPS acceleration is available for supported M-chip models). For GPU-accelerated segmentation, use a Linux machine with a CUDA-capable GPU and the Linux installer.
 
 **App won't open / "damaged" warning**
 Run `xattr -cr ~/Desktop/"ChronoRoot Analysis.app"` (or the Segmentation or Image Aligner app) in the terminal to clear the quarantine flag, then try opening again.
