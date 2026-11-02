@@ -67,3 +67,22 @@ rows when the capture interval doesn't divide 60 minutes evenly (e.g. 180 min).
 `plot_individual_plant` (`analysis/report.py`) plots without markers, so
 isolated non-`NaN` points don't render as visible line segments. Proposed fix
 (not yet applied): interpolate the hourly gaps right after the resample step.
+
+## Installers (`installer_conda_{linux,wsl,mac}.sh`)
+
+Open items found while moving the pipeline into the monorepo (not applied):
+
+- **WSL1 is not detected.** If `$DISPLAY` is empty inside WSL, the distro is
+  probably WSL1, which has no GUI/WSLg support. The installer's WSL check
+  (`grep -qEi "(Microsoft|WSL)" /proc/version`) matches WSL1 and WSL2. Add an
+  explicit WSL-version check to `installer_conda_wsl.sh` and a troubleshooting
+  entry to `WSL_INSTALL.md` (fix: `wsl --set-version <Distro> 2` from
+  PowerShell, then `wsl --shutdown`).
+- **Full-repo clone.** Linux/WSL installers clone the whole monorepo (Pi code,
+  CAD, hardware docs). A sparse checkout
+  (`git sparse-checkout set image-analysis-pipeline`) would avoid that.
+- **Website still published from the old repo** (`calvinyong1/ArabidopsisAnalysisV2`,
+  `frontend/astro.config.mjs` and `frontend/design/*.html`). Decide whether the
+  site moves with the monorepo.
+- `docs/content-inventory.md` still holds the old clone commands and
+  `ChronoRoot2` paths; it is a snapshot of the install pages.

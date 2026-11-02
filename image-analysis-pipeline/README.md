@@ -33,7 +33,7 @@ Timelapse images from the Seedling Imager go through up to three apps, in this o
 ## Installation (macOS)
 
 > **Requirements:** macOS 12 or later, Intel or Apple Silicon (M-series).
-> NVIDIA GPU acceleration is not available on macOS — segmentation runs on CPU.
+> NVIDIA GPU acceleration is not available on macOS — segmentation runs on CPU, or on Apple's MPS on supported M-series Macs.
 
 ### Step 1 — Download or clone the repository
 
