@@ -9,6 +9,16 @@ Dated log of fixes applied to the analysis pipeline
 (`singlePlantAnalysis/analysis/`). This page mirrors `CHANGES.md`. Keep
 them in sync, or replace this content with an `include` of the real file.
 
+## 2026-11-01: Repository move, installers and install docs
+
+The pipeline now lives in the `image-analysis-pipeline/` folder of
+`sybednar/seedling-imager-controller-display2`. The Linux and WSL installers
+clone that repo into `~/.local/chronoroot/seedling-imager-controller-display2`
+and run the apps from its `image-analysis-pipeline/` folder; the macOS
+installer is unchanged because it deploys from the checkout it is run from.
+An old `ChronoRoot2` checkout is not reused: rerun the installer to refresh
+shortcuts. Clone commands in the install guides were updated to match.
+
 ## 2026-09-03: `analysis/imageUtils/seg.py`
 
 **Hypocotyl component selection no longer borrows a neighbor's blob.**

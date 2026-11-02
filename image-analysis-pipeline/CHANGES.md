@@ -1,3 +1,45 @@
+# Changes — 2026-11-01
+
+## Repository move: `installer_conda_{linux,wsl}.sh`, `README.md`, install docs
+
+The pipeline moved from the standalone `calvinyong1/ArabidopsisAnalysisV2`
+repo into the `image-analysis-pipeline/` folder of the monorepo
+`sybednar/seedling-imager-controller-display2` (the repo root holds the
+Raspberry Pi imager code). Anything that assumed the pipeline sits at the
+repo root broke.
+
+### 1. Linux and WSL installers clone the monorepo and use a pipeline path
+
+**Cause:** both scripts cloned the old repo into `ChronoRoot2` and looked for
+`environment*.yml`, the app folders, `download_weights.sh` and icons directly
+under the clone root, which no longer matches the layout.
+
+**Fix:** `REPO_URL` now points at the monorepo and the checkout goes to
+`$INSTALL_DIR/seedling-imager-controller-display2` (`REPO_NAME`). A new
+`PIPELINE_DIR="$REPO_DIR/image-analysis-pipeline"` is used for every pipeline
+path; only `git clone`/`git pull` use `$REPO_DIR`. The install directory is
+unchanged (`~/.local/chronoroot`).
+
+**Tradeoff:** an existing `~/.local/chronoroot/ChronoRoot2` checkout is not
+reused (it would otherwise be pulled from the wrong remote), and shortcuts
+created by the old installer point at it until the installer is rerun. The
+installers clone `main`, so they only work once this change is merged there.
+
+### 2. `installer_conda_mac.sh` unchanged
+
+It deploys from its own `$SCRIPT_DIR`, which is already
+`image-analysis-pipeline/`, and its `git -C "$SCRIPT_DIR"` calls work from a
+subdirectory. Its pull step is skipped on branches with no upstream.
+
+### 3. README and install docs updated
+
+`README.md` now documents the monorepo layout, the Image Aligner app, the
+workflow/overview diagrams, and the Linux/WSL clone location. The clone
+commands and `ChronoRoot2/<appFolder>` paths in `WSL_INSTALL.md`,
+`docs/docs/install.md` and `frontend/src/content/docs/docs/install.mdx` now
+use the new repo and `cd seedling-imager-controller-display2/image-analysis-pipeline`.
+
+
 # Changes — 2026-10-14
 
 ## `analysis/qr.py`
