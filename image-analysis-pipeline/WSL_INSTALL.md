@@ -82,8 +82,8 @@ fails, install it with `sudo apt-get install -y git`.
 ### 4. Clone the repository
 
 ```bash
-git clone https://github.com/calvinyong1/ArabidopsisAnalysisV2.git
-cd ArabidopsisAnalysisV2
+git clone https://github.com/sybednar/seedling-imager-controller-display2.git
+cd seedling-imager-controller-display2/image-analysis-pipeline
 ```
 
 ### 5. Run the WSL installer
@@ -155,7 +155,7 @@ take a few seconds longer while the conda environment activates.
   WSL) being enabled, which is the default. If you or your organization has
   disabled it, shortcut generation won't work; you can still launch the apps
   manually from inside WSL by running `python run.py` from
-  `~/.local/chronoroot/ChronoRoot2/<appFolder>` with the `ChronoRoot` conda
+  `~/.local/chronoroot/seedling-imager-controller-display2/image-analysis-pipeline/<appFolder>` with the `ChronoRoot` conda
   environment active.
 
 ## Re-running the installer

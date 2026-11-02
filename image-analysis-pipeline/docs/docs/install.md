@@ -99,8 +99,8 @@ fails, install it with `sudo apt-get install -y git`.
 ### 4. Clone the Repository
 
 ```bash
-git clone https://github.com/calvinyong1/ArabidopsisAnalysisV2.git
-cd ArabidopsisAnalysisV2
+git clone https://github.com/sybednar/seedling-imager-controller-display2.git
+cd seedling-imager-controller-display2/image-analysis-pipeline
 ```
 
 ### 5. Run the WSL Installer
@@ -172,7 +172,7 @@ take a few seconds longer while the conda environment activates.
   WSL) being enabled, which is the default. If you or your organization has
   disabled it, shortcut generation won't work; you can still launch the apps
   manually from inside WSL by running `python run.py` from
-  `~/.local/chronoroot/ChronoRoot2/<appFolder>` with the `ChronoRoot` conda
+  `~/.local/chronoroot/seedling-imager-controller-display2/image-analysis-pipeline/<appFolder>` with the `ChronoRoot` conda
   environment active.
 
 ## A Known WSL Gotcha
@@ -265,8 +265,8 @@ Close and reopen your terminal (or `source ~/.bashrc`) so `conda` is on your
 ### 4. Clone the Repository
 
 ```bash
-git clone https://github.com/calvinyong1/ArabidopsisAnalysisV2.git
-cd ArabidopsisAnalysisV2
+git clone https://github.com/sybednar/seedling-imager-controller-display2.git
+cd seedling-imager-controller-display2/image-analysis-pipeline
 ```
 
 This clone is only needed to obtain and run the installer script; it's
@@ -313,7 +313,7 @@ window manager), launch manually instead:
 
 ```bash
 conda activate ChronoRoot
-cd ~/.local/chronoroot/ChronoRoot2/<appFolder>   # singlePlantAnalysis / segmentationApp / imageAligner
+cd ~/.local/chronoroot/seedling-imager-controller-display2/image-analysis-pipeline/<appFolder>   # singlePlantAnalysis / segmentationApp / imageAligner
 python run.py
 ```
 
@@ -350,7 +350,7 @@ whatever local checkout you run it from (`$SCRIPT_DIR`); it does not clone
 a separate copy into its own install directory the way `installer_conda_wsl.sh`
 and `installer_conda_linux.sh` do. That means **where you clone the repo is
 where the app will live**, so pick that location deliberately before you
-start (e.g. `~/Applications/ArabidopsisAnalysisV2` or wherever you keep long-
+start (e.g. `~/Applications/seedling-imager-controller-display2` or wherever you keep long-
 lived local projects). You won't get a second, separate "install directory"
 step later to move it.
 
@@ -401,8 +401,8 @@ with an NVIDIA GPU) is worth considering.
 ### 4. Clone the Repository: To Where You Want It to Live
 
 ```bash
-git clone https://github.com/calvinyong1/ArabidopsisAnalysisV2.git
-cd ArabidopsisAnalysisV2
+git clone https://github.com/sybednar/seedling-imager-controller-display2.git
+cd seedling-imager-controller-display2/image-analysis-pipeline
 ```
 
 Unlike the Windows/Linux flow, **do not delete this clone afterward**: this
