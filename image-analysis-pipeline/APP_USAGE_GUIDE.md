@@ -1,4 +1,4 @@
-# ArabidopsisAnalysisV2: Application Usage Guide
+# SeedlingAnalyzer: Application Usage Guide
 
 Source material for the "How to use each app" web pages. Everything below was taken from the code (`run.py` and helper scripts of each app), not from running the GUIs. Items marked **[VERIFY]** are inferred from code and should be checked in a real session. Items marked **[SCREENSHOT]** are the places where a real screenshot should go.
 

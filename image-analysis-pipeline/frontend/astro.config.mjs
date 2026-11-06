@@ -18,7 +18,7 @@ export default defineConfig({
   markdown: { remarkPlugins: [remarkSteps] },
   integrations: [
     starlight({
-      title: 'ArabidopsisAnalysisV2',
+      title: 'SeedlingAnalyzer',
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/sybednar/seedling-imager-controller-display2' },
       ],
