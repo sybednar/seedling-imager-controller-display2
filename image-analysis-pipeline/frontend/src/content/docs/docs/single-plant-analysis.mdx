@@ -144,7 +144,7 @@ Everything in this part happens on the **Plant Analysis** tab, under the heading
    | **Set processing limit** | Days of the timelapse to process. 0 = no limit |
    | **Capture interval** | Minutes between frames. Affects time axes and hour binning |
    | **Emergence distance** | mm. Distance from the main root at which a lateral root counts as emerged (used for lateral-root angle analysis) |
-   | **Save Cropped Images** (checkbox) | Saves per-plant crops. Required for making growth timelapse videos |
+   | **Save Cropped Images** (checkbox) | Saves per-plant crops. When the plant's analysis finishes, it also saves a timelapse of the cropped images as two videos in `Images/Input/`: `cropped_timelapse.mp4` and `cropped_timelapse_overlaid.mp4` (with the segmentation overlay) |
 
 6. #### Preview The Video
 
@@ -152,6 +152,12 @@ Everything in this part happens on the **Plant Analysis** tab, under the heading
    navigate between frames and press the "S" button to toggle the segmentation overlay
    for visual inspection. Use this step to spot any segmentation errors and determin if a plant 
    is fit to be analyzed.
+
+   Click **Save Timelapse** to save the whole sequence as a video. It writes
+   `timelapse.mp4` next to the original images, and, if the video folder has a
+   `Segmentation/Ensemble_color/` folder, also `timelapse_overlaid.mp4` with the
+   segmentation blended onto each frame. The button shows "Saving N/total" while it
+   works, and a message lists the saved files when it finishes.
 
 7. #### Click Analyze Plant and draw the ROI
 
@@ -360,7 +366,7 @@ Overlay colours: main root **red**, lateral roots **green**, hypocotyl **yellow*
 |---|---|
 | **Refresh** | Refresh the plant list |
 | **Open Folder** | Open this plant's result folder |
-| **View full sequence** | Opens the **ChronoRoot Viewer**: slider through every frame (click anywhere on the slider to jump), **Play/Pause**, **Toggle Segmentation**, mouse-wheel zoom, click-drag pan. Shows "Day: N  Time: HH:MM" |
+| **View full sequence** | Opens the **ChronoRoot Viewer**: slider through every frame (click anywhere on the slider to jump), **Play/Pause**, **Toggle Segmentation**, **Save Timelapse**, mouse-wheel zoom, click-drag pan. Shows "Day: N  Time: HH:MM" |
 | **Redo Analysis** | **Manual re-run:** discards the saved ROI and root start so you pick new ones |
 | **Remove Plant** | Move to `Removed/` |
 
@@ -423,7 +429,8 @@ Per plant:
     PostProcess_Original.csv
     metadata.json              ROI, root start, pixel size, paths
     log.txt                    completion date + error rate
-    Images/ (Seg, SegMulti, Input*)    *Input only if "Save Cropped Images"
+    Images/ (Seg, SegMulti, Input*)    *Input only if "Save Cropped Images"; it also holds
+                                       cropped_timelapse.mp4 and cropped_timelapse_overlaid.mp4
     Graphs/    RSML/           root graphs and RSML export
 ```
 
