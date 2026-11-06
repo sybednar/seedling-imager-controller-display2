@@ -1476,7 +1476,7 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         description.setStyleSheet("font-size: 14px; color: #34495e; background-color: transparent; margin-bottom: 5px;")
         layout.addWidget(description, alignment=QtCore.Qt.AlignCenter)
         # Website Link
-        web_link = QLabel('<a href="https://calvinyong1.github.io/ArabidopsisAnalysisV2/">https://calvinyong1.github.io/ArabidopsisAnalysisV2/</a>')
+        web_link = QLabel('<a href="https://sybednar.github.io/seedling-imager-controller-display2/">https://sybednar.github.io/seedling-imager-controller-display2/</a>')
         web_link.setOpenExternalLinks(True)
         web_link.setStyleSheet("font-size: 13px; background-color: transparent; margin-bottom: 20px;")
         layout.addWidget(web_link, alignment=QtCore.Qt.AlignCenter)

@@ -9,10 +9,10 @@ const scrollEffects = readFileSync(new URL('./src/scripts/scroll-effects.js', im
 
 // Deployed to GitHub Pages. Never hard-code root-relative links; build them
 // from import.meta.env.BASE_URL.
-const base = '/ArabidopsisAnalysisV2';
+const base = '/seedling-imager-controller-display2';
 
 export default defineConfig({
-  site: 'https://calvinyong1.github.io',
+  site: 'https://sybednar.github.io',
   base,
   // The old Jekyll site served .html URLs; those are static meta-refresh files in public/.
   markdown: { remarkPlugins: [remarkSteps] },
@@ -20,7 +20,7 @@ export default defineConfig({
     starlight({
       title: 'ArabidopsisAnalysisV2',
       social: [
-        { icon: 'github', label: 'GitHub', href: 'https://github.com/calvinyong1/ArabidopsisAnalysisV2' },
+        { icon: 'github', label: 'GitHub', href: 'https://github.com/sybednar/seedling-imager-controller-display2' },
       ],
       components: {
         Header: './src/components/starlight/Header.astro',
