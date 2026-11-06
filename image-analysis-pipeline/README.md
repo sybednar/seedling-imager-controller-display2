@@ -1,4 +1,4 @@
-**Website & documentation:** https://calvinyong1.github.io/ArabidopsisAnalysisV2/
+**Website & documentation:** https://sybednar.github.io/seedling-imager-controller-display2/
 
 # Image Analysis Pipeline
 
@@ -131,7 +131,7 @@ its `image-analysis-pipeline/` folder. For WSL setup details see
 [`WSL_INSTALL.md`](WSL_INSTALL.md).
 
 > **Trouble installing?** A full install guide for every platform is on the
-> website: https://calvinyong1.github.io/ArabidopsisAnalysisV2/docs/install/
+> website: https://sybednar.github.io/seedling-imager-controller-display2/docs/install/
 
 ---
 
@@ -144,7 +144,7 @@ seedling-imager-controller-display2/        # repository root (Raspberry Pi imag
     ├── segmentationApp/           # nnU-Net segmentation module (GUI + CLI, TRAINING.md)
     ├── singlePlantAnalysis/       # Standard root phenotyping interface
     ├── Documents/                 # Images and documentation assets
-    ├── docs/, frontend/           # Documentation website sources
+    ├── frontend/                  # Documentation website source (Astro/Starlight)
     ├── environment.yml            # Conda environment specification
     ├── environment_no_nnunet.yml  # Conda environment without nnU-Net (analysis only)
     ├── installer_conda_mac.sh     # macOS installer (this guide)

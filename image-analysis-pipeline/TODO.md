@@ -81,8 +81,7 @@ Open items found while moving the pipeline into the monorepo (not applied):
 - **Full-repo clone.** Linux/WSL installers clone the whole monorepo (Pi code,
   CAD, hardware docs). A sparse checkout
   (`git sparse-checkout set image-analysis-pipeline`) would avoid that.
-- **Website still published from the old repo** (`calvinyong1/ArabidopsisAnalysisV2`,
-  `frontend/astro.config.mjs` and `frontend/design/*.html`). Decide whether the
-  site moves with the monorepo.
-- `docs/content-inventory.md` still holds the old clone commands and
-  `ChronoRoot2` paths; it is a snapshot of the install pages.
+- **Website moved to the monorepo** (`.github/workflows/deploy-site.yml`,
+  `frontend/astro.config.mjs`). Remaining: set repo Settings > Pages > Source to
+  "GitHub Actions" after merging to `main`; the `frontend/design/*.html`
+  mockups still carry the old URLs.
