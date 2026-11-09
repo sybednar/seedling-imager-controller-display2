@@ -118,7 +118,7 @@ class DataProcessor:
         for exp in experiments:
             try:
                 # Get list of plant data files
-                plants = load_path(exp, '*/*/*')
+                plants = load_path(exp, '*/*')  # <exp>/cam_X/plant_N
                 raw_folder_name = os.path.basename(exp)
                 exp_label = convertFromPathSafe(raw_folder_name)
                 speeds = []
