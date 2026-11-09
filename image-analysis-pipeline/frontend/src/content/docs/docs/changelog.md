@@ -6,6 +6,17 @@ Dated log of fixes applied to the analysis pipeline
 (`singlePlantAnalysis/analysis/`). This page mirrors `CHANGES.md`. Keep
 them in sync, or replace this content with an `include` of the real file.
 
+## 2026-11-09: Report folder walks (`fourier_analysis.py`, `convex_hull.py`, `lateral_angles.py`)
+
+Several report steps still assumed the old `<exp>/<rpi>/cam_X/plant_N/Results_k`
+layout, removed on 2026-06-12. The Growth Speeds and Fourier step produced an
+empty folder (it opened `metadata.json` as a results folder), convex hull
+atlases found no results, and the lateral-angle analysis read the wrong files.
+Fixed by updating the folder globs to `<exp>/cam_X/plant_N/Results_k` and
+dropping the extra "robot" loop in the angle overlay plots (their output
+filenames no longer include a robot segment). Verified on a mock folder, not
+yet re-run on full datasets.
+
 ## 2026-11-01: Repository move, installers and install docs
 
 The pipeline now lives in the `image-analysis-pipeline/` folder of

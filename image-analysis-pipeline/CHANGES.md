@@ -1,3 +1,30 @@
+# Changes — 2026-11-09
+
+## Report folder walks: `fourier_analysis.py`, `convex_hull.py`, `lateral_angles.py`
+
+Several report steps still walked `Analysis/<exp>/<rpi>/cam_X/plant_N/Results_k`.
+The RPI folder was removed from the layout on 2026-06-12 (`36d553e`), but these
+globs were not updated, so each went one level too deep or one level too many.
+
+**Symptoms:** with "Evaluate Growth Speeds and perform Fourier Analysis" ticked,
+`Report/GrowthSpeeds and Fourier/` was created but empty (log: `Not a directory:
+.../metadata.json/PostProcess_Hour.csv`). Convex hull atlases found no results.
+The lateral-angle analysis read `metadata.json` / `PostProcess_Hour.csv` as if
+they were results folders.
+
+**Fix:**
+- `fourier_analysis.py`, `lateral_angles.py` (`makeLateralAnglesPlots`): plant
+  glob `'*/*/*'` -> `'*/*'`, so the next step picks the latest `Results_k`.
+- `convex_hull.py` (`calculate_atlas_geometry`, `generate_root_atlases`):
+  `'*/*/*/Results*'` -> `'*/*/Results*'`.
+- `lateral_angles.py` (`plotLateralAnglesOnTop`): removed the extra "robot"
+  directory loop. Output filenames no longer contain a robot segment.
+
+Checked against a mock folder with the current layout; not yet re-run on the
+full datasets. `5_rerun_all_analysis.py` still assumes the RPI folder (left
+as is, it targets a hardcoded `/DATA` dataset).
+
+
 # Changes — 2026-11-01
 
 ## Repository move: `installer_conda_{linux,wsl}.sh`, `README.md`, install docs
