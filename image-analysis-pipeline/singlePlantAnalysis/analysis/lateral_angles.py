@@ -596,7 +596,7 @@ def makeLateralAnglesPlots(conf):
     all_data = pd.DataFrame()
         
     for exp in experiments:
-        plants = loadPath(exp, '*/*/*')
+        plants = loadPath(exp, '*/*')  # <exp>/cam_X/plant_N
         # Use basename to get the literal folder name for logic
         raw_exp_folder = os.path.basename(exp)
         
@@ -1045,76 +1045,72 @@ def plotLateralAnglesOnTop(conf):
     for exp in os.listdir(exp_path):
         # Convert folder name to a safe filename string
         safe_exp = convertToPathSafe(exp)
-        robot_path = os.path.join(exp_path, exp)
+        cam_path = os.path.join(exp_path, exp)
 
-        for robot in os.listdir(robot_path):
-            safe_robot = convertToPathSafe(robot)
-            cam_path = os.path.join(robot_path, robot)
+        for cam in os.listdir(cam_path):
+            safe_cam = convertToPathSafe(cam)
+            plant_path = os.path.join(cam_path, cam)
 
-            for cam in os.listdir(cam_path):
-                safe_cam = convertToPathSafe(cam)
-                plant_path = os.path.join(cam_path, cam)
+            for plant in os.listdir(plant_path):
+                safe_plant = convertToPathSafe(plant)
+                results_path = os.listdir(os.path.join(plant_path, plant))
 
-                for plant in os.listdir(plant_path):
-                    safe_plant = convertToPathSafe(plant)
-                    results_path = os.listdir(os.path.join(plant_path, plant))
-
-                    if len(results_path) > 0:
-                        results_path = os.path.join(plant_path, plant, results_path[-1])
-                    else:
-                        continue
+                if len(results_path) > 0:
+                    results_path = os.path.join(plant_path, plant, results_path[-1])
+                else:
+                    continue
                     
-                    if os.path.exists(results_path):
-                        metadata_path = results_path + "/metadata.json"
-                        metadata = json.load(open(metadata_path))
+                if os.path.exists(results_path):
+                    metadata_path = results_path + "/metadata.json"
+                    metadata = json.load(open(metadata_path))
                         
-                        i = -1
+                    i = -1
 
-                        # Load list of postprocessed images
-                        images = pd.read_csv(os.path.join(results_path, "FilesAfterPostprocessing.csv"))
-                        images.dropna(inplace=True)
-                        images = images["FileName"].tolist()
+                    # Load list of postprocessed images
+                    images = pd.read_csv(os.path.join(results_path, "FilesAfterPostprocessing.csv"))
+                    images.dropna(inplace=True)
+                    images = images["FileName"].tolist()
 
-                        rsml_files = os.listdir(os.path.join(results_path, "RSML"))
+                    rsml_files = os.listdir(os.path.join(results_path, "RSML"))
 
-                        # Filter to images with corresponding RSML
-                        images = [image for image in images
-                                 if os.path.splitext(image.split('/')[-1])[0] + '.rsml' in rsml_files]
+                    # Filter to images with corresponding RSML
+                    images = [image for image in images
+                             if os.path.splitext(image.split('/')[-1])[0] + '.rsml' in rsml_files]
                         
-                        try:
-                            images = [os.path.join(metadata["ImagePath"], image) for image in images]
-                        except:
-                            # Fallback for retrocompatibility
-                            images = [os.path.join(metadata["folder"], image) for image in images]
+                    try:
+                        images = [os.path.join(metadata["ImagePath"], image) for image in images]
+                    except:
+                        # Fallback for retrocompatibility
+                        images = [os.path.join(metadata["folder"], image) for image in images]
 
-                        # Load and crop the image
-                        bbox = metadata["bounding box"]
-                        crop = cv2.imread(images[i])[bbox[0]:bbox[1], bbox[2]:bbox[3]]
+                    # Load and crop the image
+                    bbox = metadata["bounding box"]
+                    crop = cv2.imread(images[i])[bbox[0]:bbox[1], bbox[2]:bbox[3]]
                         
-                        # Save cropped image
-                        save = exp + "_" + robot + "_" + cam + "_" + plant + "_crop.png"
-                        cv2.imwrite(os.path.join(save_path, save), crop)
+                    # Save cropped image
+                    save = exp + "_" + cam + "_" + plant + "_crop.png"
+                    cv2.imwrite(os.path.join(save_path, save), crop)
 
-                        # Generate emergence angles visualization
-                        fig, ax = plt.subplots(figsize=(16, 8), dpi=200)
-                        estimateAngles(results_path, ax, crop.copy(), i)
-                        plt.title("Emergence Angles")
+                    # Generate emergence angles visualization
+                    fig, ax = plt.subplots(figsize=(16, 8), dpi=200)
+                    estimateAngles(results_path, ax, crop.copy(), i)
+                    plt.title("Emergence Angles")
 
-                        save = f"{safe_exp}_{safe_robot}_{safe_cam}_{safe_plant}_emergence_angles.svg"
-                        plt.savefig(os.path.join(save_path, save), bbox_inches="tight", dpi=200)
+                    save = f"{safe_exp}_{safe_cam}_{safe_plant}_emergence_angles.svg"
+                    plt.savefig(os.path.join(save_path, save), bbox_inches="tight", dpi=200)
 
-                        plt.close()
-                        plt.clf()
-                        plt.cla()
+                    plt.close()
+                    plt.clf()
+                    plt.cla()
 
-                        # Generate tip angles visualization
-                        fig, ax = plt.subplots(figsize=(16, 8), dpi=200)
-                        estimateAngles(results_path, ax, crop.copy(), i, True)
-                        plt.title("Tip Angles")
+                    # Generate tip angles visualization
+                    fig, ax = plt.subplots(figsize=(16, 8), dpi=200)
+                    estimateAngles(results_path, ax, crop.copy(), i, True)
+                    plt.title("Tip Angles")
 
-                        filename = f"{safe_exp}_{safe_robot}_{safe_cam}_{safe_plant}_tip_angles.svg"
-                        plt.savefig(os.path.join(save_path, filename), bbox_inches="tight", dpi=200)
+                    filename = f"{safe_exp}_{safe_cam}_{safe_plant}_tip_angles.svg"
+                    plt.savefig(os.path.join(save_path, filename), bbox_inches="tight", dpi=200)
                         
-                        plt.close()
-                        plt.clf()
-                        plt.cla()
+                    plt.close()
+                    plt.clf()
+                    plt.cla()
