@@ -38,7 +38,7 @@ def calculate_atlas_geometry(experiment_paths: List[str]) -> Tuple[Tuple[int, in
 
     for exp_path in experiment_paths:
         # Load all results folders
-        result_paths = utils.load_paths(exp_path, '*/*/*/Results*')
+        result_paths = utils.load_paths(exp_path, '*/*/Results*')
         
         for r_path in result_paths:            
             # 1. Load Last Segmentation Image
@@ -142,7 +142,7 @@ def generate_root_atlases(save_path, days, timestep, canvas_shape, center_coords
     atlas_contours_rgb = np.zeros([canvas_shape[0], canvas_shape[1], 3], dtype='uint8')
     atlas_root_density = np.zeros(canvas_shape, dtype='float64')
 
-    result_paths = utils.load_paths(save_path, '*/*/*/Results*')
+    result_paths = utils.load_paths(save_path, '*/*/Results*')
     imgs_per_day = int(24 * (60 / timestep))
 
     all_frames_list = []
