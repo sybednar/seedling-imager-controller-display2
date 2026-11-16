@@ -30,8 +30,9 @@ def analyze_experiment(exp):
     # New main folder for rerun analysis
     conf['MainFolder'] = "/DATA/tomatest_2"
     os.makedirs(conf['MainFolder'], exist_ok=True)
-    conf['fileKey'] = conf['identifier']
-    conf['sequenceLabel'] = str(conf['identifier']) + '/' + str(conf['rpi']) + '/' + str(conf['cam']) + '/' + str(conf['plant'])
+    # Same keys 1_analysis.py uses. 'identifier' and 'rpi' are no longer written to metadata.json.
+    conf['fileKey'] = conf['Experiment']
+    conf['sequenceLabel'] = conf['Experiment'] + "_" + conf['Images'] + "_" + str(conf['plant'])
     conf['Plant'] = 'Tomato'
 
     conf["processingLimit"] = 6
@@ -51,7 +52,7 @@ if __name__ == "__main__":
     # Old main folder
     mainFolder = "/DATA/tomatest"
     analysis = os.path.join(mainFolder, 'Analysis')
-    experiments = loadPath(analysis, '*/*/*/*/*/metadata.json')
+    experiments = loadPath(analysis, '*/*/*/*/metadata.json')
 
     # Create a Pool with 4 processes
     with Pool(4) as pool:
