@@ -45,7 +45,7 @@ if __name__ == "__main__":
     conf['sequenceLabel'] = conf['Experiment'] + "_" + conf['Images'] + "_" + str(conf['plant'])
     conf['Plant'] = 'Arabidopsis thaliana'
     
-    if not conf.get('videoHasQRbutton', True) and not conf.get('videoHasArucoButton', True):
+    if not conf.get('videoHasQRbutton', False) and not conf.get('videoHasArucoButton', False):
         pixel_size = float(conf['knownDistance']) / float(conf['pixelDistance'])
         conf['pixel_size'] = pixel_size
 

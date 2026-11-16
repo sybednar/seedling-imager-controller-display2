@@ -80,7 +80,6 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
                                                                     self.everyXhourField, self.everyXhourFieldFourier, 
                                                                     self.everyXhourFieldAngles, self.numComponentsFPCAField]})
         data.update({field.objectName(): field.isChecked() for field in [self.saveImagesButton,
-                                                                         self.videoHasQRbutton,
                                                                          self.videoHasArucoButton,
                                                                          self.saveImagesConvex,
                                                                          self.doConvex, self.doFourier, self.doLateralAngles,
@@ -105,7 +104,6 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         data["timeStep"] = data["captureIntervalField"]
         data["MainFolder"] = data["projectField"]
         data["saveImages"] = data["saveImagesButton"]
-        data["videoHasQR"] = data["videoHasQRbutton"]
         data["videoHasAruco"] = data["videoHasArucoButton"]
         data["emergenceDistance"] = data["emergenceDistanceField"]
 
@@ -159,7 +157,7 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
                     if field.objectName() in data:
                         field.setText(data[field.objectName()])
 
-                for field in [self.saveImagesButton, self.videoHasQRbutton,
+                for field in [self.saveImagesButton,
                             self.videoHasArucoButton,
                             self.saveImagesConvex, self.doConvex, self.doFourier, self.doLateralAngles,
                             self.doFPCA, self.normFPCA, self.averagePerPlantStats]:
@@ -702,13 +700,13 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
             return
         
         # Validate calibration settings
-        has_auto_calib = self.videoHasQRbutton.isChecked() or self.videoHasArucoButton.isChecked()
+        has_auto_calib = self.videoHasArucoButton.isChecked()
         if not has_auto_calib:
             if not self.knownDistanceField.text() or not self.pixelDistanceField.text():
                 QtWidgets.QMessageBox.warning(
                     None, 'Error',
                     'Please provide both known distance and pixel distance for manual calibration,\n'
-                    'or enable "Video has QR codes" or "Video has ArUco markers"!'
+                    'or enable "Video has ArUco markers"!'
                 )
                 return
             
@@ -902,7 +900,7 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
             if field.objectName() in data:
                 field.setText(data[field.objectName()])
 
-        for field in [self.saveImagesButton, self.videoHasQRbutton,
+        for field in [self.saveImagesButton,
                       self.videoHasArucoButton,
                       self.saveImagesConvex, self.doConvex, self.doFourier, self.doLateralAngles,
                       self.doFPCA, self.normFPCA, self.averagePerPlantStats]:
@@ -959,12 +957,8 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         self.saveImagesButton.setGeometry(QtCore.QRect(10, 380, 161, 31))
         self.saveImagesButton.setObjectName("saveImagesButton")
         
-        self.videoHasQRbutton = QtWidgets.QCheckBox(self.tab1)
-        self.videoHasQRbutton.setGeometry(QtCore.QRect(10, 410, 161, 31))
-        self.videoHasQRbutton.setObjectName("videoHasQRbutton")
-
         self.videoHasArucoButton = QtWidgets.QCheckBox(self.tab1)
-        self.videoHasArucoButton.setGeometry(QtCore.QRect(10, 440, 161, 31))
+        self.videoHasArucoButton.setGeometry(QtCore.QRect(10, 410, 161, 31))
         self.videoHasArucoButton.setObjectName("videoHasArucoButton")
 
         self.captureIntervalField = QtWidgets.QLineEdit(self.tab1)
@@ -1102,8 +1096,7 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         self.calibrateBtn.setText("Open Calibration Helper")
         self.calibrateBtn.clicked.connect(self.open_calibration_helper)
         
-        # Connect toggle function to both calibration checkboxes
-        self.videoHasQRbutton.stateChanged.connect(self.toggle_calibration_mode)
+        # Connect toggle function to the calibration checkbox
         self.videoHasArucoButton.stateChanged.connect(self.toggle_calibration_mode)
 
         # Initialize visibility
@@ -1112,8 +1105,8 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         return
     
     def toggle_calibration_mode(self):
-        """Toggle between auto (QR/ArUco) and manual calibration modes"""
-        has_auto = self.videoHasQRbutton.isChecked() or self.videoHasArucoButton.isChecked()
+        """Toggle between auto (ArUco) and manual calibration modes"""
+        has_auto = self.videoHasArucoButton.isChecked()
         self.manual_calib_widget.setVisible(not has_auto)
 
     def open_calibration_helper(self):
@@ -1683,7 +1676,6 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
             set_translation(self.loadConfigFileButton, "Load\nconfig json\nfrom file")
             set_translation(self.loadLastConfigButton, "Load\nprevious\nconfiguration")
             set_translation(self.saveImagesButton, "Save Cropped Images")
-            set_translation(self.videoHasQRbutton, "Video has QR codes")
             set_translation(self.videoHasArucoButton, "Video has ArUco markers")
             set_translation(self.analysisButton, "Analyze Plant")
             set_translation(self.previewAnalysisButton, "Preview video")
