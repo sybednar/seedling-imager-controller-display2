@@ -1,3 +1,33 @@
+# Changes — 2026-11-16
+
+## Report: choose which experiments to include
+
+Report generation always used every experiment folder under `Analysis/`. Tab 4
+now has an **Experiments: n/m** button (top right, beside the project
+field) that opens a checklist of those
+experiments; only the checked ones go into the report.
+
+- The choice is saved as `selectedExperiments` in the config (a list of
+  experiment names, or `null` for all). Configs without the key still report
+  everything.
+- `analysis/utils/report_utils.py`: new `experiment_display_name` (the
+  `metadata.json` "Experiment" value, else the decoded folder name; moved out of
+  `3_generateReport.py`) and `filter_experiments`.
+- Applied in `3_generateReport.py` (so `Temporal_Data.csv`, stats, convex hull
+  and FPCA follow), `fourier_analysis.py` and `lateral_angles.py`
+  (`makeLateralAnglesPlots`, `plotLateralAnglesOnTop`), which walk `Analysis/`
+  themselves.
+- Checked experiments with no valid data (no plant whose latest `Results_*`
+  folder has `PostProcess_Hour.csv`) are skipped with a message instead of
+  producing empty output or errors. This also applies when everything is
+  selected.
+- Selecting none (or nothing with data) stops the report with a message. With fewer than two
+  experiments there are no pairwise comparisons.
+- `test_report_filter.py` covers the filter. Verified the GUI save/load round
+  trip offscreen; not yet run on a full dataset.
+
+---
+
 # Changes — 2026-11-09
 
 ## Report folder walks: `fourier_analysis.py`, `convex_hull.py`, `lateral_angles.py`

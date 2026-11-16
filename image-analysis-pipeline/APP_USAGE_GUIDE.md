@@ -347,6 +347,7 @@ Controls which analyses go into the report. Project folder, processing limit and
 
 | Section | Controls | Defaults |
 |---|---|---|
+| **Experiments** | *Experiments: n/m* button (top right, next to the project field) opens a checklist of the experiments in the project's `Analysis/` folder. Only checked ones go into the report (stats, convex hull, Fourier, lateral angles, FPCA). Saved in the config as `selectedExperiments`. | all selected |
 | **Statistics** | *Average intervals before testing* (checkbox). *Time series stats interval (dt, in hours)* | dt = 6 |
 | Explanatory text | "Hypothesis testing uses Mann-Whitney test every dt interval. If selected, an average value will be used, or a step (i*dt) otherwise" | |
 | **Functional PCA** | *Perform Functional PCA on time series*, *Normalize FPCA Boxplots*, *Number of components* | components = 2 |
@@ -357,7 +358,7 @@ Controls which analyses go into the report. Project folder, processing limit and
 
 Buttons: **Save**, **Process all plants**, **Generate report**, **Load previous configuration**.
 
-Run **Process all plants** first, then **Generate report**. Report generation can take a while; progress prints in the terminal. Statistical comparisons are between experiments (identifiers).
+Run **Process all plants** first, then **Generate report**. Report generation can take a while; progress prints in the terminal. Statistical comparisons are between experiments (identifiers), so select at least two to get comparisons.
 
 ---
 

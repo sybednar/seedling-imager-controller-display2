@@ -300,7 +300,9 @@ Everything in this part happens on the **Plant Analysis** tab, under the heading
     **Generate report**. Report generation can take a while; progress prints in the
     terminal.
 
-    Statistical comparisons are between experiments (identifiers). See the
+    Use the **Experiments: n/m** button (top right of the tab) to leave some experiments out of the report.
+    Statistical comparisons are between experiments (identifiers), so keep at
+    least two selected. See the
     [tab reference](#tab-reference) for every option.
 
 14. #### Browse the report
@@ -380,6 +382,7 @@ capture interval are repeated here and kept in sync with the Plant Analysis tab.
 
 | Section | Controls | Defaults |
 |---|---|---|
+| **Experiments** | *Experiments: n/m* button (top right, next to the project field) opens a checklist of the experiments in the project's `Analysis/` folder. Only checked ones go into the report. | all selected |
 | **Statistics** | *Average intervals before testing* (checkbox). *Time series stats interval (dt, in hours)* | dt = 6 |
 | **Functional PCA** | *Perform Functional PCA on time series*, *Normalize FPCA Boxplots*, *Number of components* | components = 2 |
 | **Convex hull** | *Do Convex hull analysis*, *Save images for each day*, *Days to report* (comma-separated, e.g. `3,5,7`) | |
