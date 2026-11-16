@@ -32,6 +32,7 @@ import glob
 import os
 from PIL import Image
 from analysis.utils.fileUtilities import convertFromPathSafe, getImages
+from analysis.utils.report_utils import experiment_display_name
         
 def natural_keys(text):
     return [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', text)]
@@ -87,6 +88,8 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         
         data["daysConvexHull"] = self.daysConvexField.text()
         data["daysAngles"] = self.daysAnglesField.text()
+        # None = every experiment in Analysis/ (also for configs saved before this option)
+        data["selectedExperiments"] = self.selectedExperiments
 
         # map values for compatibility with 1_analysis.py
         cam_val = self.cameraField.text().strip() or "1"
@@ -170,6 +173,9 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
                     self.daysConvexField.setText(str(data["daysConvexHull"]))
                 if "daysAngles" in data:
                     self.daysAnglesField.setText(str(data["daysAngles"]))
+
+                self.selectedExperiments = data.get("selectedExperiments")
+                self.update_experiment_summary()
         except Exception as e:
             print(f"Error loading config: {e}")
 
@@ -241,6 +247,74 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
 
         return
 
+    def list_report_experiments(self):
+        """Display names of the experiment folders under <project>/Analysis."""
+        analysis = os.path.join(self.projectField.text(), "Analysis")
+        if not os.path.isdir(analysis):
+            return []
+        folders = sorted(os.path.join(analysis, d) for d in os.listdir(analysis)
+                         if os.path.isdir(os.path.join(analysis, d)))
+        return [experiment_display_name(f) for f in folders]
+
+    def update_experiment_summary(self):
+        available = self.list_report_experiments()
+        if self.selectedExperiments is None:
+            chosen = available
+        else:
+            chosen = [e for e in available if e in self.selectedExperiments]
+        self.selectExperimentsButton.setText(f"Experiments: {len(chosen)}/{len(available)}")
+        self.selectExperimentsButton.setToolTip(
+            "Choose which experiments from the Analysis folder are included in the report "
+            "(statistics, atlases, Fourier, lateral angles and FPCA). Statistical comparisons need at least two."
+            + ("<br><br><b>Included:</b><br>" + "<br>".join(chosen) if chosen else ""))
+
+    def open_experiment_picker(self):
+        available = self.list_report_experiments()
+        if not available:
+            QtWidgets.QMessageBox.information(
+                None, "No experiments",
+                "No experiments found in the project's Analysis folder yet.")
+            return
+
+        dialog = QtWidgets.QDialog()
+        dialog.setWindowTitle("Experiments to include in the report")
+        layout = QVBoxLayout(dialog)
+        listing = QtWidgets.QListWidget()
+        for name in available:
+            item = QtWidgets.QListWidgetItem(name)
+            item.setFlags(item.flags() | QtCore.Qt.ItemIsUserCheckable)
+            checked = self.selectedExperiments is None or name in self.selectedExperiments
+            item.setCheckState(QtCore.Qt.Checked if checked else QtCore.Qt.Unchecked)
+            listing.addItem(item)
+        layout.addWidget(listing)
+
+        def set_all(state):
+            for i in range(listing.count()):
+                listing.item(i).setCheckState(state)
+
+        row = QHBoxLayout()
+        all_button = QPushButton("Select all")
+        all_button.clicked.connect(lambda: set_all(QtCore.Qt.Checked))
+        none_button = QPushButton("Select none")
+        none_button.clicked.connect(lambda: set_all(QtCore.Qt.Unchecked))
+        row.addWidget(all_button)
+        row.addWidget(none_button)
+        layout.addLayout(row)
+
+        buttons = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec_() != QtWidgets.QDialog.Accepted:
+            return
+        chosen = [listing.item(i).text() for i in range(listing.count())
+                  if listing.item(i).checkState() == QtCore.Qt.Checked]
+        # Keep "all" as None so experiments added later are included automatically
+        self.selectedExperiments = None if len(chosen) == len(available) else chosen
+        self.update_experiment_summary()
+
     def handle_tab_change(self, index):
         # index 0: Plant Analysis (usually no auto-refresh needed)
         # index 1: Analysis Overview
@@ -253,7 +327,9 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
             self.refresh_table() 
             self.update_image_labels()
             
-        # index 3: Generate Report (usually no auto-refresh needed)
+        # index 3: Generate Report
+        elif index == 3:
+            self.update_experiment_summary()
         
         # index 4: Report Viewer
         elif index == 4:
@@ -838,6 +914,9 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         if "daysAngles" in data:
             self.daysAnglesField.setText(str(data["daysAngles"]))
 
+        self.selectedExperiments = data.get("selectedExperiments")
+        self.update_experiment_summary()
+
 
     def setup_tab1_elements(self):
 
@@ -1306,6 +1385,16 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         self.everyXhourFieldAngles = QtWidgets.QLineEdit(self.tab4)
         self.everyXhourFieldAngles.setGeometry(QtCore.QRect(620, 410, 51, 31))
         self.everyXhourFieldAngles.setObjectName("everyXhourFieldAngles")
+
+        # Which experiments from Analysis/ go into the report (None = all)
+        self.selectedExperiments = None
+
+        self.selectExperimentsButton = QtWidgets.QPushButton(self.tab4)
+        # Top-right, beside the project field: the divider lines below are created later
+        # and would sit on top of (and swallow clicks for) a button placed on one.
+        self.selectExperimentsButton.setGeometry(QtCore.QRect(640, 10, 161, 28))
+        self.selectExperimentsButton.setObjectName("selectExperimentsButton")
+        self.selectExperimentsButton.clicked.connect(self.open_experiment_picker)
 
         self.PostProcessButton2 = QtWidgets.QPushButton(self.tab4)
         self.PostProcessButton2.setGeometry(QtCore.QRect(360, 480, 131, 81))
