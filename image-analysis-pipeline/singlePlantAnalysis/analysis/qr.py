@@ -161,20 +161,23 @@ def get_pixel_size(detection):
 def aruco_detect_full(img):
     # img: grayscale array. Returns (corners, ids, rejected) exactly as cv2 gives them,
     # so callers that need IDs or rejected candidates share aruco_detect's settings.
-    dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_1000)
+    dictionary = aruco.getPredefinedDictionary(aruco.DICT_4X4_50)
     parameters = aruco.DetectorParameters()
-    # APRILTAG refinement keeps a rigid marker's side length constant to ~0.2 px; SUBPIX (win 5) was ~1-4 px off
     parameters.cornerRefinementMethod = aruco.CORNER_REFINE_APRILTAG
+    parameters.aprilTagQuadSigma = 1.0
     detector = aruco.ArucoDetector(dictionary, parameters)
     return detector.detectMarkers(img)
 
 
 def aruco_detect(inputImage):
     img = cv2.imread(inputImage, cv2.IMREAD_GRAYSCALE)
-    corners, ids, _ = aruco_detect_full(img)
-    if ids is not None and len(ids) > 0:
-        return corners
-    return None
+    corners, ids, _ = aruco_detect_full(img)            
+    if ids is None or len(ids) == 0:
+        return None
+    
+    keep = [c for c, i in zip(corners,ids.ravel()) if i <= 6]
+    
+    return tuple(keep) or None
 
 
 def aruco_get_pixel_size(detection):
