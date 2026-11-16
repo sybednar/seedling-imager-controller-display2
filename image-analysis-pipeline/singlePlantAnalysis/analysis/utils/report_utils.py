@@ -1,6 +1,7 @@
 import re
 import pathlib
 import os
+import json
 import numpy as np
 
 def natural_key(string_text):
@@ -57,3 +58,57 @@ def angle_between(v1, v2):
     v2_u = unit_vector(v2)
     # Clip to handle floating point errors outside [-1, 1]
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
+
+
+def experiment_display_name(exp_dir):
+    """
+    Human-readable experiment name for an Analysis/<experiment> folder: the
+    "Experiment" value in the first metadata.json found, else the folder name
+    with the path-safe encoding undone.
+    """
+    from .fileUtilities import convertFromPathSafe
+    name = convertFromPathSafe(os.path.basename(os.path.normpath(exp_dir)))
+    for meta_path in load_paths(exp_dir, '*/*/*/metadata.json')[:1]:
+        try:
+            with open(meta_path, 'r') as f:
+                name = json.load(f).get('Experiment', name)
+        except (OSError, ValueError):
+            pass
+    return name
+
+
+def experiment_has_data(exp_dir):
+    """
+    True if at least one <cam>/<plant> under the experiment has a PostProcess_Hour.csv
+    in its latest Results_* folder (the file the report reads for each plant).
+    """
+    for plant in load_paths(exp_dir, '*/*'):
+        results = load_paths(plant, '*')
+        if results and os.path.exists(os.path.join(results[-1], 'PostProcess_Hour.csv')):
+            return True
+    return False
+
+
+def filter_experiments(experiments, conf, verbose=False):
+    """
+    Keep only the experiment folders listed in conf['selectedExperiments']
+    (matched on display name or folder name). A missing/None key keeps all, so
+    configs saved before this option existed behave as before.
+
+    Selected experiments with no valid data (see experiment_has_data) are
+    skipped; with verbose=True each skip is reported.
+    """
+    selected = conf.get('selectedExperiments')
+    if selected is not None:
+        selected = set(selected)
+        experiments = [e for e in experiments
+                       if experiment_display_name(e) in selected
+                       or os.path.basename(os.path.normpath(e)) in selected]
+    kept = []
+    for e in experiments:
+        if experiment_has_data(e):
+            kept.append(e)
+        elif verbose:
+            print(f"Skipping experiment '{experiment_display_name(e)}': "
+                  "no PostProcess_Hour.csv found in any plant's latest Results folder.")
+    return kept
