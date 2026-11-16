@@ -1,3 +1,17 @@
+# Changes — 2026-11-16 (d)
+
+## ArUco precheck window before analysis
+
+When the ArUco guard finds a valid marker, `run.py` now shows a precheck dialog
+(`show_aruco_precheck`) before launching `1_analysis.py`: the image the marker
+was found in with every detected marker outlined in green (corner 0 in red), a
+zoomed crop of the first marker (the one whose width sets the scale), and its
+pixel width. "Looks right - continue" starts the analysis; "Cancel (use manual
+calibration)" stops it. Missing or too-small markers still get the warning only.
+Checked offscreen with synthetic images (accept, cancel, none, too small).
+
+---
+
 # Changes — 2026-11-16 (c)
 
 ## ArUco guard on the analysis button
