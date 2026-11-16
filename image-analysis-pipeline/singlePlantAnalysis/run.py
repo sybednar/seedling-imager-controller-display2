@@ -736,11 +736,13 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
     def check_aruco_marker(self, images):
         """
         Scan the first 20 images (same scan as 1_analysis.py / 2_postprocess.py) for an
-        ArUco marker. Returns True if one is found and is at least MIN_ARUCO_PIXEL_WIDTH
-        px wide; otherwise shows a warning and returns False.
+        ArUco marker. If none is found, or it is narrower than MIN_ARUCO_PIXEL_WIDTH px,
+        shows a warning and returns False. Otherwise shows the detected marker for the
+        user to confirm (see show_aruco_precheck) and returns their answer.
         """
         advice = "No ArUco marker detected, please use manual calibration instead."
         width = None
+        found_path = found_detection = None
         QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
         try:
             from analysis.qr import aruco_detect, aruco_get_pixel_size
@@ -748,6 +750,7 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
                 detection = aruco_detect(img_path)
                 if detection is not None:
                     width = float(aruco_get_pixel_size(detection[0]))
+                    found_path, found_detection = img_path, detection
                     break
         except Exception as e:
             QtWidgets.QApplication.restoreOverrideCursor()
@@ -768,7 +771,69 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
                 f'{advice}\n\nThe detected marker is only {width:.0f} px wide '
                 f'(minimum {self.MIN_ARUCO_PIXEL_WIDTH} px), which is too small for a reliable scale.')
             return False
-        return True
+        return self.show_aruco_precheck(found_path, found_detection, width)
+
+    def show_aruco_precheck(self, img_path, detection, width):
+        """
+        Show the image the marker was found in, with the detected marker(s) outlined, and a
+        zoomed crop of the first one (the one whose width sets the scale). Returns True if the
+        user confirms, False if they cancel (to switch to manual calibration).
+        """
+        import cv2
+        import numpy as np
+
+        def to_pixmap(bgr, max_w, max_h):
+            rgb = np.ascontiguousarray(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
+            h, w = rgb.shape[:2]
+            qimg = QtGui.QImage(rgb.data, w, h, 3 * w, QtGui.QImage.Format_RGB888).copy()
+            return QtGui.QPixmap.fromImage(qimg).scaled(
+                max_w, max_h, QtCore.Qt.KeepAspectRatio, QtCore.Qt.SmoothTransformation)
+
+        image = cv2.imread(img_path, cv2.IMREAD_COLOR)
+        full_pixmap = crop_pixmap = None
+        if image is not None:
+            annotated = image.copy()
+            thickness = max(3, image.shape[1] // 250)  # stays visible after downscaling
+            for corners in detection:
+                pts = np.asarray(corners).reshape(-1, 2).astype(np.int32)
+                cv2.polylines(annotated, [pts], True, (0, 255, 0), thickness)
+                cv2.circle(annotated, tuple(int(v) for v in pts[0]), thickness * 2, (0, 0, 255), -1)  # corner 0
+            first = np.asarray(detection[0]).reshape(-1, 2)
+            x0, y0 = first.min(axis=0)
+            x1, y1 = first.max(axis=0)
+            pad = int(max(x1 - x0, y1 - y0) * 0.25)
+            h, w = image.shape[:2]
+            crop = annotated[max(0, int(y0) - pad):min(h, int(y1) + pad),
+                             max(0, int(x0) - pad):min(w, int(x1) + pad)]
+            full_pixmap = to_pixmap(annotated, 560, 420)
+            if crop.size:
+                crop_pixmap = to_pixmap(crop, 300, 300)
+
+        dialog = QtWidgets.QDialog()
+        dialog.setWindowTitle("ArUco marker precheck")
+        layout = QVBoxLayout(dialog)
+        n = len(detection)
+        layout.addWidget(QLabel(
+            f"<b>Detected {n} ArUco marker{'s' if n != 1 else ''} in {os.path.basename(img_path)}</b><br>"
+            f"Marker width (sets the scale): <b>{width:.0f} px</b> = 15 mm<br>"
+            "Check that the green outline sits on the marker. If it does not, cancel and use manual calibration."))
+        images_row = QHBoxLayout()
+        for pm in (full_pixmap, crop_pixmap):
+            if pm is not None:
+                label = QLabel()
+                label.setPixmap(pm)
+                images_row.addWidget(label)
+        if full_pixmap is None:
+            images_row.addWidget(QLabel("(Could not load the image to display it.)"))
+        layout.addLayout(images_row)
+
+        buttons = QtWidgets.QDialogButtonBox()
+        buttons.addButton("Looks right - continue", QtWidgets.QDialogButtonBox.AcceptRole)
+        buttons.addButton("Cancel (use manual calibration)", QtWidgets.QDialogButtonBox.RejectRole)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        return dialog.exec_() == QtWidgets.QDialog.Accepted
 
     def redoAnalysis(self):
         metadata_path = os.path.join(self.selected_plant, "metadata.json")
