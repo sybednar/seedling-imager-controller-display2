@@ -1,3 +1,32 @@
+# Changes — 2026-11-16 (c)
+
+## ArUco guard on the analysis button
+
+With "Video has ArUco markers" ticked, pressing the analysis button now scans the
+first 20 images (same scan as `1_analysis.py`) with `aruco_detect`. If no marker
+is found, or the first one found is narrower than 300 px
+(`MIN_ARUCO_PIXEL_WIDTH` in `run.py`), a warning says "No ArUco marker detected,
+please use manual calibration instead." and the analysis is not started. Tested
+offscreen with synthetic images: no marker, a 200 px marker (blocked) and a
+400 px marker (runs); with the box unticked the check is skipped.
+
+---
+
+# Changes — 2026-11-16 (b)
+
+## Removed the "Video has QR codes" checkbox from the Plant Analysis tab
+
+Scale calibration is now ArUco markers or manual. The checkbox, its tooltip and
+its calibration-mode wiring are gone from `run.py`; the ArUco checkbox moved up
+into its slot. The QR detection code (`qr.py`, `libzbar`) is untouched, so a
+hand-edited config with `videoHasQRbutton: true` still works from the CLI.
+
+`1_analysis.py` defaulted a missing `videoHasQRbutton` to `True`, which would
+have skipped the manual pixel-size setup now that the GUI no longer writes the
+key. The default is now `False`.
+
+---
+
 # Changes — 2026-11-16
 
 ## Report: choose which experiments to include

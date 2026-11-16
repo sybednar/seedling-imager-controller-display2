@@ -109,9 +109,8 @@ Everything in this part happens on the **Plant Analysis** tab, under the heading
 
    | Option | When to use |
    |---|---|
-   | **Video has ArUco markers** (checkbox) | Preferred. Marker width is taken as **15 mm**. Tried first if both boxes are ticked |
-   | **Video has QR codes** (checkbox) | Older datasets. The QR code is treated as **1 cm (10 mm)** |
-   | Neither ticked: **Manual calibration** panel appears | Enter **Known (mm)** and **Pixels**. Pixel size = mm ÷ pixels |
+   | **Video has ArUco markers** (checkbox) | Marker width is taken as **15 mm**. When you start the analysis, the first 20 images are scanned; if no marker is found, or it is narrower than 300 px, a warning appears and the analysis does not start (use manual calibration instead) |
+   | Not ticked: **Manual calibration** panel appears | Enter **Known (mm)** and **Pixels**. Pixel size = mm ÷ pixels |
 
    For manual calibration, click **Open Calibration Helper** (it only appears in
    manual mode). It opens a small viewer on the first image of the video folder:
@@ -231,7 +230,7 @@ Everything in this part happens on the **Plant Analysis** tab, under the heading
 - "Video folder does not exist!"
 - "No images found in the video folder!"
 - "Found N images but no segmentation files! … Segmentation is required for analysis."
-- "Please provide both known distance and pixel distance for manual calibration, or enable "Video has QR codes" or "Video has ArUco markers"!"
+- "Please provide both known distance and pixel distance for manual calibration, or enable "Video has ArUco markers"!"
 - "Calibration values must be positive numbers!" / "Invalid calibration values!" (known distance: a number; pixel distance: an **integer**)
 
 ### Other buttons on the Plant Analysis tab
@@ -485,7 +484,7 @@ Run the [Segmentation app](../segmentation/) first. The video folder needs `Segm
 <details>
 <summary>Scale looks wrong, or lengths are off by a constant factor</summary>
 
-The calibration is wrong. Check the ArUco / QR checkbox against the marker actually in your images.
+The calibration is wrong. Check the ArUco checkbox against the marker actually in your images.
 
 If no marker is found in the first 20 images, post-processing falls back to a default of 0.04 mm/px.
 

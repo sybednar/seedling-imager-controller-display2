@@ -259,9 +259,8 @@ Capture interval, processing limit and project folder appear on both Tab 1 and T
 
 | Option | When to use |
 |---|---|
-| **Video has ArUco markers** (checkbox) | Preferred. Marker width is taken as **15 mm**. Tried first if both boxes are ticked |
-| **Video has QR codes** (checkbox) | Older datasets. QR code treated as **1 cm (10 mm)** |
-| Neither ticked: **Manual calibration** panel appears | Enter **Known (mm)** and **Pixels**. Pixel size = mm ÷ pixels |
+| **Video has ArUco markers** (checkbox) | Marker width is taken as **15 mm**. On **Analyze plant**, the first 20 images are scanned; if no marker is found, or it is narrower than 300 px, a warning appears and the analysis does not start (use manual calibration instead) |
+| Not ticked: **Manual calibration** panel appears | Enter **Known (mm)** and **Pixels**. Pixel size = mm ÷ pixels |
 
 **Open Calibration Helper** (manual mode only): opens a small viewer on the first image of the video folder. Left-click two points of known distance (a distance line and pixel length are drawn), mouse wheel zooms, right-click-drag pans, **Clear Points** resets, **Copy Distance** copies the pixel length to the clipboard. Paste into *Pixels* and enter the real distance in *Known (mm)*. Example placeholders: 10 mm / 240 px.
 
@@ -286,7 +285,7 @@ Capture interval, processing limit and project folder appear on both Tab 1 and T
 - "Video folder does not exist!"
 - "No images found in the video folder!"
 - "Found N images but no segmentation files! … Segmentation is required for analysis."
-- "Please provide both known distance and pixel distance for manual calibration, or enable "Video has QR codes" or "Video has ArUco markers"!"
+- "Please provide both known distance and pixel distance for manual calibration, or enable "Video has ArUco markers"!"
 - "Calibration values must be positive numbers!" / "Invalid calibration values!" (known distance: number, pixel distance: **integer**)
 
 ---
@@ -410,7 +409,7 @@ Measured temporal parameters in the report: Main Root Length, Lateral Roots Leng
 | Symptom | Cause / fix |
 |---|---|
 | "no segmentation files" | Run the Segmentation app first; need `Segmentation/Ensemble/` |
-| Scale looks wrong / lengths off by a constant factor | Wrong calibration. Check ArUco/QR checkbox vs actual marker; if no marker is found in the first 20 images, post-processing falls back to a default of 0.04 mm/px **[VERIFY with the user how visible this is]** |
+| Scale looks wrong / lengths off by a constant factor | Wrong calibration. Check the ArUco checkbox vs actual marker; if no marker is found in the first 20 images, post-processing falls back to a default of 0.04 mm/px **[VERIFY with the user how visible this is]** |
 | Root start click ignored / window closes | Enter only confirms after a click; Esc/C/Q cancels |
 | Plant stays "Not finished" | Analysis still running or crashed; check the terminal. Use Redo Analysis |
 | High error rate | Poor segmentation or wrong ROI/origin. Use View full sequence with Toggle Segmentation, then Redo Analysis |
