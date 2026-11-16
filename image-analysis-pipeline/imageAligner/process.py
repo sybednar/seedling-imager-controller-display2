@@ -29,7 +29,14 @@ def detect_frame(image_path):
     corners, ids, _ = aruco_detect_full(gray)
     if ids is None or len(ids) == 0:
         return None, None
-    return corners, ids
+    
+    pairs = [(c, i) for c, i in zip(corners, ids) if i[0] <= 6]
+    if not pairs:
+        return None, None
+    
+    keep_corners = tuple(c for c,_ in pairs)
+    keep_ids = np.array([i for _,i in pairs])
+    return keep_corners, keep_ids
 
 def _perimeter(marker):
     pts = marker.reshape(4, 2)
