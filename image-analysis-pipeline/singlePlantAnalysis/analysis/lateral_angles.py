@@ -25,6 +25,7 @@ import os
 import csv
 import pandas as pd
 from .report import load_path as loadPath
+from .utils.report_utils import filter_experiments
 import scipy.stats as stats
 import cv2
 import logging
@@ -587,7 +588,7 @@ def makeLateralAnglesPlots(conf):
     """
     parent_folder = conf['MainFolder']
     analysis = os.path.join(conf['MainFolder'], "Analysis")
-    experiments = loadPath(analysis, '*')
+    experiments = filter_experiments(loadPath(analysis, '*'), conf)
     
     report_path = os.path.join(parent_folder, 'Report')
     report_path_angle = os.path.join(report_path, 'Angles Analysis')
@@ -1042,7 +1043,11 @@ def plotLateralAnglesOnTop(conf):
     save_path = os.path.join(conf['MainFolder'], "Report", "Angles Analysis", "Images")
     os.makedirs(save_path, exist_ok=True)
 
+    selected = {os.path.basename(e) for e in filter_experiments(
+        [os.path.join(exp_path, d) for d in os.listdir(exp_path)], conf)}
     for exp in os.listdir(exp_path):
+        if exp not in selected:
+            continue
         # Convert folder name to a safe filename string
         safe_exp = convertToPathSafe(exp)
         cam_path = os.path.join(exp_path, exp)

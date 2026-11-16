@@ -30,7 +30,9 @@ if __name__ == "__main__":
     conf = json.load(open(args.config, 'r'))
     
     analysis_folder = os.path.join(conf['MainFolder'], 'Analysis')
-    experiments = utils.load_paths(analysis_folder, '*')
+    experiments = utils.filter_experiments(utils.load_paths(analysis_folder, '*'), conf, verbose=True)
+    if not experiments:
+        raise SystemExit("No experiments with data to report. Select at least one experiment that has processed plants (run 'Process all plants' first).")
 
     reportPath = os.path.join(conf['MainFolder'], 'Report')
     utils.ensure_directory(reportPath)
@@ -70,16 +72,7 @@ if __name__ == "__main__":
         for exp_dir in experiments:
             # Determine Names: Check metadata for 'Experiment', fallback to path-safe folder name
             exp_dir_name = os.path.basename(exp_dir)
-            real_exp_name = convertFromPathSafe(exp_dir_name) # Default fallback
-            
-            first_meta = utils.load_paths(exp_dir, '*/*/*/metadata.json')
-            if first_meta:
-                try:
-                    with open(first_meta[0], 'r') as f:
-                        meta_data = json.load(f)
-                        real_exp_name = meta_data.get('Experiment', real_exp_name)
-                except:
-                    pass
+            real_exp_name = utils.experiment_display_name(exp_dir)
 
             print(f'Loading experiment: {real_exp_name}')
 

@@ -1,4 +1,5 @@
 from .report import load_path
+from .utils.report_utils import filter_experiments
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -542,7 +543,7 @@ def makeFourierPlots(conf: dict):
                 
                 # Get data paths
                 analysis_path = os.path.join(conf['MainFolder'], 'Analysis')
-                experiments = load_path(analysis_path, '*')
+                experiments = filter_experiments(load_path(analysis_path, '*'), conf)
                 
                 # Process data
                 all_frames_original = processor.read_and_process_data(
