@@ -723,9 +723,52 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
                 )
                 return
         
+        # ArUco guard: refuse to run with a scale the analysis cannot trust
+        if self.videoHasArucoButton.isChecked() and not self.check_aruco_marker(images):
+            return
+
         # All validations passed, run analysis
         self.saveFieldsIntoJson()
         subprocess.Popen([sys.executable, "1_analysis.py", "--config", os.path.join(self.projectField.text(), "project_config.json")])
+
+    MIN_ARUCO_PIXEL_WIDTH = 300
+
+    def check_aruco_marker(self, images):
+        """
+        Scan the first 20 images (same scan as 1_analysis.py / 2_postprocess.py) for an
+        ArUco marker. Returns True if one is found and is at least MIN_ARUCO_PIXEL_WIDTH
+        px wide; otherwise shows a warning and returns False.
+        """
+        advice = "No ArUco marker detected, please use manual calibration instead."
+        width = None
+        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        try:
+            from analysis.qr import aruco_detect, aruco_get_pixel_size
+            for img_path in sorted(images, key=natural_keys)[:20]:
+                detection = aruco_detect(img_path)
+                if detection is not None:
+                    width = float(aruco_get_pixel_size(detection[0]))
+                    break
+        except Exception as e:
+            QtWidgets.QApplication.restoreOverrideCursor()
+            QtWidgets.QMessageBox.warning(
+                None, 'ArUco detection failed',
+                f'Could not check for an ArUco marker ({e}).\n\n{advice}')
+            return False
+        QtWidgets.QApplication.restoreOverrideCursor()
+
+        if width is None:
+            QtWidgets.QMessageBox.warning(
+                None, 'No ArUco marker detected',
+                f'{advice}\n\nNo marker was found in the first 20 images.')
+            return False
+        if width < self.MIN_ARUCO_PIXEL_WIDTH:
+            QtWidgets.QMessageBox.warning(
+                None, 'No ArUco marker detected',
+                f'{advice}\n\nThe detected marker is only {width:.0f} px wide '
+                f'(minimum {self.MIN_ARUCO_PIXEL_WIDTH} px), which is too small for a reliable scale.')
+            return False
+        return True
 
     def redoAnalysis(self):
         metadata_path = os.path.join(self.selected_plant, "metadata.json")
@@ -1739,11 +1782,7 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         self.loadLastConfigButton.setToolTip("Restore the most recently used settings.")
         
         self.saveImagesButton.setToolTip("Save individual plant crops; required for creating growth time-lapse videos.")
-        self.videoHasQRbutton.setToolTip("Enable automatic scale detection using the 1-cm QR code in the images.")
-        self.videoHasArucoButton.setToolTip(
-            "Enable automatic scale detection using ArUco markers in the images.\n"
-            "Tried before QR codes when both are enabled."
-        )
+        self.videoHasArucoButton.setToolTip("Enable automatic scale detection using ArUco markers in the images.")
         self.calibrateBtn.setToolTip("Manually define the physical scale by measuring a known distance in the image.")
 
         # --- Tab 2: Analysis Overview ---
