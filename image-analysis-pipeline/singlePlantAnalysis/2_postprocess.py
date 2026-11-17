@@ -21,6 +21,7 @@ from analysis.qr import qr_detect, get_pixel_size, aruco_detect, aruco_get_pixel
 from analysis.report import plot_individual_plant
 from analysis.lateral_angles import getAngles
 from analysis.utils.fileUtilities import convertFromPathSafe, loadImageFiles
+from analysis.utils.calibration import ARUCO_MARKER_MM, MIN_ARUCO_PIXEL_WIDTH, DEFAULT_PIXEL_SIZE
 import json
 import os 
 import pandas as pd
@@ -85,18 +86,30 @@ if __name__ == "__main__":
                 else:
                     image_path = metadata['ImagePath']
                     images = loadImageFiles(image_path)
-                    pixel_size = 0.04  # Default
+                    pixel_size = DEFAULT_PIXEL_SIZE
+                    marker_found = False
                     for image in images[:20]:
                         if has_aruco:
                             aruco_result = aruco_detect(image)
                             if aruco_result is not None:
-                                pixel_size = 15 / aruco_get_pixel_size(aruco_result[0])
+                                marker_px = aruco_get_pixel_size(aruco_result[0])
+                                pixel_size = ARUCO_MARKER_MM / marker_px
+                                marker_found = True
+                                if marker_px < MIN_ARUCO_PIXEL_WIDTH:
+                                    print(f"WARNING: the ArUco marker for '{readable_name}' is only {marker_px:.0f} px wide "
+                                          f"(minimum {MIN_ARUCO_PIXEL_WIDTH} px), so the scale may be unreliable. "
+                                          "Consider manual calibration instead.")
                                 break
                         if has_qr:
                             qr = qr_detect(image)
                             if qr is not None:
                                 pixel_size = 10 / get_pixel_size(qr[0])
+                                marker_found = True
                                 break
+                    if not marker_found:
+                        print(f"WARNING: no calibration marker found in the first 20 images of '{readable_name}'. "
+                              f"Falling back to the default pixel size of {DEFAULT_PIXEL_SIZE} mm/px, so all "
+                              "measurements in mm are probably wrong. Use manual calibration instead.")
 
             # 3. Process Individual Plants
             for plant in plants:
