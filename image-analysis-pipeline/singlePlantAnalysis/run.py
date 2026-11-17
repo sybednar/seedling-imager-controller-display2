@@ -33,6 +33,7 @@ import os
 from PIL import Image
 from analysis.utils.fileUtilities import convertFromPathSafe, getImages
 from analysis.utils.report_utils import experiment_display_name
+from analysis.utils.calibration import ARUCO_MARKER_MM, MIN_ARUCO_PIXEL_WIDTH
         
 def natural_keys(text):
     return [int(c) if c.isdigit() else c for c in re.split(r'(\d+)', text)]
@@ -731,8 +732,6 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         self.saveFieldsIntoJson()
         subprocess.Popen([sys.executable, "1_analysis.py", "--config", os.path.join(self.projectField.text(), "project_config.json")])
 
-    MIN_ARUCO_PIXEL_WIDTH = 300
-
     def check_aruco_marker(self, images):
         """
         Scan the first 20 images (same scan as 1_analysis.py / 2_postprocess.py) for an
@@ -765,11 +764,11 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
                 None, 'No ArUco marker detected',
                 f'{advice}\n\nNo marker was found in the first 20 images.')
             return False
-        if width < self.MIN_ARUCO_PIXEL_WIDTH:
+        if width < MIN_ARUCO_PIXEL_WIDTH:
             QtWidgets.QMessageBox.warning(
                 None, 'No ArUco marker detected',
                 f'{advice}\n\nThe detected marker is only {width:.0f} px wide '
-                f'(minimum {self.MIN_ARUCO_PIXEL_WIDTH} px), which is too small for a reliable scale.')
+                f'(minimum {MIN_ARUCO_PIXEL_WIDTH} px), which is too small for a reliable scale.')
             return False
         return self.show_aruco_precheck(found_path, found_detection, width)
 
@@ -815,7 +814,7 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         n = len(detection)
         layout.addWidget(QLabel(
             f"<b>Detected {n} ArUco marker{'s' if n != 1 else ''} in {os.path.basename(img_path)}</b><br>"
-            f"Marker width (sets the scale): <b>{width:.0f} px</b> = 15 mm<br>"
+            f"Marker width (sets the scale): <b>{width:.0f} px</b> = {ARUCO_MARKER_MM} mm<br>"
             "Check that the green outline sits on the marker. If it does not, cancel and use manual calibration."))
         images_row = QHBoxLayout()
         for pm in (full_pixmap, crop_pixmap):
