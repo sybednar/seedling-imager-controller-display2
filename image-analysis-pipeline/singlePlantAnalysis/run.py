@@ -32,7 +32,7 @@ import glob
 import os
 from PIL import Image
 from analysis.utils.fileUtilities import convertFromPathSafe, getImages
-from analysis.utils.report_utils import experiment_display_name
+from analysis.utils.report_utils import experiment_display_name, filter_experiments
 from analysis.utils.calibration import ARUCO_MARKER_MM, MIN_ARUCO_PIXEL_WIDTH
         
 def natural_keys(text):
@@ -88,6 +88,8 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         
         data["daysConvexHull"] = self.daysConvexField.text()
         data["daysAngles"] = self.daysAnglesField.text()
+        # Drop names that are not in this project's Analysis/ (e.g. left over from another project)
+        self.update_experiment_summary()  # prunes stale names and refreshes the button
         # None = every experiment in Analysis/ (also for configs saved before this option)
         data["selectedExperiments"] = self.selectedExperiments
 
@@ -246,16 +248,36 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
 
         return
 
-    def list_report_experiments(self):
-        """Display names of the experiment folders under <project>/Analysis."""
+    def report_experiment_folders(self):
+        """Experiment folders under <project>/Analysis."""
         analysis = os.path.join(self.projectField.text(), "Analysis")
         if not os.path.isdir(analysis):
             return []
-        folders = sorted(os.path.join(analysis, d) for d in os.listdir(analysis)
-                         if os.path.isdir(os.path.join(analysis, d)))
-        return [experiment_display_name(f) for f in folders]
+        return sorted(os.path.join(analysis, d) for d in os.listdir(analysis)
+                      if os.path.isdir(os.path.join(analysis, d)))
+
+    def list_report_experiments(self):
+        """Display names of the experiment folders under <project>/Analysis."""
+        return [experiment_display_name(f) for f in self.report_experiment_folders()]
+
+    def prune_selected_experiments(self):
+        """
+        Remove selected names that do not exist in the current project. A selection that was
+        non-empty but is now entirely stale (typically left over after switching projects)
+        falls back to None = all experiments, instead of silently producing an empty report.
+        A deliberately empty selection ([]) is kept so report() can tell the user about it.
+        """
+        if self.selectedExperiments is None:
+            return
+        available = set(self.list_report_experiments())
+        pruned = [e for e in self.selectedExperiments if e in available]
+        if self.selectedExperiments and not pruned:
+            self.selectedExperiments = None
+        else:
+            self.selectedExperiments = pruned
 
     def update_experiment_summary(self):
+        self.prune_selected_experiments()
         available = self.list_report_experiments()
         if self.selectedExperiments is None:
             chosen = available
@@ -913,6 +935,15 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
 
     def report(self):
         self.saveFieldsIntoJson()
+        kept = filter_experiments(self.report_experiment_folders(),
+                                  {"selectedExperiments": self.selectedExperiments})
+        if not kept:
+            QtWidgets.QMessageBox.warning(
+                None, 'No experiments to report',
+                'There are no experiments to include in the report.\n\n'
+                'Either none are selected (see the Experiments button), or the selected ones '
+                'have no processed plants yet. Run "Process all plants" first.')
+            return
         subprocess.Popen([sys.executable, "3_generateReport.py", "--config", os.path.join(self.projectField.text(), "project_config.json")])   
 
     def syncProjectFolderField(self):
