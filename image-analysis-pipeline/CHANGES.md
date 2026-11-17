@@ -1,3 +1,57 @@
+# Changes — 2026-11-16 (f)
+
+## ArUco detector now uses `DICT_4X4_50` (was `DICT_4X4_1000`)
+
+Changed in `analysis/qr.py` (`aruco_detect_full`, commit `970e2a2`), together with
+two related detector settings. All of it applies wherever `aruco_detect` is used:
+the GUI guard and precheck, `1_analysis.py`, `2_postprocess.py`.
+
+- **Dictionary:** `DICT_4X4_1000` -> `DICT_4X4_50`. A marker is only detected if
+  it comes from the 4x4_50 dictionary. **Markers generated from the 4x4_1000
+  dictionary are no longer detected**, so images that rely on them now report "no
+  marker" (the GUI warns; post-processing falls back to 0.04 mm/px with a warning)
+  and need manual calibration. Check any older dataset before re-running it.
+- **ID filter:** `aruco_detect` keeps only markers with ID 0-6 and returns `None`
+  if none remain, so other markers in the frame are never used for the scale. The
+  image aligner's `detect_frame` (`imageAligner/process.py`) uses the same filter.
+- **`aprilTagQuadSigma = 1.0`** is now set. It was checked on real data. The
+  comment that explained why `CORNER_REFINE_APRILTAG` is used was removed in the
+  same change; the refinement method itself is unchanged.
+- `aruco_detect` returns `None` for an unreadable image (see the entry below).
+
+---
+
+# Changes — 2026-11-16 (e)
+
+## Fixes from the code review of the experiment filter / ArUco work
+
+- **Stale experiment selection.** `selectedExperiments` was plain state in
+  `run.py`, so after switching projects the old project's names were saved into
+  the new one and the report found nothing (only a terminal message). Names not in
+  the current project's `Analysis/` are now pruned on save and on opening the
+  Generate Report tab; a selection that is entirely stale falls back to "all". A
+  deliberately empty selection is kept, and `report()` now shows a message box when
+  no experiment is selected or none has processed plants, instead of launching a
+  report that exits silently.
+- **`2_postprocess.py` no longer falls back to 0.04 mm/px silently.** When a marker
+  is expected but none is found in the first 20 images it prints a `WARNING`, and it
+  also warns when the ArUco marker is under 300 px. The checks on the analysis
+  button stay GUI-only (documented). The 300 px threshold, the 15 mm marker size and
+  the 0.04 default are now shared constants in `analysis/utils/calibration.py`.
+- **`aruco_detect` returns `None` for an unreadable image** instead of raising, so
+  one bad file among the first 20 no longer blocks the guard or post-processing.
+- **`singlePlantAnalysis/README.md`** rewritten for the ArUco-or-manual workflow:
+  removed the QR checkbox, corrected the dictionary (`DICT_4X4_50`, IDs 0-6) and marker
+  size (15 mm), fixed the fallback description, and documented the guard, the
+  precheck window and the experiment selection.
+
+Tested offscreen: project A -> B switch (stale selection reset, report launches),
+partially stale selection pruned, deliberate empty selection and a project with no
+processed data (message box, no launch), a corrupt image followed by a good one.
+The new warnings in `2_postprocess.py` were syntax-checked but not run end to end.
+
+---
+
 # Changes — 2026-11-16 (d)
 
 ## ArUco precheck window before analysis
