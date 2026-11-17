@@ -171,6 +171,8 @@ def aruco_detect_full(img):
 
 def aruco_detect(inputImage):
     img = cv2.imread(inputImage, cv2.IMREAD_GRAYSCALE)
+    if img is None:  # unreadable/corrupt file: treat as "no marker" so callers move on to the next frame
+        return None
     corners, ids, _ = aruco_detect_full(img)            
     if ids is None or len(ids) == 0:
         return None
