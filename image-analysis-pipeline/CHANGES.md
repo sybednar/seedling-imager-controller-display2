@@ -1,3 +1,59 @@
+# Changes — 2026-11-19
+
+## Feature: Batch Analyze button (not a bug fix)
+
+New **Batch Analyze** button on Tab 1 of `singlePlantAnalysis/run.py`. It shows the last
+frame of the plate once, with a box auto-proposed per plant, so you confirm all ROIs and click
+every root origin in one sitting, then analyses each plant one after another with no more
+prompts.
+
+- **New files** (`singlePlantAnalysis/`): `batch_setup.py` (entry point and sequential
+  runner), `analysis/utils/componentROIs.py` (proposes boxes from the last frame's
+  segmentation), `analysis/utils/boxEdit.py` (move/resize/hit-test logic for the confirm screen),
+  `analysis/utils/configPrep.py` (config preparation shared with Analyze Plant),
+  `test_batch_rois.py` and `test_batch_gui.py`.
+- **Changed:** `analysis/utils/getROIandSeed.py` (`selectPlantROIs`, `getPlateROIsAndSeeds`)
+  and `run.py` (the button; input validation, including the ArUco guard, is now shared
+  with Analyze Plant).
+- Boxes are proposed from the connected components of the last frame's segmentation (each
+  seed's connected component, plus any unseeded component of at least 200 px within 300 px
+  attached to its nearest seed, since seeds are often detached from their roots;
+  leftmost/rightmost/topmost/bottommost pixel plus a 20 px margin). A box
+  holding several seed blobs (touching plants, or one seed split in pieces) is flagged on
+  screen so you can check it; large roots/shoots too far from any seed are left out and the screen says so (the notice fades after about 8 seconds); every
+  box stays editable; a drag on empty space draws a new one, and S toggles a segmentation overlay. Each plant's Select Root Origin starts clean, and the processing
+  limit is respected.
+- The root origin is always a manual click per box, never detected. Plants are numbered top row first (left to right), then bottom row (left to right); rows are split at the image middle by each box's vertical midpoint (exactly on the middle counts as top). Plants are numbered 1..N by position and the Plant Number field is ignored, so results can replace an earlier single-plant run with the same number in post-processing.
+- Writes `batch_plants.json` (plant number, box, seed) in the project folder; per-plant
+  results are the same as a normal run. A plant that fails is reported and the batch
+  continues; the process exits with code 1 if any plant failed.
+- Not yet run end to end on a real plate; compare one plant's `Results_raw.csv` with an
+  Analyze Plant run using the same box and origin.
+- Tests: `python -m unittest test_batch_rois test_batch_gui -v` from `singlePlantAnalysis/`.
+
+---
+
+# Changes — 2026-11-18
+
+## Unit tests for the ArUco ID filter and the GUI guard
+
+New `singlePlantAnalysis/test_aruco_guard.py` (21 `unittest` tests, headless Qt, synthetic
+`cv2.aruco` markers; run with `python -m unittest test_aruco_guard -v` from
+`singlePlantAnalysis/` in the `ChronoRoot` env).
+
+- **`aruco_detect`:** IDs 0-6 detected, 7/20/49 ignored, only the allowed marker kept
+  when several are present, a 4x4_1000-only marker (ID 500) not detected, and a corrupt
+  or missing file returns `None`.
+- **`check_aruco_marker` / `analysis()`:** no marker, an ignored ID, or a marker under
+  the 300 px minimum warn and block; a valid marker reaches the precheck and the user's
+  answer is returned; a bad image does not stop the scan; only the first 20 images are
+  scanned, in natural order; the cursor is always restored; the analysis only launches
+  after a confirmed marker and the guard is skipped with manual calibration.
+- Checked that they fail when the code is broken (ID filter widened, `None` check
+  removed, width check disabled, guard not called from `analysis()`).
+
+---
+
 # Changes — 2026-11-16 (f)
 
 ## ArUco detector now uses `DICT_4X4_50` (was `DICT_4X4_1000`)

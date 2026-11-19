@@ -271,6 +271,7 @@ Capture interval, processing limit and project folder appear on both Tab 1 and T
 | **Save** | Writes all fields to the global config and to `<project>/project_config.json` |
 | **Preview video** | Opens the sequence viewer on the raw frames to eyeball image quality and segmentation |
 | **Analyze Plant** | Validates inputs, saves config, and starts the analysis in a separate process |
+| **Batch Analyze** | Validates inputs like Analyze Plant (including the ArUco check), then opens one plate-level window to set up every plant before analysing them all (see below) |
 | **Process all plants** | Runs post-processing for the whole project (see Step 5) |
 | **Load config json from file** | Pick any saved `.json` config and fill the form |
 | **Load previous configuration** | Restore the last saved settings (project config if it exists, otherwise global) |
@@ -279,6 +280,12 @@ Capture interval, processing limit and project folder appear on both Tab 1 and T
 1. **"Select Plant ROI"** shows the **last** frame. Click-drag a rectangle around the plant (rectangular; include the whole root's final extent but avoid neighbouring plants if you can). Keys: **Enter** confirm · **R** redo · **Q** quit.
 2. **"Select Root Origin"** shows the cropped ROI. Drag the trackbar to scrub through time; press **S** to toggle the segmentation colour overlay. **Click** where the root starts (a green cross and "Root Start" line appear). Keys: **Enter** confirm · **S** toggle segmentation · **Esc / C / Q** cancel. (Note: The model may sometimes missegment shoots as roots during early growth stages, it is important to go through the whole timelapse and make sure the you are selecting the true root origin to prevent inaccuracies in measurements)
 3. Tracking runs through every frame
+
+**What happens after "Batch Analyze"** (use it instead of repeating Analyze Plant for each plant on the plate):
+1. **"Confirm Plant ROIs"** shows the **last** frame with a box auto-proposed for each plant: the box is the bounding box (plus a 20 px margin) of the plant's connected component in the last frame's segmentation, starting from each seed; because seeds are often detached from their roots, any unseeded piece of at least 200 px within 300 px is attached to its nearest seed. Touching plants merge into one box, so when a box holds several seed blobs (touching plants, or one seed split into pieces) the screen says so; large roots/shoots too far from any seed are left out and the screen says so (the notice disappears after about 8 seconds). Check every box and split or redraw by hand where needed. The **Processing limit** is respected. Plants are numbered **top row first (left to right), then bottom row (left to right)**: rows are split at the middle of the image by each box's vertical midpoint (exactly on the middle counts as top). Batch Analyze numbers plants 1..N by position and ignores the Plant Number field, so its results can replace an earlier single-plant run with the same number in post-processing; the numbers on the boxes are the final ones. Mouse and keys: **drag on empty space** draw a new box · **drag a box body** move it · **drag an edge** resize it · **D** delete the selected box · **S** toggle the segmentation overlay · **A** optional add mode (**A** or **Esc** again leaves it) · **Enter** confirm · **Q / Esc / close the window** cancel (nothing is analysed).
+2. For each plant in turn, **"Select Root Origin"** opens on that box, exactly as for Analyze Plant, with no origin placed yet. The root origin is **always a manual click**; it is never detected automatically, so the same caution about shoots mis-segmented as roots applies.
+3. Each plant is then analysed in order, with no further prompts. The settings are saved to `batch_plants.json` in the project folder (plant, box, seed). Per-plant results are written as for a normal run.
+4. A plant that fails is reported and the batch carries on with the rest; the run exits with code 1 if any plant failed. A summary line ("Batch finished: N succeeded, M failed") is printed.
 
 **Validation messages the user may see**
 - "Please specify a video folder first!"
@@ -403,7 +410,11 @@ Settings are also saved globally to `~/.config/chronoroot/mainInterfaceConfig.js
 Measured temporal parameters in the report: Main Root Length, Lateral Roots Length, Total Length (all mm), Number of Lateral Roots, Discrete Lateral Density (LR/cm), Main Over Total (%), Hypocotyl Length (mm).
 
 ### Batch/headless scripts (in `singlePlantAnalysis/`)
-`1_analysis.py --config <json> [--rerun | --restart]`, `2_postprocess.py --config <json>`, `3_generateReport.py --config <json>`, `5_rerun_all_analysis.py`. The GUI buttons call these.
+The **Batch Analyze** button runs `batch_setup.py --config <json>`, which does the plate-level setup and then analyses every plant.
+
+`1_analysis.py --config <json> [--rerun | --restart]`, `2_postprocess.py --config <json>`, `3_generateReport.py --config <json>`. The GUI buttons call these.
+
+`5_rerun_all_analysis.py` is also in that folder, but no GUI button calls it. It is a command-line-only batch script inherited from upstream ChronoRoot2, with hardcoded `/DATA/tomatest` input and `/DATA/tomatest_2` output paths and tomato-specific settings, so edit it before using it on other data.
 
 ### Troubleshooting
 | Symptom | Cause / fix |

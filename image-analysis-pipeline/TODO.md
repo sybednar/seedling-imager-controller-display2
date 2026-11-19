@@ -85,3 +85,52 @@ Open items found while moving the pipeline into the monorepo (not applied):
   `frontend/astro.config.mjs`). Remaining: set repo Settings > Pages > Source to
   "GitHub Actions" after merging to `main`; the `frontend/design/*.html`
   mockups still carry the old URLs.
+
+## Report experiment filter / ArUco calibration — open follow-ups
+
+From the 2026-11-16 code review of the experiment filter, ArUco guard and precheck
+(the Important items were fixed; these were left). None is a crash on current data.
+
+- `analysis/qr.py` imports `pyzbar` at the top, so the ArUco guard fails with
+  "ArUco detection failed" on a machine without libzbar even though ArUco-only use
+  does not need it. Lazy-import `pyzbar` inside `qr_detect`.
+- `report_utils.experiment_display_name` reads only the first `metadata.json`; metadata
+  that is not a dict raises `AttributeError`, and `{"Experiment": null}` returns `None`
+  (shows as "None" in the GUI and report). It also does not apply `convertFromPathSafe`
+  to the metadata name the way `2_postprocess.py` does, so names containing `_dot_` can differ.
+- `filter_experiments` matches display name *or* folder name, so two folders with the
+  same display name are selected/deselected together. Matching and storing the folder
+  basename only would avoid it.
+- `plotLateralAnglesOnTop` now also applies the has-data check (skips experiments without
+  `PostProcess_Hour.csv`) and runs the filter over every `os.listdir` entry, including plain files.
+- Deselecting an experiment does not remove its old files in `Report/` (per-experiment
+  images, `Individual plant plots/<exp>`); only `Temporal_Data.csv` is rebuilt
+  (`FORCE_REPORT = True`).
+- `check_aruco_marker` scans up to 20 large images on the GUI thread (UI freezes briefly);
+  the wait cursor is restored manually instead of in a `try/finally`. The precheck dialog
+  reads 16-bit images as 8-bit, so a dim image can look dark.
+- The new `WARNING`s in `2_postprocess.py` (no marker / marker under 300 px) were only
+  syntax-checked, not run end to end on a real project.
+- `test_report_filter.py` does not cover metadata that is not a dict, a null `Experiment`,
+  files mixed into `Analysis/`, or `plotLateralAnglesOnTop`.
+- `analysis/qr.py::aruco_detect_full` lost its comment explaining why
+  `CORNER_REFINE_APRILTAG` is used (rigid-marker side length stable to ~0.2 px vs SUBPIX
+  1-4 px off); consider restoring it.
+
+
+## Batch Analyze follow-ups
+
+Parked items from the Batch Analyze work (`singlePlantAnalysis/batch_setup.py`,
+`analysis/utils/getROIandSeed.py`):
+
+- Confirm screen: a drag drifts after an edge clamp (the box stops at the image edge
+  but the drag anchor keeps moving).
+- `run_batch`: a plant whose `plantAnalysis` returns early (no root found) still counts
+  as a success.
+- The Batch Analyze button is cramped (141x28 at the bottom of Tab 1).
+- User-reported "needs a double click to select/add a box" on the confirm screen;
+  not reproduced (macOS Cocoa HighGUI window focus suspected).
+- The box proposal merges touching plants into one box; splitting by nearest seed is
+  a possible follow-up.
+- `apply_processing_limit` / `setupPlantAnalysis` hardcode `* 24 * 4` (a 15-minute
+  capture interval).

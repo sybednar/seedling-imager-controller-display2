@@ -233,6 +233,47 @@ Everything in this part happens on the **Plant Analysis** tab, under the heading
 - "Please provide both known distance and pixel distance for manual calibration, or enable "Video has ArUco markers"!"
 - "Calibration values must be positive numbers!" / "Invalid calibration values!" (known distance: a number; pixel distance: an **integer**)
 
+### Analyze every plant on the plate: Batch Analyze
+
+Use **Batch Analyze** instead of repeating **Analyze Plant** for each plant.
+
+1. A **"Confirm Plant ROIs"** window shows the last frame with a box auto-proposed
+   for each plant: the bounding box (plus a 20 px margin) of the plant's connected
+   component in the last frame's segmentation, starting from each seed; because
+   seeds are often detached from their roots, any unseeded piece of at least 200 px
+   within 300 px is attached to its nearest seed. Touching
+   plants merge into one box, so when a box holds several seed blobs (touching
+   plants, or one seed split into pieces) the screen says so; large roots/shoots too
+   far from any seed are left out and the screen says so (the notice disappears after
+   about 8 seconds). Check every box and split or redraw by hand where needed.
+   Plants are numbered **top row first (left to right), then bottom row (left to
+   right)**: rows are split at the middle of the image by each box's vertical midpoint
+   (exactly on the middle counts as top), and the numbers shown on the boxes are the
+   final ones. Batch Analyze numbers plants 1..N by position and ignores the **Plant
+   Number** field, so its results can replace an earlier single-plant run with the
+   same number in post-processing. The **Processing limit** is respected.
+2. Edit the boxes:
+
+   | Action | Result |
+   |---|---|
+   | **Drag on empty space** | Draw a new box |
+   | **Drag a box body** | Move it |
+   | **Drag an edge** | Resize it |
+   | **D** | Delete the selected box |
+   | **S** | Toggle the segmentation overlay (off by default) |
+   | **A** | Optional add mode (**A** or **Esc** again leaves it) |
+   | **Enter** | Confirm |
+   | **Q / Esc / close the window** | Cancel (nothing is analysed) |
+
+3. For each plant in turn, a **"Select Root Origin"** window opens on that box. The
+   root origin is **always a manual click**; it is never detected automatically.
+   Each plant starts with no origin placed.
+4. Each plant is then analysed in order with no more prompts. The settings are saved
+   to `batch_plants.json` in the project folder, and per-plant results are written as
+   for a normal run.
+5. If a plant fails, the batch reports it and carries on with the rest. The run exits
+   with code 1 if any plant failed.
+
 ### Other buttons on the Plant Analysis tab
 
 | Button | What it does |
@@ -240,6 +281,7 @@ Everything in this part happens on the **Plant Analysis** tab, under the heading
 | **Save** | Writes all fields to the global config and to `<project>/project_config.json` |
 | **Preview video** | Opens the sequence viewer on the raw frames |
 | **Analyze Plant** | Validates inputs, saves config, and starts the analysis in a separate process |
+| **Batch Analyze** | Validates inputs like Analyze Plant (including the ArUco check), then opens one plate-level window to set up every plant before analysing them all (see [Analyze every plant on the plate](#analyze-every-plant-on-the-plate-batch-analyze) above) |
 | **Process all plants** | Runs post-processing for the whole project (see Step 12) |
 | **Load config json from file** | Pick any saved `.json` config and fill the form |
 | **Load previous configuration** | Restore the last saved settings (project config if it exists, otherwise global) |
@@ -464,9 +506,13 @@ In `singlePlantAnalysis/`:
 - `1_analysis.py --config <json> [--rerun | --restart]`
 - `2_postprocess.py --config <json>`
 - `3_generateReport.py --config <json>`
-- `5_rerun_all_analysis.py`
 
-The GUI buttons call these.
+The GUI buttons call these. **Batch Analyze** runs `batch_setup.py --config <json>`.
+
+`5_rerun_all_analysis.py` is also in that folder, but no GUI button calls it. It is a
+command-line-only batch script inherited from upstream ChronoRoot2, with hardcoded
+`/DATA/tomatest` input and `/DATA/tomatest_2` output paths and tomato-specific
+settings, so edit it before using it on other data.
 
 <mark class="verify">[TODO: the source guide lists these scripts but gives no example command lines or a description of what a config .json contains. Add real examples if you want them on this page.]</mark>
 
