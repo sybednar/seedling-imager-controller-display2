@@ -87,7 +87,8 @@ class ComponentRoiTests(unittest.TestCase):
         self.seed(200, 300)
         d = cr.propose_component_boxes_detail(self.save())
         self.assertEqual((d['n_seed_blobs'], d['n_components_with_seed'],
-                          d['n_merged_components'], d['n_attached'], d['n_unattached']), (2, 2, 0, 0, 0))
+                          d['n_merged_components'], d['n_attached'], d['n_unattached'],
+                          d['n_specks_ignored']), (2, 2, 0, 0, 0, 0))
 
     def test_detached_root_attaches_to_standalone_seed(self):
         self.seed(200, 100)
@@ -118,7 +119,7 @@ class ComponentRoiTests(unittest.TestCase):
         self.m[260:340, 100:104] = 1      # gap 41
         d = cr.propose_component_boxes_detail(self.save(), max_attach_distance=30)
         self.assertEqual(d['boxes'], [[180, 240, 80, 140]])
-        self.assertEqual((d['n_attached'], d['n_unattached']), (0, 1))
+        self.assertEqual((d['n_attached'], d['n_unattached'], d['n_specks_ignored']), (0, 1, 0))
         d = cr.propose_component_boxes_detail(self.save(), max_attach_distance=41)
         self.assertEqual(d['n_attached'], 1)
 
@@ -127,7 +128,24 @@ class ComponentRoiTests(unittest.TestCase):
         self.m[230:235, 100:105] = 1      # area 25, gap 10
         d = cr.propose_component_boxes_detail(self.save())
         self.assertEqual(d['boxes'], [[180, 240, 80, 140]])
-        self.assertEqual((d['n_attached'], d['n_unattached']), (0, 1))
+        self.assertEqual((d['n_attached'], d['n_unattached'], d['n_specks_ignored']), (0, 0, 1))
+
+    def test_large_seeded_component_with_many_candidates(self):
+        big = np.zeros((1500, 1500), np.uint8)
+        big[700:710, 50:1450] = 1          # long root spanning most of the mask
+        big[690:710, 50:70] = 3            # seed on it
+        for x in (200, 600, 1000):         # candidates 15x15 (area 225), gap ~40
+            big[640:655, x:x + 15] = 2
+            big[760:775, x:x + 15] = 2
+        big[1450:1465, 700:715] = 2        # gap ~740: too far
+        big[300:305, 300:305] = 2          # speck
+        path = os.path.join(self.dir, "big.png")
+        cv2.imwrite(path, big)
+        d = cr.propose_component_boxes_detail(path)
+        self.assertEqual(d['boxes'], [[620, 795, 30, 1470]])
+        self.assertEqual((d['n_attached'], d['n_unattached'], d['n_specks_ignored']), (6, 1, 1))
+        # an in-memory mask gives the same answer as the path
+        self.assertEqual(cr.propose_component_boxes_detail(big), d)
 
     def test_lone_seed_still_gets_its_small_box(self):
         self.seed(200, 100)
@@ -205,23 +223,28 @@ class ComponentRoiTests(unittest.TestCase):
 
 
 class NoticeTests(unittest.TestCase):
-    def d(self, n, merged=0, attached=0, unattached=0):
+    def d(self, n, merged=0, attached=0, unattached=0, specks=0):
         return {'boxes': [[0, 1, 0, 1]] * n, 'n_seed_blobs': n, 'n_components_with_seed': n,
                 'n_merged_components': merged, 'n_attached': attached,
-                'n_unattached': unattached}
+                'n_unattached': unattached, 'n_specks_ignored': specks}
 
     def test_plain_notice_has_no_warnings(self):
         t = cr.proposal_notice(self.d(3))
         self.assertIn("3 boxes", t)
-        for word in ("share", "attached", "left out"):
+        for word in ("share", "attached", "left out", "far"):
             self.assertNotIn(word, t)
 
     def test_merge_attach_unattached_mentioned_only_when_present(self):
         t = cr.proposal_notice(self.d(2, merged=1, attached=7, unattached=2))
         self.assertIn("seed blobs share a box", t)
         self.assertIn("7 roots/shoots attached to seeds", t)
-        self.assertIn("2 far/small pieces left out", t)
+        self.assertIn("2 roots/shoots too far from any seed were left out", t)
         self.assertIn("1 box", cr.proposal_notice(self.d(1)))
+
+    def test_specks_not_mentioned_in_notice(self):
+        t = cr.proposal_notice(self.d(3, specks=347))
+        self.assertNotIn("347", t)
+        self.assertNotIn("left out", t)
 
     def test_notice_lines_short_and_none_when_no_boxes(self):
         t = cr.proposal_notice(self.d(11, merged=7, attached=12, unattached=30))
@@ -486,7 +509,8 @@ class PlateRoisTests(unittest.TestCase):
     def detail(boxes, blobs=None, merged=0, skipped=0):
         return {'boxes': boxes, 'n_seed_blobs': blobs if blobs is not None else len(boxes),
                 'n_components_with_seed': len(boxes), 'n_merged_components': merged,
-                'n_attached': 0, 'n_unattached': skipped}
+                'n_attached': 0, 'n_unattached': skipped,
+                'n_specks_ignored': 0}
 
     def patch_detail(self, **kw):
         return mock.patch.object(gr.componentROIs, 'propose_component_boxes_detail', **kw)
@@ -495,11 +519,32 @@ class PlateRoisTests(unittest.TestCase):
         boxes = [[10, 60, 10, 60], [10, 60, 100, 150]]
         with self.patch_detail(return_value=self.detail(boxes, blobs=3, merged=1)) as pr:
             _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
-        self.assertEqual(pr.call_args[0][0], self.seg)
+        self.assertIsInstance(pr.call_args[0][0], np.ndarray)   # mask read once, passed in
+        self.assertEqual(pr.call_args[0][0].shape, (H, W))
         self.assertEqual(sp.call_args[0][1], boxes)
         notice = sp.call_args[1]['notice']
         self.assertIn("2 boxes", notice)
         self.assertIn("seed blobs share a box", notice)
+
+    def test_getPlateROIsAndSeeds_pairs_last_common_image_and_mask(self):
+        imgs = []
+        for k, v in enumerate((5, 7, 9)):
+            p = os.path.join(self.dir, "i%d.png" % k)
+            cv2.imwrite(p, np.full((H, W, 3), v, np.uint8))
+            imgs.append(p)
+        m1 = np.zeros((H, W), np.uint8); m1[10:30, 10:30] = 3; m1[30:80, 12] = 1
+        m2 = np.zeros((H, W), np.uint8); m2[100:120, 100:120] = 3; m2[120:180, 102] = 1
+        segs = []
+        for k, m in enumerate((m1, m2)):
+            p = os.path.join(self.dir, "s%d.png" % k)
+            cv2.imwrite(p, m)
+            segs.append(p)
+        with mock.patch.object(gr, 'selectPlantROIs', return_value=[[0, 100, 0, 100]]) as sp, \
+             mock.patch.object(gr, 'selectSeed', return_value=[1, 1]):
+            gr.getPlateROIsAndSeeds(self.conf, imgs, segs)
+        self.assertEqual(int(sp.call_args[0][0][0, 0, 0]), 7)         # images[1], not images[2]
+        self.assertEqual(int(sp.call_args[1]['seg'][110, 110]), 3)    # segs[1]
+        self.assertEqual(sp.call_args[0][1], [[80, 200, 80, 140]])    # proposal from segs[1]
 
     def test_getPlateROIsAndSeeds_passes_last_segmentation_mask(self):
         _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])

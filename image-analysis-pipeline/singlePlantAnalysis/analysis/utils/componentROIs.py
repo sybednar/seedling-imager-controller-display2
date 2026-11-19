@@ -18,7 +18,7 @@ SEED_CLASS = 3
 PLANT_CLASSES = (1, 2, 3, 4, 5, 6)
 
 
-def propose_component_boxes_detail(seg_path, min_seed_area=30, margin=20,
+def propose_component_boxes_detail(seg, min_seed_area=30, margin=20,
                                    min_attach_area=200, max_attach_distance=300):
     """Propose boxes and report how they were formed.
 
@@ -31,12 +31,16 @@ def propose_component_boxes_detail(seg_path, min_seed_area=30, margin=20,
     Returns a dict: ``boxes`` (ordered like boxEdit.renumber), ``n_seed_blobs``
     (qualifying class-3 blobs), ``n_components_with_seed``, ``n_merged_components``
     (components holding more than one seed blob: touching plants or a split seed),
-    ``n_attached`` (components attached to a seeded one) and ``n_unattached``
-    (non-seeded components ignored for being too small or too far).
+    ``n_attached`` (components attached to a seeded one), ``n_unattached`` (large
+    components farther than ``max_attach_distance`` from every seed) and
+    ``n_specks_ignored`` (components under ``min_attach_area``).
+
+    ``seg`` is a path or an already-read grayscale mask array.
     """
     out = {'boxes': [], 'n_seed_blobs': 0, 'n_components_with_seed': 0,
-           'n_merged_components': 0, 'n_attached': 0, 'n_unattached': 0}
-    mask = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)
+           'n_merged_components': 0, 'n_attached': 0, 'n_unattached': 0,
+           'n_specks_ignored': 0}
+    mask = cv2.imread(seg, cv2.IMREAD_GRAYSCALE) if isinstance(seg, str) else seg
     if mask is None:
         return out
     h, w = mask.shape[:2]
@@ -65,7 +69,7 @@ def propose_component_boxes_detail(seg_path, min_seed_area=30, margin=20,
     extent = {lab: bbox(lab) for lab in seeded}
     candidates = [c for c in range(1, n_lab) if c not in blobs_per_comp]
     big = [c for c in candidates if stats[c, cv2.CC_STAT_AREA] >= min_attach_area]
-    out['n_unattached'] = len(candidates) - len(big)
+    out['n_specks_ignored'] = len(candidates) - len(big)
 
     best = {c: (None, None) for c in big}      # candidate -> (gap, seeded label)
     d = int(np.ceil(max_attach_distance)) + 1
@@ -82,10 +86,13 @@ def propose_component_boxes_detail(seg_path, min_seed_area=30, margin=20,
             cy, cy2, cx, cx2 = bbox(c)
             if cy2 <= cy0 or cy >= cy1 or cx2 <= cx0 or cx >= cx1:
                 continue
-            sel = crop == c
+            # Only look inside the candidate's bbox (clipped to the crop).
+            ry0, ry1 = max(cy, cy0) - cy0, min(cy2, cy1) - cy0
+            rx0, rx1 = max(cx, cx0) - cx0, min(cx2, cx1) - cx0
+            sel = crop[ry0:ry1, rx0:rx1] == c
             if not sel.any():
                 continue
-            gap = float(dist[sel].min())
+            gap = float(dist[ry0:ry1, rx0:rx1][sel].min())
             if gap > max_attach_distance:
                 continue
             if best[c][0] is None or gap < best[c][0]:     # strict: ties keep lower label
@@ -132,5 +139,5 @@ def proposal_notice(detail):
         lines.append("or a split seed - check them")
     k = detail['n_unattached']
     if k > 0:
-        lines.append("%d far/small pieces left out (not in any box)" % k)
+        lines.append("%d roots/shoots too far from any seed were left out" % k)
     return "\n".join(lines)

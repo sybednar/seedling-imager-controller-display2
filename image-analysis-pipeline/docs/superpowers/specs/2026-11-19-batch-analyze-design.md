@@ -42,8 +42,8 @@ the connected-component rule under Design.
 - Plate-level checks (video folder, segmentation present, calibration fields,
   ArUco guard) run once, before anything opens. The ArUco guard applies to batch
   because every plant on the plate shares the same scale.
-- `bounding box` is `[y_min, y_max, x_min, x_max]`; seed is `[x, y]` in full-image
-  coordinates (confirm in implementation: `selectSeed` returns crop-relative `pos`).
+- `bounding box` is `[y_min, y_max, x_min, x_max]`; seed is `[x, y]` relative to
+  the box (crop-relative: `selectSeed` returns the click in the cropped image).
 - Tab 1 uses absolute geometry (810x680 fixed); the new button must not sit
   under a divider line (see CLAUDE.md Qt stacking note).
 
@@ -61,8 +61,9 @@ the connected-component rule under Design.
 
 ## Design
 **Box proposal** (`analysis/utils/componentROIs.py`, pure numpy/cv2):
-`propose_component_boxes_detail(seg_path)` reads the LAST frame's mask (the last
-entry of the processing-limited seg list).
+`propose_component_boxes_detail(seg)` takes the LAST frame's mask (path or the
+already-read array; `getPlateROIsAndSeeds` pairs frames explicitly with
+`n = min(len(images), len(segFiles))` and uses entry `n - 1` of both).
 - Plant mask = classes 1-6 (root, lateral, seed, hypocotyl, leaf, petiole);
   background 0 and ignore 7 are not plant, so class 7 never bridges two plants.
   Label with 8-connectivity.
@@ -72,7 +73,8 @@ entry of the processing-limited seg list).
   `min_attach_area` (200 px) is attached to the nearest seeded component by gap
   (exact minimum pixel-to-pixel distance, via a distance transform on a crop around
   each seeded component) when the gap is <= `max_attach_distance` (300 px); ties go
-  to the lower label. Smaller or farther pieces are left out and counted.
+  to the lower label. Smaller pieces (`n_specks_ignored`) and farther ones (`n_unattached`) are left out
+  and counted.
 - The box is the bounding box (leftmost, rightmost, topmost, bottommost pixel) of
   the seeded component plus everything attached to it, plus a 20 px margin,
   clipped to the image. One box per seeded component; several seed blobs in one
@@ -80,7 +82,8 @@ entry of the processing-limited seg list).
 - Returns a dict: `boxes` (ordered like `boxEdit.renumber`), `n_seed_blobs`,
   `n_components_with_seed`, `n_merged_components` (components holding more than
   one seed blob: touching plants or one seed split into pieces), `n_attached` and
-  `n_unattached` (pieces left out for size or distance).
+  `n_unattached` (large pieces too far from every seed) and `n_specks_ignored`
+  (pieces under 200 px).
   `propose_component_boxes_info` (boxes, blob count) and `propose_component_boxes`
   (boxes) are thin wrappers.
 - Limitation: attachment is by nearest seed, so a root fragment can be attached to
@@ -88,12 +91,12 @@ entry of the processing-limited seg list).
   proposals; the user checks and edits them.
 - Any failure or unreadable mask falls back to manual drawing.
 
-**Confirm screen** (`selectPlantROIs(image, boxes, notice=None)` in
+**Confirm screen** (`selectPlantROIs(image, boxes, notice=None, seg=None)` in
 `getROIandSeed.py`; `getPlateROIsAndSeeds` passes the proposals and
 `proposal_notice(detail)`, shown for ~8 s over up to four short lines): it says how
 many boxes were proposed, mentions attached roots/shoots when there are any, merging only as "several seed
 blobs share a box: touching plants or a split seed - check them" when
-`n_merged_components` > 0, and pieces left out (too small or too far) when there
+`n_merged_components` > 0, and large roots/shoots left out for being too far from any seed when there
 are any.
 - Drag on empty space draws a new box (no add mode needed; `A` add mode and
   `Esc` to leave it still work). Click a box to select, drag its body to move,

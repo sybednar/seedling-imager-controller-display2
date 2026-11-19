@@ -396,16 +396,21 @@ def getPlateROIsAndSeeds(conf, images, segFiles):
     [{'plant', 'bounding box', 'seed'}] with seeds relative to each box, or None
     if cancelled or no boxes confirmed. If the proposal fails, boxes are drawn by hand."""
     global pos
-    last_image = cv2.imread(images[-1])
+    # Pair frames explicitly (as selectSeed does): last frame that has both.
+    n = min(len(images), len(segFiles))
+    if n == 0:
+        return None
+    last_image = cv2.imread(images[n - 1])
     if last_image is None:
         return None
 
-    seg = cv2.imread(segFiles[-1], 0)   # None if unreadable: no overlay, no crash
+    seg = cv2.imread(segFiles[n - 1], 0)   # None if unreadable: no overlay, no crash
     proposed, notice = [], None
     try:
-        detail = componentROIs.propose_component_boxes_detail(segFiles[-1])
-        proposed = detail['boxes']
-        notice = componentROIs.proposal_notice(detail)
+        if seg is not None:   # unreadable mask: just draw by hand
+            detail = componentROIs.propose_component_boxes_detail(seg)
+            proposed = detail['boxes']
+            notice = componentROIs.proposal_notice(detail)
     except Exception as e:
         print("Box proposal failed (%s); draw boxes by hand" % e)
         proposed, notice = [], None
