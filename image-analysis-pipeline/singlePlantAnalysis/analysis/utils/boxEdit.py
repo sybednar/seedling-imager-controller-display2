@@ -113,7 +113,7 @@ def legend_lines(adding, n_boxes):
     if adding:
         lines.append("ADD MODE: drag a new box (A or Esc: leave add mode)")
     if n_boxes == 0:
-        lines.append("No boxes yet: drag on the plate to draw a box around each plant")
+        lines.append("No boxes: drag on the plate to draw a box around each plant")
     lines += [
         "Drag on empty space to draw a plant box   Drag box: move   Drag edge: resize",
         "D: delete selected   ENTER: confirm   Q/Esc: cancel",

@@ -21,7 +21,7 @@ import time
 import cv2
 import numpy as np
 
-from analysis.utils import boxEdit
+from analysis.utils import boxEdit, componentROIs
 
 # State for custom ROI selector
 _roi_state = {
@@ -247,13 +247,15 @@ def _clamp_new_box(p0, p1, image_shape):
     return [y0, y1, x0, x1]
 
 
-def selectPlantROIs(image, boxes):
+def selectPlantROIs(image, boxes, notice=None):
     """Interactive confirm screen for per-plant boxes on the plate image.
 
-    Drag on empty space to draw a box (A add mode still works but is not needed),
+    Boxes may be pre-filled (auto-proposed) and stay fully editable. Drag on empty
+    space to draw a box (A add mode still works but is not needed),
     drag a box body to move it, drag an edge to resize, D deletes the selected box,
     Enter confirms, Q/Esc/window close cancels. ``boxes`` are the starting boxes
-    (empty for manual selection). Returns boxes in plant order, or None if cancelled.
+    (empty for manual drawing). Returns boxes in plant order, or None if cancelled.
+    ``notice`` is an optional text shown for the first few seconds.
     Box logic lives in boxEdit; this function only wires up the window.
     """
     window_name = "Confirm Plant ROIs"
@@ -272,6 +274,7 @@ def selectPlantROIs(image, boxes):
         'adding': False,
         'add_start': None,
         'add_end': None,
+        'notice_until': time.time() + 8.0,
         'message': None,   # (text, expires_at) short on-screen notice
     }
 
@@ -342,9 +345,11 @@ def selectPlantROIs(image, boxes):
                               (int(b[0] * scale), int(b[1] * scale)), (255, 0, 255), 2)
 
             legend = boxEdit.legend_lines(state['adding'], len(state['boxes']))
+            if notice and time.time() < state['notice_until']:
+                cv2.putText(frame, notice, (10, 28), font, 0.7, (0, 255, 255), 2)
             msg = state['message']
             if msg is not None and time.time() < msg[1]:
-                cv2.putText(frame, msg[0], (10, 28), font, 0.7, (0, 0, 255), 2)
+                cv2.putText(frame, msg[0], (10, 56), font, 0.7, (0, 0, 255), 2)
             for n, line in enumerate(legend):
                 cv2.putText(frame, line, (10, display_h - 12 - 26 * (len(legend) - 1 - n)),
                             font, 0.6, (255, 255, 255), 2)
@@ -376,16 +381,28 @@ def selectPlantROIs(image, boxes):
 
 
 def getPlateROIsAndSeeds(conf, images, segFiles):
-    """Let the user draw a box for every plant on the last frame, then collect a
-    root origin per box. Returns [{'plant', 'bounding box', 'seed'}] with seeds
-    relative to each box, or None if cancelled or no boxes confirmed."""
+    """Auto-propose a box per plant from the last frame's segmentation, let the
+    user edit/confirm them, then collect a manual root origin per box. Returns
+    [{'plant', 'bounding box', 'seed'}] with seeds relative to each box, or None
+    if cancelled or no boxes confirmed. If the proposal fails, boxes are drawn by hand."""
     global pos
     last_image = cv2.imread(images[-1])
     if last_image is None:
         return None
 
+    proposed, notice = [], None
     try:
-        boxes = selectPlantROIs(last_image, [])
+        proposed, n_seeds = componentROIs.propose_component_boxes_info(segFiles[-1])
+        if proposed:
+            notice = "Auto-proposed %d boxes from %d seeds" % (len(proposed), n_seeds)
+            if n_seeds > len(proposed):
+                notice += " (some plants touch and were merged: split or redraw by hand)"
+    except Exception as e:
+        print("Box proposal failed (%s); draw boxes by hand" % e)
+        proposed, notice = [], None
+
+    try:
+        boxes = selectPlantROIs(last_image, proposed, notice=notice)
     except Exception as e:
         print("ROI selection failed: %s" % e)
         return None

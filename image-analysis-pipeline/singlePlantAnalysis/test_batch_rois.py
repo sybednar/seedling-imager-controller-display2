@@ -9,9 +9,92 @@ import numpy as np
 from unittest import mock
 
 from analysis.utils import boxEdit
+from analysis.utils import componentROIs as cr
 from analysis.utils import getROIandSeed as gr
 
 H, W = 400, 400
+
+
+class ComponentRoiTests(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.m = np.zeros((H, W), np.uint8)
+
+    def save(self):
+        p = os.path.join(self.dir, "m.png")
+        cv2.imwrite(p, self.m)
+        return p
+
+    def seed(self, y, x, size=8):
+        self.m[y:y + size, x:x + size] = 3
+
+    def test_two_separate_plants_two_boxes_with_exact_bounds(self):
+        self.seed(200, 100)                 # left plant seed
+        self.m[150:200, 103] = 4            # hypocotyl above
+        self.m[208:260, 103] = 1            # root below
+        self.seed(200, 300)
+        self.m[208:240, 303] = 1
+        boxes, n_seeds = cr.propose_component_boxes_info(self.save(), margin=20)
+        self.assertEqual(n_seeds, 2)
+        left = [b for b in boxes if b[2] < 200][0]
+        right = [b for b in boxes if b[2] >= 200][0]
+        self.assertEqual(left, [130, 280, 80, 128])    # y 150-259 +-20, x 100-107 +-20
+        self.assertEqual(right, [180, 260, 280, 328])  # y 200-239 +-20
+        self.assertEqual(len(boxes), 2)
+
+    def test_plant_parts_all_inside_box(self):
+        self.seed(200, 100)
+        self.m[120:200, 100] = 5
+        self.m[100:120, 100] = 6
+        self.m[208:300, 107] = 2
+        (y0, y1, x0, x1), = cr.propose_component_boxes(self.save(), margin=0)
+        self.assertLessEqual(y0, 100)
+        self.assertGreaterEqual(y1, 300)
+        self.assertLessEqual(x0, 100)
+        self.assertGreaterEqual(x1, 108)
+
+    def test_touching_plants_merge_into_one_box_but_count_two_seeds(self):
+        self.seed(200, 100)
+        self.seed(200, 120)
+        self.m[203, 108:120] = 1            # bridge
+        boxes, n_seeds = cr.propose_component_boxes_info(self.save())
+        self.assertEqual(n_seeds, 2)
+        self.assertEqual(len(boxes), 1)
+
+    def test_ignore_class_does_not_bridge_plants(self):
+        self.seed(200, 100)
+        self.seed(200, 120)
+        self.m[203, 108:120] = 7
+        boxes, n_seeds = cr.propose_component_boxes_info(self.save())
+        self.assertEqual((len(boxes), n_seeds), (2, 2))
+
+    def test_noise_component_without_seed_gets_no_box(self):
+        self.seed(200, 100)
+        self.m[50:60, 300:310] = 1
+        self.assertEqual(len(cr.propose_component_boxes(self.save())), 1)
+
+    def test_small_seed_blob_ignored(self):
+        self.m[200:203, 100:103] = 3        # area 9 < 30
+        self.assertEqual(cr.propose_component_boxes_info(self.save()), ([], 0))
+
+    def test_box_clipped_at_image_borders(self):
+        self.seed(0, 0)
+        self.seed(H - 8, W - 8)
+        boxes = cr.propose_component_boxes(self.save(), margin=20)
+        self.assertEqual(sorted(boxes), [[0, 28, 0, 28], [H - 28, H, W - 28, W]])
+
+    def test_empty_and_unreadable_mask_give_no_boxes(self):
+        self.assertEqual(cr.propose_component_boxes_info(self.save()), ([], 0))
+        self.assertEqual(cr.propose_component_boxes_info(os.path.join(self.dir, "nope.png")), ([], 0))
+
+    def test_boxes_ordered_with_plant_order(self):
+        self.seed(50, 100)     # top-left
+        self.seed(300, 300)    # bottom-right
+        self.seed(300, 50)     # bottom-left
+        boxes = cr.propose_component_boxes(self.save())
+        self.assertEqual(boxes, boxEdit.renumber(boxes))
+        self.assertEqual([b[2] for b in boxes], [30, 280, 80])
 
 
 class BoxEditTests(unittest.TestCase):
@@ -94,10 +177,10 @@ class BoxEditTests(unittest.TestCase):
     def test_legend_mentions_drag_to_draw_and_hints_when_empty(self):
         text = " ".join(boxEdit.legend_lines(False, 0))
         self.assertIn("Drag on empty space to draw a plant box", text)
-        self.assertIn("No boxes yet", text)
+        self.assertIn("No boxes:", text)
         text = " ".join(boxEdit.legend_lines(False, 2))
         self.assertIn("Drag on empty space to draw a plant box", text)
-        self.assertNotIn("No boxes yet", text)
+        self.assertNotIn("No boxes:", text)
         self.assertTrue(boxEdit.legend_lines(True, 2)[0].startswith("ADD MODE"))
 
     def test_is_click_identical_within_and_beyond_tolerance(self):
@@ -230,16 +313,46 @@ class PlateRoisTests(unittest.TestCase):
             gr.getPlateROIsAndSeeds(self.conf, [self.img], [self.seg])
         self.assertEqual(seen, [None, None])
 
-    def test_getPlateROIsAndSeeds_starts_with_no_boxes(self):
-        _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
+    def test_getPlateROIsAndSeeds_passes_proposals_and_notice(self):
+        boxes = [[10, 60, 10, 60], [10, 60, 100, 150]]
+        with mock.patch.object(gr.componentROIs, 'propose_component_boxes_info',
+                               return_value=(boxes, 3)) as pr:
+            _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
+        self.assertEqual(pr.call_args[0][0], self.seg)
+        self.assertEqual(sp.call_args[0][1], boxes)
+        notice = sp.call_args[1]['notice']
+        self.assertIn("2 boxes from 3 seeds", notice)
+        self.assertIn("merged", notice)
+
+    def test_getPlateROIsAndSeeds_no_merge_warning_when_counts_match(self):
+        with mock.patch.object(gr.componentROIs, 'propose_component_boxes_info',
+                               return_value=([[10, 60, 10, 60]], 1)):
+            _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
+        self.assertNotIn("merged", sp.call_args[1]['notice'])
+
+    def test_getPlateROIsAndSeeds_falls_back_to_manual_when_proposal_raises(self):
+        with mock.patch.object(gr.componentROIs, 'propose_component_boxes_info',
+                               side_effect=RuntimeError("boom")):
+            out, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
+        self.assertEqual(sp.call_args[0][1], [])
+        self.assertIsNone(sp.call_args[1].get('notice'))
+        self.assertEqual(len(out), 1)
+
+    def test_getPlateROIsAndSeeds_no_seeds_found_starts_empty(self):
+        _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])   # fixture mask has 8x8 seed
+        self.assertEqual(len(sp.call_args[0][1]), 1)
+        with mock.patch.object(gr.componentROIs, 'propose_component_boxes_info',
+                               return_value=([], 0)):
+            _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
         self.assertEqual(sp.call_args[0][1], [])
 
-    def test_getPlateROIsAndSeeds_does_not_need_readable_seg_masks(self):
+    def test_getPlateROIsAndSeeds_unreadable_seg_mask_gives_manual_start(self):
         missing = os.path.join(self.dir, "nope.png")
-        with mock.patch.object(gr, 'selectPlantROIs', return_value=[[0, 100, 0, 100]]), \
+        with mock.patch.object(gr, 'selectPlantROIs', return_value=[[0, 100, 0, 100]]) as sp, \
              mock.patch.object(gr, 'selectSeed', return_value=[1, 1]):
             out = gr.getPlateROIsAndSeeds(self.conf, [self.img], [missing])
         self.assertEqual(len(out), 1)
+        self.assertEqual(sp.call_args[0][1], [])
 
 
 class ConfigPrepTests(unittest.TestCase):

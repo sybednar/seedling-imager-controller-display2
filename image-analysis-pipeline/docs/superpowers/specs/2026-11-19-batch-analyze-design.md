@@ -1,4 +1,4 @@
-# Batch Analyze: manually drawn plant ROIs with manual root origin
+# Batch Analyze: auto-proposed, editable plant ROIs with manual root origin
 
 Branch: `feature/batch-analyze`
 
@@ -6,16 +6,19 @@ Branch: `feature/batch-analyze`
 Today each plant on a plate needs its own run: drag an ROI, click the root
 origin, repeat per Plant Number. For a plate of N plants that is N ROI drags and
 N separate GUI runs. Batch Analyze shows the plate once, lets the user draw every
-plant's ROI on one screen, then has them click the root origin in each ROI (kept
+plant's ROI on one screen (pre-filled from the last frame's segmentation, fully
+editable), then has them click the root origin in each ROI (kept
 manual so segmentation errors cannot skew `fixed_seed_position` and hence the
-measurements). An automatic box proposal from the seed segmentation was tried and
-dropped as not accurate enough; boxes are always drawn by hand.
+measurements). A first proposal (seed centroids with midpoint splits and
+margins, `proposeROIs.py`) was dropped as not accurate; the current proposal is
+the connected-component rule under Design.
 
 ## Goals
 - New **Batch Analyze** button in Tab 1, next to the existing **Analyze Plant**
   (which is unchanged).
 - Draw one ROI per plant for the whole plate on the last frame; user can move,
-  resize, delete and add boxes before confirming. No boxes are pre-drawn.
+  resize, delete and add boxes before confirming. Boxes are proposed but never
+  trusted: every one is checked by the user.
 - Root origin is always a manual click per confirmed ROI, using the existing
   `selectSeed()` UI.
 - After confirmation, analyse each plant in turn with the same code path as a
@@ -27,7 +30,8 @@ dropped as not accurate enough; boxes are always drawn by hand.
 - No change to single-plant `analysis()` behaviour, `plantAnalysis()` internals
   or the saved `metadata.json` format.
 - Not parallel processing; plants run sequentially.
-- No automatic ROI proposal and no reading of segmentation masks to place boxes.
+- The proposal never decides the root origin, and touching plants are not split
+  automatically (they merge into one box; the user splits or redraws by hand).
 
 ## Constraints
 - `plantAnalysis()` is one plant per run and reads `conf['bounding box']` /
@@ -50,17 +54,33 @@ dropped as not accurate enough; boxes are always drawn by hand.
    origin click per box, then analyse each plant.
 3. Option 2 plus automatic batch run. The user's button name ("Batch Analyze")
    implies running the analyses, so the run-after-confirm part of 3 is included.
-4. Rejected: propose boxes from seed-class segmentation (`proposeROIs.py`). Not
-   accurate enough, so removed.
+4. Rejected: propose boxes from seed centroids with midpoint splits
+   (`proposeROIs.py`). Not accurate enough, so removed.
+5. **Current:** propose boxes from connected components of the last frame's
+   segmentation (below), editable on the confirm screen.
 
 ## Design
-**Confirm screen** (`selectPlantROIs(image, boxes)` in `getROIandSeed.py`;
-`getPlateROIsAndSeeds` passes `[]` so it opens with no boxes on the last frame):
+**Box proposal** (`analysis/utils/componentROIs.py`, pure numpy/cv2):
+`propose_component_boxes_info(seg_path)` reads the LAST frame's mask (the last
+entry of the processing-limited seg list). Plant mask = classes 1-6 (root, lateral,
+seed, hypocotyl, leaf, petiole); background 0 and ignore 7 are not plant, so class 7
+never bridges two plants. Label with 8-connectivity. Seeds are class-3 blobs of
+area >= 30 px. Each seed maps to the plant-mask component containing it; the box is
+that component's bounding box (leftmost, rightmost, topmost, bottommost pixel) plus
+a 20 px margin, clipped to the image. One box per distinct component, so several
+seeds in one component (touching plants) give one box; components without a seed
+(noise) give none. It returns `(boxes, n_seeds)` and boxes are ordered with
+`boxEdit.renumber`. Any failure or unreadable mask falls back to manual drawing.
+
+**Confirm screen** (`selectPlantROIs(image, boxes, notice=None)` in
+`getROIandSeed.py`; `getPlateROIsAndSeeds` passes the proposals and a notice such
+as "Auto-proposed N boxes from M seeds" plus, when M > N, "(some plants touch and
+were merged: split or redraw by hand)", shown for ~8 s):
 - Drag on empty space draws a new box (no add mode needed; `A` add mode and
   `Esc` to leave it still work). Click a box to select, drag its body to move,
   drag an edge to resize, `D` delete, `Enter` confirm, `Q` cancel. A drag under
   the minimum size is rejected with an on-screen message. With no boxes a hint
-  says to drag on the plate. Decisions (press meaning, legend text, numbering)
+  says to drag on the plate. Proposed boxes are edited exactly like drawn ones. Decisions (press meaning, legend text, numbering)
   live in pure helpers in `boxEdit.py` so the window code stays thin.
 - Plant numbers are shown live on each box and come from the same function
   (`boxEdit.plant_order`) as the final numbers, so what you see is what is saved.
