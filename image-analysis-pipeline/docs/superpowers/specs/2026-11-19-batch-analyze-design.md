@@ -67,24 +67,34 @@ entry of the processing-limited seg list).
   background 0 and ignore 7 are not plant, so class 7 never bridges two plants.
   Label with 8-connectivity.
 - Seeds are class-3 blobs of area >= 30 px. Each maps to the plant-mask
-  component containing it; the box is that component's bounding box (leftmost,
-  rightmost, topmost, bottommost pixel) plus a 20 px margin, clipped to the image.
-- One box per distinct component. Components without a seed (noise) give none. A
-  component whose bounding box is under `boxEdit.MIN_SIZE` in both dimensions is a
-  seed fragment cut off from its plant: skipped and counted, not boxed.
+  component containing it ("seeded component"). Seeds are often tiny blobs
+  detached from their roots, so every non-seeded component of area >=
+  `min_attach_area` (200 px) is attached to the nearest seeded component by gap
+  (exact minimum pixel-to-pixel distance, via a distance transform on a crop around
+  each seeded component) when the gap is <= `max_attach_distance` (300 px); ties go
+  to the lower label. Smaller or farther pieces are left out and counted.
+- The box is the bounding box (leftmost, rightmost, topmost, bottommost pixel) of
+  the seeded component plus everything attached to it, plus a 20 px margin,
+  clipped to the image. One box per seeded component; several seed blobs in one
+  component give one box. A seed with nothing attached still gets its small box.
 - Returns a dict: `boxes` (ordered like `boxEdit.renumber`), `n_seed_blobs`,
   `n_components_with_seed`, `n_merged_components` (components holding more than
-  one seed blob: touching plants or one seed split into pieces) and
-  `n_skipped_fragments`. `propose_component_boxes_info` (boxes, blob count) and
-  `propose_component_boxes` (boxes) are thin wrappers.
+  one seed blob: touching plants or one seed split into pieces), `n_attached` and
+  `n_unattached` (pieces left out for size or distance).
+  `propose_component_boxes_info` (boxes, blob count) and `propose_component_boxes`
+  (boxes) are thin wrappers.
+- Limitation: attachment is by nearest seed, so a root fragment can be attached to
+  the wrong neighbour, and touching plants still merge into one box. Boxes are
+  proposals; the user checks and edits them.
 - Any failure or unreadable mask falls back to manual drawing.
 
 **Confirm screen** (`selectPlantROIs(image, boxes, notice=None)` in
 `getROIandSeed.py`; `getPlateROIsAndSeeds` passes the proposals and
 `proposal_notice(detail)`, shown for ~8 s over up to four short lines): it says how
-many boxes were proposed, mentions merging only as "several seed blobs share a box:
-touching plants or a split seed - check them" when `n_merged_components` > 0, and
-mentions skipped seed fragments when there are any.
+many boxes were proposed, mentions attached roots/shoots when there are any, merging only as "several seed
+blobs share a box: touching plants or a split seed - check them" when
+`n_merged_components` > 0, and pieces left out (too small or too far) when there
+are any.
 - Drag on empty space draws a new box (no add mode needed; `A` add mode and
   `Esc` to leave it still work). Click a box to select, drag its body to move,
   drag an edge to resize, `D` delete, `Enter` confirm, `Q` cancel. A drag under

@@ -18,25 +18,30 @@ SEED_CLASS = 3
 PLANT_CLASSES = (1, 2, 3, 4, 5, 6)
 
 
-def propose_component_boxes_detail(seg_path, min_seed_area=30, margin=20):
+def propose_component_boxes_detail(seg_path, min_seed_area=30, margin=20,
+                                   min_attach_area=200, max_attach_distance=300):
     """Propose boxes and report how they were formed.
 
+    Seeds are often tiny blobs detached from their roots, so non-seeded plant
+    components of area >= ``min_attach_area`` are attached to the nearest seeded
+    component (smallest pixel-to-pixel gap, ties to the lower label) when that
+    gap is <= ``max_attach_distance`` px. A seeded component's box is the bounding
+    box of itself plus everything attached, plus ``margin``, clipped.
+
     Returns a dict: ``boxes`` (ordered like boxEdit.renumber), ``n_seed_blobs``
-    (qualifying class-3 blobs), ``n_components_with_seed`` (plant components that
-    contain a seed, fragments included), ``n_merged_components`` (components with
-    more than one seed blob: touching plants or one split seed) and
-    ``n_skipped_fragments`` (seed components whose bounding box, before the
-    margin, is under boxEdit.MIN_SIZE in both dimensions, i.e. a seed piece cut
-    off from its plant; they get no box).
+    (qualifying class-3 blobs), ``n_components_with_seed``, ``n_merged_components``
+    (components holding more than one seed blob: touching plants or a split seed),
+    ``n_attached`` (components attached to a seeded one) and ``n_unattached``
+    (non-seeded components ignored for being too small or too far).
     """
     out = {'boxes': [], 'n_seed_blobs': 0, 'n_components_with_seed': 0,
-           'n_merged_components': 0, 'n_skipped_fragments': 0}
+           'n_merged_components': 0, 'n_attached': 0, 'n_unattached': 0}
     mask = cv2.imread(seg_path, cv2.IMREAD_GRAYSCALE)
     if mask is None:
         return out
     h, w = mask.shape[:2]
     plant = np.isin(mask, PLANT_CLASSES).astype(np.uint8)
-    _, labels, stats, _ = cv2.connectedComponentsWithStats(plant, connectivity=8)
+    n_lab, labels, stats, _ = cv2.connectedComponentsWithStats(plant, connectivity=8)
 
     seeds = (mask == SEED_CLASS).astype(np.uint8)
     n, seed_labels, seed_stats, _ = cv2.connectedComponentsWithStats(seeds, connectivity=8)
@@ -48,20 +53,54 @@ def propose_component_boxes_detail(seg_path, min_seed_area=30, margin=20):
         ys, xs = np.nonzero(seed_labels == i)
         lab = int(labels[ys[0], xs[0]])
         blobs_per_comp[lab] = blobs_per_comp.get(lab, 0) + 1
-
-    out['n_components_with_seed'] = len(blobs_per_comp)
+    seeded = sorted(blobs_per_comp)
+    out['n_components_with_seed'] = len(seeded)
     out['n_merged_components'] = sum(1 for c in blobs_per_comp.values() if c > 1)
-    boxes = []
-    for lab in blobs_per_comp:
-        x = int(stats[lab, cv2.CC_STAT_LEFT])
-        y = int(stats[lab, cv2.CC_STAT_TOP])
-        bw = int(stats[lab, cv2.CC_STAT_WIDTH])
-        bh = int(stats[lab, cv2.CC_STAT_HEIGHT])
-        if bw < boxEdit.MIN_SIZE and bh < boxEdit.MIN_SIZE:
-            out['n_skipped_fragments'] += 1
+
+    def bbox(lab):
+        x = int(stats[lab, cv2.CC_STAT_LEFT]); y = int(stats[lab, cv2.CC_STAT_TOP])
+        return [y, y + int(stats[lab, cv2.CC_STAT_HEIGHT]),
+                x, x + int(stats[lab, cv2.CC_STAT_WIDTH])]
+
+    extent = {lab: bbox(lab) for lab in seeded}
+    candidates = [c for c in range(1, n_lab) if c not in blobs_per_comp]
+    big = [c for c in candidates if stats[c, cv2.CC_STAT_AREA] >= min_attach_area]
+    out['n_unattached'] = len(candidates) - len(big)
+
+    best = {c: (None, None) for c in big}      # candidate -> (gap, seeded label)
+    d = int(np.ceil(max_attach_distance)) + 1
+    for lab in seeded:
+        y0, y1, x0, x1 = extent[lab]
+        cy0, cy1 = max(0, y0 - d), min(h, y1 + d)
+        cx0, cx1 = max(0, x0 - d), min(w, x1 + d)
+        crop = labels[cy0:cy1, cx0:cx1]
+        # Distance of every crop pixel to this seeded component. Pixels outside
+        # the crop are farther than max_attach_distance, so nothing is missed.
+        dist = cv2.distanceTransform((crop != lab).astype(np.uint8), cv2.DIST_L2,
+                                     cv2.DIST_MASK_PRECISE)
+        for c in big:
+            cy, cy2, cx, cx2 = bbox(c)
+            if cy2 <= cy0 or cy >= cy1 or cx2 <= cx0 or cx >= cx1:
+                continue
+            sel = crop == c
+            if not sel.any():
+                continue
+            gap = float(dist[sel].min())
+            if gap > max_attach_distance:
+                continue
+            if best[c][0] is None or gap < best[c][0]:     # strict: ties keep lower label
+                best[c] = (gap, lab)
+    for c in big:
+        gap, lab = best[c]
+        if lab is None:
+            out['n_unattached'] += 1
             continue
-        boxes.append([max(0, y - margin), min(h, y + bh + margin),
-                      max(0, x - margin), min(w, x + bw + margin)])
+        out['n_attached'] += 1
+        e, b = extent[lab], bbox(c)
+        extent[lab] = [min(e[0], b[0]), max(e[1], b[1]), min(e[2], b[2]), max(e[3], b[3])]
+
+    boxes = [[max(0, e[0] - margin), min(h, e[1] + margin),
+              max(0, e[2] - margin), min(w, e[3] + margin)] for e in extent.values()]
     out['boxes'] = boxEdit.renumber(boxes)
     return out
 
@@ -79,16 +118,19 @@ def propose_component_boxes(seg_path, min_seed_area=30, margin=20):
 
 def proposal_notice(detail):
     """Short on-screen text (lines of <= 60 chars joined by newlines) describing
-    a proposal; None when no boxes were proposed. Merging is only mentioned when
-    some box holds several seed blobs, which may be touching plants or one split seed."""
+    a proposal; None when no boxes were proposed. Warnings appear only when they
+    apply: boxes holding several seed blobs (touching plants or one split seed),
+    roots/shoots attached to seeds, and pieces left out for size or distance."""
     n = len(detail['boxes'])
     if n == 0:
         return None
     lines = ["Auto-proposed %d box%s" % (n, "" if n == 1 else "es")]
+    if detail['n_attached'] > 0:
+        lines.append("%d roots/shoots attached to seeds" % detail['n_attached'])
     if detail['n_merged_components'] > 0:
         lines.append("Several seed blobs share a box (%d): touching plants" % detail['n_merged_components'])
         lines.append("or a split seed - check them")
-    k = detail['n_skipped_fragments']
+    k = detail['n_unattached']
     if k > 0:
-        lines.append("%d seed fragment%s skipped (no plant attached)" % (k, "" if k == 1 else "s"))
+        lines.append("%d far/small pieces left out (not in any box)" % k)
     return "\n".join(lines)

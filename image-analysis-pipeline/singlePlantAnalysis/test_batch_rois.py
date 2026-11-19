@@ -86,23 +86,87 @@ class ComponentRoiTests(unittest.TestCase):
         self.seed(200, 300)
         d = cr.propose_component_boxes_detail(self.save())
         self.assertEqual((d['n_seed_blobs'], d['n_components_with_seed'],
-                          d['n_merged_components'], d['n_skipped_fragments']), (2, 2, 0, 0))
+                          d['n_merged_components'], d['n_attached'], d['n_unattached']), (2, 2, 0, 0, 0))
 
-    def test_seed_only_fragment_skipped_and_counted(self):
+    def test_detached_root_attaches_to_standalone_seed(self):
         self.seed(200, 100)
-        self.m[150:200, 103] = 4          # real plant, tall
-        self.m[300:306, 300:310] = 3      # 6x10 fragment, < MIN_SIZE both ways, area 60
+        self.m[260:340, 100:104] = 1
+        d = cr.propose_component_boxes_detail(self.save())
+        self.assertEqual(d['boxes'], [[180, 360, 80, 140]])
+        self.assertEqual((d['n_attached'], d['n_unattached']), (1, 0))
+
+    def test_each_root_attaches_to_its_own_nearest_seed(self):
+        self.seed(200, 50)
+        self.m[260:340, 50:54] = 1
+        self.seed(200, 300)
+        self.m[260:340, 300:304] = 1
+        d = cr.propose_component_boxes_detail(self.save())
+        self.assertEqual(d['boxes'], [[180, 360, 30, 90], [180, 360, 280, 340]])
+        self.assertEqual(d['n_attached'], 2)
+
+    def test_equidistant_root_goes_to_lower_label(self):
+        self.seed(200, 50)
+        self.seed(200, 150)
+        self.m[200:261, 105:115] = 1      # gap 36 px to both seeds
+        d = cr.propose_component_boxes_detail(self.save())
+        self.assertEqual(sorted(d['boxes']), [[180, 240, 130, 190], [180, 281, 30, 135]])
+        self.assertEqual(d['n_attached'], 1)
+
+    def test_root_beyond_max_distance_not_attached_and_counted(self):
+        self.seed(200, 100)
+        self.m[260:340, 100:104] = 1      # gap 41
+        d = cr.propose_component_boxes_detail(self.save(), max_attach_distance=30)
+        self.assertEqual(d['boxes'], [[180, 240, 80, 140]])
+        self.assertEqual((d['n_attached'], d['n_unattached']), (0, 1))
+        d = cr.propose_component_boxes_detail(self.save(), max_attach_distance=41)
+        self.assertEqual(d['n_attached'], 1)
+
+    def test_speck_under_min_attach_area_ignored(self):
+        self.seed(200, 100)
+        self.m[230:235, 100:105] = 1      # area 25, gap 10
+        d = cr.propose_component_boxes_detail(self.save())
+        self.assertEqual(d['boxes'], [[180, 240, 80, 140]])
+        self.assertEqual((d['n_attached'], d['n_unattached']), (0, 1))
+
+    def test_lone_seed_still_gets_its_small_box(self):
+        self.seed(200, 100)
+        d = cr.propose_component_boxes_detail(self.save())
+        self.assertEqual(d['boxes'], [[180, 240, 80, 140]])
+        tiny = np.zeros((H, W), np.uint8)
+        tiny[200:206, 100:106] = 3        # area 36, 6x6
+        cv2.imwrite(os.path.join(self.dir, "t.png"), tiny)
+        d = cr.propose_component_boxes_detail(os.path.join(self.dir, "t.png"))
+        self.assertEqual(d['boxes'], [[180, 226, 80, 126]])
+
+    def test_attached_components_extend_box_in_all_directions(self):
+        self.seed(200, 200)
+        self.m[100:150, 200:205] = 1      # above
+        self.m[270:330, 200:205] = 1      # below
+        self.m[205:210, 100:150] = 1      # left
+        self.m[205:210, 270:310] = 1      # right
+        d = cr.propose_component_boxes_detail(self.save())
+        self.assertEqual(d['boxes'], [[80, 350, 80, 330]])
+        self.assertEqual(d['n_attached'], 4)
+
+    def test_attached_component_box_clipped_at_border(self):
+        self.seed(200, 200)
+        self.m[5:150, 205:210] = 1
+        d = cr.propose_component_boxes_detail(self.save())
+        self.assertEqual(d['boxes'], [[0, 240, 180, 240]])
+
+    def test_unseeded_big_component_beyond_range_left_out(self):
+        self.seed(20, 20)
+        self.m[350:395, 350:360] = 1      # far away, area 450
         d = cr.propose_component_boxes_detail(self.save())
         self.assertEqual(len(d['boxes']), 1)
-        self.assertEqual(d['n_skipped_fragments'], 1)
-        self.assertEqual(d['n_seed_blobs'], 2)
+        self.assertEqual(d['n_unattached'], 1)
 
     def test_small_but_real_plant_keeps_its_box(self):
         self.m[200:208, 100:108] = 3      # 8 wide
         self.m[208:240, 103] = 1          # 40 tall >= MIN_SIZE
         d = cr.propose_component_boxes_detail(self.save())
         self.assertEqual(len(d['boxes']), 1)
-        self.assertEqual(d['n_skipped_fragments'], 0)
+        self.assertEqual(d['n_unattached'], 0)
 
     def test_ignore_class_does_not_bridge_plants(self):
         self.seed(200, 100)
@@ -140,26 +204,28 @@ class ComponentRoiTests(unittest.TestCase):
 
 
 class NoticeTests(unittest.TestCase):
-    def d(self, n, merged=0, skipped=0):
+    def d(self, n, merged=0, attached=0, unattached=0):
         return {'boxes': [[0, 1, 0, 1]] * n, 'n_seed_blobs': n, 'n_components_with_seed': n,
-                'n_merged_components': merged, 'n_skipped_fragments': skipped}
+                'n_merged_components': merged, 'n_attached': attached,
+                'n_unattached': unattached}
 
     def test_plain_notice_has_no_warnings(self):
         t = cr.proposal_notice(self.d(3))
         self.assertIn("3 boxes", t)
-        self.assertNotIn("share", t)
-        self.assertNotIn("kipped", t)
+        for word in ("share", "attached", "left out"):
+            self.assertNotIn(word, t)
 
-    def test_merge_and_skip_mentioned_only_when_present(self):
-        t = cr.proposal_notice(self.d(2, merged=1, skipped=2))
+    def test_merge_attach_unattached_mentioned_only_when_present(self):
+        t = cr.proposal_notice(self.d(2, merged=1, attached=7, unattached=2))
         self.assertIn("seed blobs share a box", t)
-        self.assertIn("2 seed fragments skipped", t)
+        self.assertIn("7 roots/shoots attached to seeds", t)
+        self.assertIn("2 far/small pieces left out", t)
         self.assertIn("1 box", cr.proposal_notice(self.d(1)))
 
     def test_notice_lines_short_and_none_when_no_boxes(self):
-        t = cr.proposal_notice(self.d(11, merged=7, skipped=12))
+        t = cr.proposal_notice(self.d(11, merged=7, attached=12, unattached=30))
         self.assertTrue(all(len(line) <= 60 for line in t.split("\n")))
-        self.assertIsNone(cr.proposal_notice(self.d(0, skipped=3)))
+        self.assertIsNone(cr.proposal_notice(self.d(0, unattached=3)))
 
 
 class BoxEditTests(unittest.TestCase):
@@ -383,7 +449,7 @@ class PlateRoisTests(unittest.TestCase):
     def detail(boxes, blobs=None, merged=0, skipped=0):
         return {'boxes': boxes, 'n_seed_blobs': blobs if blobs is not None else len(boxes),
                 'n_components_with_seed': len(boxes), 'n_merged_components': merged,
-                'n_skipped_fragments': skipped}
+                'n_attached': 0, 'n_unattached': skipped}
 
     def patch_detail(self, **kw):
         return mock.patch.object(gr.componentROIs, 'propose_component_boxes_detail', **kw)
