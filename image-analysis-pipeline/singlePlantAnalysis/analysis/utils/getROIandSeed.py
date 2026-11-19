@@ -263,6 +263,7 @@ def selectPlantROIs(image, boxes):
     display_w, display_h = int(w_orig * scale), int(h_orig * scale)
     img_small = cv2.resize(image, (display_w, display_h), interpolation=cv2.INTER_AREA)
     handle = max(1, int(round(8 / scale)))  # 8 display px, in image px
+    click_tol = max(1, int(round(4 / scale)))  # 4 display px: click, not drag
 
     state = {
         'boxes': boxEdit.renumber(boxes),
@@ -285,6 +286,7 @@ def selectPlantROIs(image, boxes):
             if act[0] == 'draw':
                 st['selected'] = None
                 st['add_start'] = st['add_end'] = (ix, iy)
+                st['message'] = None
             else:
                 st['selected'] = act[1]
                 st['drag'] = (act[1], act[2], ix, iy)
@@ -301,9 +303,12 @@ def selectPlantROIs(image, boxes):
                 st['drag'] = (i, part, ix, iy)
         elif event == cv2.EVENT_LBUTTONUP:
             if st['add_start'] is not None:
-                new = _clamp_new_box(st['add_start'], (ix, iy), image.shape)
+                start = st['add_start']
+                new = _clamp_new_box(start, (ix, iy), image.shape)
                 st['add_start'] = st['add_end'] = None
-                if new is not None:
+                if boxEdit.is_click(start, (ix, iy), click_tol):
+                    pass  # plain click on empty space: just deselects
+                elif new is not None:
                     st['boxes'].append(new)
                     st['selected'] = len(st['boxes']) - 1
                 else:
