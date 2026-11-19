@@ -20,13 +20,16 @@ class BatchRoiTests(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.dir, True)
 
-    def write(self, name, seeds=(), roots=(), size=8):
-        """seeds: (x, y) centres drawn as class 3; roots: (x, y_top, y_bottom) class 1."""
+    def write(self, name, seeds=(), roots=(), size=8, hypo=()):
+        """seeds: (x, y) centres drawn as class 3; roots: (x, y_top, y_bottom) class 1;
+        hypo: (x, y_top, y_bottom, cls) column of class cls (4/5/6)."""
         m = np.zeros((H, W), np.uint8)
         for x, y in seeds:
             m[y - size // 2:y + size // 2, x - size // 2:x + size // 2] = 3
         for x, y0, y1 in roots:
             m[y0:y1 + 1, x] = 1
+        for x, y0, y1, cls in hypo:
+            m[y0:y1 + 1, x] = cls
         p = os.path.join(self.dir, name)
         cv2.imwrite(p, m)
         return p
@@ -84,6 +87,31 @@ class BatchRoiTests(unittest.TestCase):
         b = propose_boxes(c, [p0, p1], (H, W))
         self.assertGreaterEqual(b[0][1], 300)
         self.assertLessEqual(b[0][1], H)
+
+    def test_box_extends_above_topmost_hypocotyl_pixel(self):
+        p0 = self.write("a.png", seeds=[(100, 200), (300, 200)])
+        p1 = self.write("b.png", seeds=[(100, 200), (300, 200)],
+                        hypo=[(100, 120, 195, 4)])
+        b = propose_boxes(detect_seed_centroids([p0, p1]), [p0, p1], (H, W))
+        self.assertEqual(b[0][0], 100)   # 120 - margin 20
+        self.assertEqual(b[1][0], 179)   # neighbour: int(centroid y 199.5) - margin
+
+    def test_box_top_counts_leaf_and_petiole_classes(self):
+        p = self.write("a.png", seeds=[(100, 200)],
+                       hypo=[(100, 150, 195, 4), (102, 90, 140, 5), (104, 110, 140, 6)])
+        b = propose_boxes(detect_seed_centroids([p]), [p], (H, W))
+        self.assertEqual(b[0][0], 70)
+
+    def test_box_top_takes_topmost_across_frames_and_clips_to_zero(self):
+        p0 = self.write("a.png", seeds=[(100, 200)], hypo=[(100, 150, 195, 4)])
+        p1 = self.write("b.png", seeds=[(100, 200)], hypo=[(100, 10, 195, 4)])
+        b = propose_boxes(detect_seed_centroids([p0]), [p0, p1], (H, W))
+        self.assertEqual(b[0][0], 0)
+
+    def test_box_top_falls_back_when_hypocotyl_is_below_seed(self):
+        p = self.write("a.png", seeds=[(100, 200)], hypo=[(100, 230, 260, 4)])
+        b = propose_boxes(detect_seed_centroids([p]), [p], (H, W))
+        self.assertEqual(b[0][0], 179)
 
     def test_root_of_neighbour_does_not_extend_box(self):
         p0 = self.write("a.png", seeds=[(100, 50), (300, 50)])

@@ -57,9 +57,12 @@ cannot skew `fixed_seed_position` and hence the measurements).
   first 10 frames combined. Connected components, drop blobs under a minimum
   area, centroid per blob, sort by x. Index + 1 = proposed Plant Number.
 - Box per plant: x range from the midpoint to each neighbouring seed (outermost
-  boxes use half the typical spacing, clipped to the image); y from just above
-  the seed to the lowest root-class pixel found in that x band across all frames,
-  plus a margin (capped at the image bottom). Midpoint limits stop a neighbour's
+  boxes use half the typical spacing, clipped to the image); y from the topmost
+  hypocotyl/leaf/petiole pixel (classes 4-6) in that x band across all frames,
+  minus a margin, to the lowest root-class pixel in that band plus a margin
+  (capped at the image bottom). The top is never lower than seed y minus the
+  margin (also the fallback when no shoot pixels exist), because the hypocotyl
+  grows up from the seed and a crop that starts at the seed would cut it off. Midpoint limits stop a neighbour's
   hypocotyl being pulled in (the earlier `extract_hypocotyl_length` bug).
 
 **Confirm screen** (`selectPlantROIs(image, proposals)` in `getROIandSeed.py`):

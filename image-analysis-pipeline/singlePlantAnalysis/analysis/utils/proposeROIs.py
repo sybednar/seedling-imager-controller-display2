@@ -8,6 +8,8 @@ import numpy as np
 
 SEED_CLASS = 3
 ROOT_CLASSES = (1, 2)
+# Hypocotyl, leaf, petiole: shoot structures that grow up from the seed.
+SHOOT_CLASSES = (4, 5, 6)
 
 
 def _read_mask(path):
@@ -59,6 +61,7 @@ def propose_boxes(centroids, seg_paths, image_shape, margin=20):
         bounds.append((x0, x1))
 
     lowest = [-1] * len(bounds)
+    topmost = [h] * len(bounds)
     for path in seg_paths:
         mask = _read_mask(path)
         if mask is None:
@@ -68,10 +71,17 @@ def propose_boxes(centroids, seg_paths, image_shape, margin=20):
             rows = np.flatnonzero(root[:, x0:x1].any(axis=1))
             if rows.size:
                 lowest[i] = max(lowest[i], int(rows[-1]))
+        shoot = np.isin(mask, SHOOT_CLASSES)
+        for i, (x0, x1) in enumerate(bounds):
+            rows = np.flatnonzero(shoot[:, x0:x1].any(axis=1))
+            if rows.size:
+                topmost[i] = min(topmost[i], int(rows[0]))
 
     boxes = []
-    for (cx, cy), (x0, x1), low in zip(centroids, bounds, lowest):
-        y0 = max(0, int(cy) - margin)
+    for (cx, cy), (x0, x1), low, top in zip(centroids, bounds, lowest, topmost):
+        # The hypocotyl grows up from the seed, so start above its topmost
+        # pixel; never start lower than the seed margin.
+        y0 = max(0, min(top, int(cy)) - margin)
         y1 = h if low < 0 else min(h, low + margin)
         y1 = max(y1, min(h, y0 + 1))
         boxes.append([y0, y1, x0, x1])
