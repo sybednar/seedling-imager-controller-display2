@@ -107,7 +107,7 @@ def is_click(p0, p1, tol):
     return abs(p1[0] - p0[0]) <= tol and abs(p1[1] - p0[1]) <= tol
 
 
-def legend_lines(adding, n_boxes):
+def legend_lines(adding, n_boxes, has_seg=False):
     """On-screen instruction lines for the confirm screen (top line first)."""
     lines = []
     if adding:
@@ -118,13 +118,16 @@ def legend_lines(adding, n_boxes):
         "Drag on empty space to draw a plant box   Drag box: move   Drag edge: resize",
         "D: delete selected   ENTER: confirm   Q/Esc: cancel",
     ]
+    if has_seg:
+        lines.append("S: toggle segmentation")
     return lines
 
 
 def key_action(key, adding):
     """Map a key code to a confirm-screen action, given whether add mode is on.
 
-    Returns 'cancel', 'confirm', 'delete', 'enter_add', 'exit_add' or None.
+    Returns 'cancel', 'confirm', 'delete', 'enter_add', 'exit_add', 'toggle_seg'
+    or None.
     In add mode Esc and A leave add mode instead of cancelling the screen;
     Q still cancels.
     """
@@ -136,6 +139,8 @@ def key_action(key, adding):
         return 'confirm'
     if key in (ord('d'), ord('D')):
         return 'delete'
+    if key in (ord('s'), ord('S')):
+        return 'toggle_seg'
     if key in (ord('a'), ord('A')):
         return 'exit_add' if adding else 'enter_add'
     return None

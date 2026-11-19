@@ -10,6 +10,7 @@ from unittest import mock
 
 from analysis.utils import boxEdit
 from analysis.utils import componentROIs as cr
+from analysis.utils import segOverlay
 from analysis.utils import getROIandSeed as gr
 
 H, W = 400, 400
@@ -228,6 +229,31 @@ class NoticeTests(unittest.TestCase):
         self.assertIsNone(cr.proposal_notice(self.d(0, unattached=3)))
 
 
+class SegOverlayTests(unittest.TestCase):
+    def test_each_class_colour_and_background_untouched(self):
+        img = np.full((2, 4, 3), 50, np.uint8)
+        seg = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], np.uint8)
+        out = segOverlay.colorize_segmentation(img, seg)
+        self.assertEqual(tuple(out[0, 0]), (50, 50, 50))
+        self.assertEqual(tuple(out[0, 1]), (0, 0, 255))
+        self.assertEqual(tuple(out[0, 2]), (0, 255, 0))
+        self.assertEqual(tuple(out[0, 3]), (255, 0, 0))
+        self.assertEqual(tuple(out[1, 0]), (0, 255, 255))
+        for x in (1, 2, 3):
+            self.assertEqual(tuple(out[1, x]), (255, 0, 255))   # classes 5, 6, 7
+        self.assertTrue((img == 50).all())                      # input not modified
+
+    def test_mismatched_seg_is_resized_nearest(self):
+        img = np.zeros((4, 4, 3), np.uint8)
+        seg = np.array([[1, 2], [3, 4]], np.uint8)
+        out = segOverlay.colorize_segmentation(img, seg)
+        self.assertEqual(out.shape, (4, 4, 3))
+        self.assertEqual(tuple(out[0, 0]), (0, 0, 255))
+        self.assertEqual(tuple(out[0, 3]), (0, 255, 0))
+        self.assertEqual(tuple(out[3, 0]), (255, 0, 0))
+        self.assertEqual(tuple(out[3, 3]), (0, 255, 255))
+
+
 class BoxEditTests(unittest.TestCase):
     SHAPE = (400, 400)
 
@@ -290,6 +316,17 @@ class BoxEditTests(unittest.TestCase):
         self.assertEqual(k(ord('A'), True), 'exit_add')
         self.assertEqual(k(ord('q'), True), 'cancel')
         self.assertEqual(k(13, True), 'confirm')
+
+    def test_key_action_s_toggles_segmentation_in_and_out_of_add_mode(self):
+        for adding in (False, True):
+            self.assertEqual(boxEdit.key_action(ord('s'), adding), 'toggle_seg')
+            self.assertEqual(boxEdit.key_action(ord('S'), adding), 'toggle_seg')
+
+    def test_legend_lists_s_key_only_with_segmentation(self):
+        self.assertNotIn("S: toggle segmentation", " ".join(boxEdit.legend_lines(False, 2)))
+        lines = boxEdit.legend_lines(False, 2, has_seg=True)
+        self.assertIn("S: toggle segmentation", " ".join(lines))
+        self.assertTrue(all(len(l) <= 80 for l in lines))
 
     def test_press_action_empty_space_draws_without_add_mode(self):
         boxes = [[10, 60, 10, 60]]
@@ -463,6 +500,19 @@ class PlateRoisTests(unittest.TestCase):
         notice = sp.call_args[1]['notice']
         self.assertIn("2 boxes", notice)
         self.assertIn("seed blobs share a box", notice)
+
+    def test_getPlateROIsAndSeeds_passes_last_segmentation_mask(self):
+        _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
+        seg = sp.call_args[1]['seg']
+        self.assertEqual(seg.shape, (H, W))
+        self.assertEqual(int(seg[48, 98]), 3)
+
+    def test_getPlateROIsAndSeeds_unreadable_mask_passes_no_seg(self):
+        missing = os.path.join(self.dir, "nope.png")
+        with mock.patch.object(gr, 'selectPlantROIs', return_value=[[0, 100, 0, 100]]) as sp, \
+             mock.patch.object(gr, 'selectSeed', return_value=[1, 1]):
+            gr.getPlateROIsAndSeeds(self.conf, [self.img], [missing])
+        self.assertIsNone(sp.call_args[1]['seg'])
 
     def test_getPlateROIsAndSeeds_real_mask_gives_one_box(self):
         _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])

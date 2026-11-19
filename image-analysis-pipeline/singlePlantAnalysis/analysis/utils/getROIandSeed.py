@@ -21,7 +21,7 @@ import time
 import cv2
 import numpy as np
 
-from analysis.utils import boxEdit, componentROIs
+from analysis.utils import boxEdit, componentROIs, segOverlay
 
 # State for custom ROI selector
 _roi_state = {
@@ -247,7 +247,7 @@ def _clamp_new_box(p0, p1, image_shape):
     return [y0, y1, x0, x1]
 
 
-def selectPlantROIs(image, boxes, notice=None):
+def selectPlantROIs(image, boxes, notice=None, seg=None):
     """Interactive confirm screen for per-plant boxes on the plate image.
 
     Boxes may be pre-filled (auto-proposed) and stay fully editable. Drag on empty
@@ -255,7 +255,8 @@ def selectPlantROIs(image, boxes, notice=None):
     drag a box body to move it, drag an edge to resize, D deletes the selected box,
     Enter confirms, Q/Esc/window close cancels. ``boxes`` are the starting boxes
     (empty for manual drawing). Returns boxes in plant order, or None if cancelled.
-    ``notice`` is an optional text shown for the first few seconds.
+    ``notice`` is an optional text shown for the first few seconds. ``seg`` is
+    the optional grayscale mask of the same frame; S toggles its colour overlay.
     Box logic lives in boxEdit; this function only wires up the window.
     """
     window_name = "Confirm Plant ROIs"
@@ -264,6 +265,10 @@ def selectPlantROIs(image, boxes, notice=None):
     scale = DISPLAY_SIZE / max(h_orig, w_orig)
     display_w, display_h = int(w_orig * scale), int(h_orig * scale)
     img_small = cv2.resize(image, (display_w, display_h), interpolation=cv2.INTER_AREA)
+    seg_small = None
+    if seg is not None:
+        seg_small = segOverlay.colorize_segmentation(
+            img_small, cv2.resize(seg, (display_w, display_h), interpolation=cv2.INTER_NEAREST))
     handle = max(1, int(round(8 / scale)))  # 8 display px, in image px
     click_tol = max(1, int(round(4 / scale)))  # 4 display px: click, not drag
 
@@ -272,6 +277,7 @@ def selectPlantROIs(image, boxes, notice=None):
         'selected': None,
         'drag': None,      # (index, part, last_x, last_y) in image px
         'adding': False,
+        'show_seg': False,
         'add_start': None,
         'add_end': None,
         'notice_until': time.time() + 8.0,
@@ -328,7 +334,7 @@ def selectPlantROIs(image, boxes, notice=None):
         cv2.setMouseCallback(window_name, on_mouse)
 
         while True:
-            frame = img_small.copy()
+            frame = (seg_small if state['show_seg'] and seg_small is not None else img_small).copy()
             # Number plants with the same rule as the final renumber (bottom row
             # first, then left to right) without reordering the list mid-drag.
             order = boxEdit.plant_order(state['boxes'])
@@ -344,7 +350,7 @@ def selectPlantROIs(image, boxes, notice=None):
                 cv2.rectangle(frame, (int(a[0] * scale), int(a[1] * scale)),
                               (int(b[0] * scale), int(b[1] * scale)), (255, 0, 255), 2)
 
-            legend = boxEdit.legend_lines(state['adding'], len(state['boxes']))
+            legend = boxEdit.legend_lines(state['adding'], len(state['boxes']), seg_small is not None)
             notice_lines = notice.split("\n") if notice and time.time() < state['notice_until'] else []
             for n, line in enumerate(notice_lines):
                 cv2.putText(frame, line, (10, 28 + 26 * n), font, 0.7, (0, 255, 255), 2)
@@ -368,6 +374,9 @@ def selectPlantROIs(image, boxes, notice=None):
                     del state['boxes'][state['selected']]
                     state['selected'] = None
                     state['drag'] = None
+            elif action == 'toggle_seg':
+                if seg_small is not None:
+                    state['show_seg'] = not state['show_seg']
             elif action == 'enter_add':
                 state['adding'] = True
                 state['selected'] = None
@@ -391,6 +400,7 @@ def getPlateROIsAndSeeds(conf, images, segFiles):
     if last_image is None:
         return None
 
+    seg = cv2.imread(segFiles[-1], 0)   # None if unreadable: no overlay, no crash
     proposed, notice = [], None
     try:
         detail = componentROIs.propose_component_boxes_detail(segFiles[-1])
@@ -401,7 +411,7 @@ def getPlateROIsAndSeeds(conf, images, segFiles):
         proposed, notice = [], None
 
     try:
-        boxes = selectPlantROIs(last_image, proposed, notice=notice)
+        boxes = selectPlantROIs(last_image, proposed, notice=notice, seg=seg)
     except Exception as e:
         print("ROI selection failed: %s" % e)
         return None

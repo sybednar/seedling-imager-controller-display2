@@ -99,7 +99,10 @@ are any.
   `Esc` to leave it still work). Click a box to select, drag its body to move,
   drag an edge to resize, `D` delete, `Enter` confirm, `Q` cancel. A drag under
   the minimum size is rejected with an on-screen message. With no boxes a hint
-  says to drag on the plate. Proposed boxes are edited exactly like drawn ones. Decisions (press meaning, legend text, numbering)
+  says to drag on the plate. Proposed boxes are edited exactly like drawn ones. `S` toggles a segmentation
+  overlay of the same last frame (colours as on the Select Root Origin screen,
+  default off, `segOverlay.colorize_segmentation`); `getPlateROIsAndSeeds` passes
+  the mask as `seg=` and passes `None` if it cannot be read. Decisions (press meaning, legend text, numbering)
   live in pure helpers in `boxEdit.py` so the window code stays thin.
 - Plant numbers are shown live on each box and come from the same function
   (`boxEdit.plant_order`) as the final numbers, so what you see is what is saved.
