@@ -104,6 +104,55 @@ class BoxEditTests(unittest.TestCase):
         boxes = [[0, 10, 300, 350], [0, 10, 10, 60], [0, 10, 150, 200]]
         self.assertEqual([b[2] for b in boxEdit.renumber(boxes)], [10, 150, 300])
 
+    def test_plant_order_single_row_left_to_right(self):
+        boxes = [[100, 200, 300, 350], [100, 200, 10, 60], [100, 200, 150, 200]]
+        self.assertEqual(boxEdit.plant_order(boxes), [1, 2, 0])
+
+    def test_plant_order_empty_and_single(self):
+        self.assertEqual(boxEdit.plant_order([]), [])
+        self.assertEqual(boxEdit.plant_order([[5, 105, 5, 50]]), [0])
+        self.assertEqual(boxEdit.renumber([]), [])
+
+    def test_plant_order_bottom_row_first_then_top_row(self):
+        # top row: y 0-100, bottom row: y 300-400 (height 100)
+        boxes = [
+            [0, 100, 50, 100],     # 0 top, x small
+            [300, 400, 400, 450],  # 1 bottom, rightmost
+            [0, 100, 600, 650],    # 2 top, x larger than every bottom box
+            [300, 400, 200, 250],  # 3 bottom, left
+        ]
+        self.assertEqual(boxEdit.plant_order(boxes), [3, 1, 0, 2])
+        self.assertEqual(boxEdit.renumber(boxes), [boxes[i] for i in [3, 1, 0, 2]])
+
+    def test_plant_order_higher_x_lower_row_still_indexed_lower(self):
+        boxes = [[0, 100, 10, 60], [300, 400, 900, 950]]
+        self.assertEqual(boxEdit.plant_order(boxes), [1, 0])
+
+    def test_plant_order_jitter_within_row_does_not_split(self):
+        # height 100 -> threshold 25 px; jitter of 10 px stays one row
+        boxes = [[310, 410, 300, 350], [300, 400, 10, 60], [305, 405, 150, 200]]
+        self.assertEqual(boxEdit.plant_order(boxes), [1, 2, 0])
+
+    def test_plant_order_gap_just_over_threshold_splits_rows(self):
+        boxes = [[0, 100, 10, 60], [26, 126, 200, 250]]
+        self.assertEqual(boxEdit.plant_order(boxes), [1, 0])
+        boxes = [[0, 100, 10, 60], [25, 125, 200, 250]]
+        self.assertEqual(boxEdit.plant_order(boxes), [0, 1])
+
+    def test_plant_order_three_rows(self):
+        boxes = [
+            [0, 100, 500, 550],     # 0 top-right
+            [150, 250, 100, 150],   # 1 middle-left
+            [300, 400, 300, 350],   # 2 bottom-right
+            [300, 400, 20, 70],     # 3 bottom-left
+            [150, 250, 700, 750],   # 4 middle-right
+            [0, 100, 40, 90],       # 5 top-left
+        ]
+        self.assertEqual(boxEdit.plant_order(boxes), [3, 2, 1, 4, 5, 0])
+
+    def test_row_gap_fraction_is_named_constant(self):
+        self.assertEqual(boxEdit.ROW_GAP_FRACTION, 0.25)
+
 
 class PlateRoisTests(unittest.TestCase):
     def setUp(self):
@@ -142,6 +191,17 @@ class PlateRoisTests(unittest.TestCase):
         self.assertEqual(out[0]['seed'], [5, 6])
         self.assertEqual(out[1]['seed'], [7, 8])
         self.assertEqual(ss.call_args_list[0][0][2], [0, 100, 0, 100])
+
+    def test_getPlateROIsAndSeeds_numbers_bottom_row_first(self):
+        top_left = [0, 100, 0, 100]
+        bottom_right = [300, 400, 200, 300]
+        bottom_left = [300, 400, 0, 100]
+        out, _, ss = self.run_with([top_left, bottom_right, bottom_left],
+                                   [[1, 1], [2, 2], [3, 3]])
+        self.assertEqual([d['plant'] for d in out], [1, 2, 3])
+        self.assertEqual([d['bounding box'] for d in out],
+                         [bottom_left, bottom_right, top_left])
+        self.assertEqual([d['seed'] for d in out], [[1, 1], [2, 2], [3, 3]])
 
     def test_getPlateROIsAndSeeds_cancel_during_origin_click_returns_none(self):
         rois = [[0, 100, 0, 100], [0, 100, 200, 300]]

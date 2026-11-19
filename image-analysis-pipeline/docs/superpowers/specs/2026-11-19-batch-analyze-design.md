@@ -62,7 +62,16 @@ dropped as not accurate enough; boxes are always drawn by hand.
   the minimum size is rejected with an on-screen message. With no boxes a hint
   says to drag on the plate. Decisions (press meaning, legend text, numbering)
   live in pure helpers in `boxEdit.py` so the window code stays thin.
-- Plant numbers are shown on each box (left to right in this commit).
+- Plant numbers are shown live on each box and come from the same function
+  (`boxEdit.plant_order`) as the final numbers, so what you see is what is saved.
+
+**Plant indexing** (`boxEdit.plant_order` / `renumber`, pure): by row first, then
+left to right. Sort boxes by y_min; start a new row when a box's y_min exceeds the
+previous box's y_min (in that order) by more than `ROW_GAP_FRACTION` (0.25) of the
+median box height (y_max - y_min); within a row sort by x_min. Rows are numbered
+bottom row first (largest y_min), so the bottom row of the plate gets the lowest
+numbers: a plant clearly lower in the image is indexed lower even if its x is
+higher. A single row is plain left to right.
 
 **Origin click:** for each confirmed box, call the existing `selectSeed()`.
 Cancelling aborts the batch before any analysis starts; nothing is saved.
@@ -79,7 +88,8 @@ both scripts use one copy.
 
 ## Testing
 `test_batch_rois.py` (unittest, headless like `test_aruco_guard.py`): pure box
-helpers (hit test, move/resize, key and press actions, legend, numbering);
+helpers (hit test, move/resize, key and press actions, legend, row-aware numbering incl. jitter, three rows,
+empty and single box);
 `getPlateROIsAndSeeds` with patched `selectPlantROIs`/`selectSeed` (starts with no
 boxes, numbers plants, cancel paths, `pos` reset). The cv2 window itself is not
 unit-tested. The GUI guard test pattern is reused to check that the button runs the
@@ -90,4 +100,4 @@ Handle size and key bindings; exact button position.
 
 ## Calls I made (not discussed)
 - Run the analyses automatically after confirmation (name implies it).
-- Plant numbers are 1..N by box position, overwriting the Plant Number field.
+- Plant numbers are 1..N bottom row first then left to right, overwriting the Plant Number field.

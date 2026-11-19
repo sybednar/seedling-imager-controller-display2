@@ -321,9 +321,9 @@ def selectPlantROIs(image, boxes):
 
         while True:
             frame = img_small.copy()
-            # Number plants by current left-to-right order without reordering
-            # the list while the user is dragging.
-            order = sorted(range(len(state['boxes'])), key=lambda k: state['boxes'][k][2])
+            # Number plants with the same rule as the final renumber (bottom row
+            # first, then left to right) without reordering the list mid-drag.
+            order = boxEdit.plant_order(state['boxes'])
             for rank, k in enumerate(order, start=1):
                 y0, y1, x0, x1 = state['boxes'][k]
                 color = (0, 255, 255) if k == state['selected'] else (0, 255, 0)

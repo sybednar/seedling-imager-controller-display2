@@ -4,6 +4,9 @@ Boxes are [y_min, y_max, x_min, x_max] in image pixels.
 """
 
 MIN_SIZE = 20
+# A new plate row starts when y_min jumps by more than this fraction of the
+# median box height.
+ROW_GAP_FRACTION = 0.25
 
 
 def hit_test(boxes, x, y, handle=8):
@@ -53,9 +56,35 @@ def resize_box(box, part, dx, dy, image_shape, min_size=MIN_SIZE):
     return [int(y0), int(y1), int(x0), int(x1)]
 
 
+def plant_order(boxes):
+    """Indices of ``boxes`` in plant-number order (plant 1 first).
+
+    Rows come first: boxes are sorted by y_min and a new row starts when y_min
+    exceeds the previous box's y_min by more than ROW_GAP_FRACTION of the median
+    box height. The bottom row of the plate (largest y) gets the lowest numbers;
+    within a row plants run left to right by x_min.
+    """
+    if not boxes:
+        return []
+    by_y = sorted(range(len(boxes)), key=lambda i: boxes[i][0])
+    heights = sorted(b[1] - b[0] for b in boxes)
+    m = len(heights)
+    median = heights[m // 2] if m % 2 else (heights[m // 2 - 1] + heights[m // 2]) / 2.0
+    gap = ROW_GAP_FRACTION * median
+    rows = [[by_y[0]]]
+    for prev, cur in zip(by_y, by_y[1:]):
+        if boxes[cur][0] - boxes[prev][0] > gap:
+            rows.append([])
+        rows[-1].append(cur)
+    order = []
+    for row in reversed(rows):
+        order += sorted(row, key=lambda i: boxes[i][2])
+    return order
+
+
 def renumber(boxes):
-    """Sort boxes left to right by x_min (plant 1 is leftmost)."""
-    return [list(b) for b in sorted(boxes, key=lambda b: b[2])]
+    """Return copies of ``boxes`` in plant-number order (see plant_order)."""
+    return [list(boxes[i]) for i in plant_order(boxes)]
 
 
 def press_action(boxes, x, y, handle, adding):
