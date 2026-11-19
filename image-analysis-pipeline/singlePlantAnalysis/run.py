@@ -766,6 +766,14 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         self.saveFieldsIntoJson()
         subprocess.Popen([sys.executable, "1_analysis.py", "--config", os.path.join(self.projectField.text(), "project_config.json")])
 
+    def batch_analysis(self):
+        """Validate like Analyze Plant, then open the plate-level batch setup."""
+        if self.validate_analysis_inputs() is None:
+            return
+
+        self.saveFieldsIntoJson()
+        subprocess.Popen([sys.executable, "batch_setup.py", "--config", os.path.join(self.projectField.text(), "project_config.json")])
+
     def check_aruco_marker(self, images):
         """
         Scan the first 20 images (same scan as 1_analysis.py / 2_postprocess.py) for an
@@ -1147,6 +1155,13 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         self.analysisButton.setGeometry(QtCore.QRect(660, 200, 141, 81))
         self.analysisButton.setObjectName("analysisButton")
         self.analysisButton.clicked.connect(self.analysis)
+
+        # Right column is full (y=0..581, 19px gaps), so this sits in the 36px strip
+        # below it, clear of every divider QFrame (line_2 ends at x=660).
+        self.batchAnalysisButton = QtWidgets.QPushButton(self.tab1)
+        self.batchAnalysisButton.setGeometry(QtCore.QRect(660, 586, 141, 28))
+        self.batchAnalysisButton.setObjectName("batchAnalysisButton")
+        self.batchAnalysisButton.clicked.connect(self.batch_analysis)
 
         self.PostProcessButton = QtWidgets.QPushButton(self.tab1)
         self.PostProcessButton.setGeometry(QtCore.QRect(660, 300, 141, 81))
@@ -1828,6 +1843,7 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
             set_translation(self.saveImagesButton, "Save Cropped Images")
             set_translation(self.videoHasArucoButton, "Video has ArUco markers")
             set_translation(self.analysisButton, "Analyze Plant")
+            set_translation(self.batchAnalysisButton, "Batch Analyze")
             set_translation(self.previewAnalysisButton, "Preview video")
             set_translation(self.PostProcessButton, "Process\nall plants")
             set_translation(self.saveImagesConvex, "Save images for each day")
@@ -1884,6 +1900,12 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
             "3. Process the growth tracking graph."
         )
         
+        self.batchAnalysisButton.setToolTip(
+            "<b>Batch Analyze:</b><br>"
+            "Proposes an ROI for every plant on the plate from the segmentation, "
+            "then analyzes each plant. You still confirm each ROI and mark each root origin."
+        )
+
         self.PostProcessButton.setToolTip("Finalize and calculate statistics for all analyzed plants in this project.")
         self.loadConfigFileButton.setToolTip("Import settings from an existing configuration file.")
         self.loadLastConfigButton.setToolTip("Restore the most recently used settings.")
