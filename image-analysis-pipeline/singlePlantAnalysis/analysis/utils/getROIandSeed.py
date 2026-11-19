@@ -19,6 +19,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 import cv2
 import numpy as np
 
+from analysis.utils import boxEdit
+from analysis.utils.proposeROIs import detect_seed_centroids, propose_boxes
+
 # State for custom ROI selector
 _roi_state = {
     'start': None,
@@ -229,3 +232,162 @@ def getROIandSeed(conf, images, segFiles):
         return None, None
     
     return bbox, seed
+
+
+def _clamp_new_box(p0, p1, image_shape):
+    """Box [y0, y1, x0, x1] from two drag corners (image px), clamped; None if too small."""
+    h, w = image_shape[:2]
+    x0, x1 = sorted((int(p0[0]), int(p1[0])))
+    y0, y1 = sorted((int(p0[1]), int(p1[1])))
+    x0, y0 = max(0, x0), max(0, y0)
+    x1, y1 = min(w, x1), min(h, y1)
+    if x1 - x0 < boxEdit.MIN_SIZE or y1 - y0 < boxEdit.MIN_SIZE:
+        return None
+    return [y0, y1, x0, x1]
+
+
+def selectPlantROIs(image, boxes):
+    """Interactive confirm screen for per-plant boxes on the plate image.
+
+    Click/drag a box body to move it, drag an edge to resize, D deletes the
+    selected box, A then drag adds a box, Enter confirms, Q/Esc/window close
+    cancels. Returns boxes sorted left to right, or None if cancelled.
+    Box logic lives in boxEdit; this function only wires up the window.
+    """
+    window_name = "Confirm Plant ROIs"
+    DISPLAY_SIZE = 1000
+    h_orig, w_orig = image.shape[:2]
+    scale = DISPLAY_SIZE / max(h_orig, w_orig)
+    display_w, display_h = int(w_orig * scale), int(h_orig * scale)
+    img_small = cv2.resize(image, (display_w, display_h), interpolation=cv2.INTER_AREA)
+    handle = max(1, int(round(8 / scale)))  # 8 display px, in image px
+
+    state = {
+        'boxes': boxEdit.renumber(boxes),
+        'selected': None,
+        'drag': None,      # (index, part, last_x, last_y) in image px
+        'adding': False,
+        'add_start': None,
+        'add_end': None,
+    }
+
+    def to_img(x, y):
+        return int(x / scale), int(y / scale)
+
+    def on_mouse(event, x, y, flags, param):
+        ix, iy = to_img(x, y)
+        st = state
+        if event == cv2.EVENT_LBUTTONDOWN:
+            if st['adding']:
+                st['add_start'] = st['add_end'] = (ix, iy)
+                return
+            hit = boxEdit.hit_test(st['boxes'], ix, iy, handle)
+            if hit is None:
+                st['selected'] = None
+            else:
+                st['selected'] = hit[0]
+                st['drag'] = (hit[0], hit[1], ix, iy)
+        elif event == cv2.EVENT_MOUSEMOVE:
+            if st['adding'] and st['add_start'] is not None:
+                st['add_end'] = (ix, iy)
+            elif st['drag'] is not None:
+                i, part, lx, ly = st['drag']
+                dx, dy = ix - lx, iy - ly
+                if part == 'body':
+                    st['boxes'][i] = boxEdit.move_box(st['boxes'][i], dx, dy, image.shape)
+                else:
+                    st['boxes'][i] = boxEdit.resize_box(st['boxes'][i], part, dx, dy, image.shape)
+                st['drag'] = (i, part, ix, iy)
+        elif event == cv2.EVENT_LBUTTONUP:
+            if st['adding'] and st['add_start'] is not None:
+                new = _clamp_new_box(st['add_start'], (ix, iy), image.shape)
+                st['add_start'] = st['add_end'] = None
+                if new is not None:
+                    st['boxes'].append(new)
+                    st['selected'] = len(st['boxes']) - 1
+                    st['adding'] = False
+            st['drag'] = None
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    try:
+        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(window_name, display_w, display_h)
+        cv2.setMouseCallback(window_name, on_mouse)
+
+        while True:
+            frame = img_small.copy()
+            # Number plants by current left-to-right order without reordering
+            # the list while the user is dragging.
+            order = sorted(range(len(state['boxes'])), key=lambda k: state['boxes'][k][2])
+            for rank, k in enumerate(order, start=1):
+                y0, y1, x0, x1 = state['boxes'][k]
+                color = (0, 255, 255) if k == state['selected'] else (0, 255, 0)
+                p0 = (int(x0 * scale), int(y0 * scale))
+                p1 = (int(x1 * scale), int(y1 * scale))
+                cv2.rectangle(frame, p0, p1, color, 2)
+                cv2.putText(frame, str(rank), (p0[0] + 6, p0[1] + 28), font, 0.9, color, 2)
+            if state['adding'] and state['add_start'] is not None:
+                a, b = state['add_start'], state['add_end']
+                cv2.rectangle(frame, (int(a[0] * scale), int(a[1] * scale)),
+                              (int(b[0] * scale), int(b[1] * scale)), (255, 0, 255), 2)
+
+            legend = [
+                "Drag box: move   Drag edge: resize   D: delete selected",
+                "A then drag: add box   ENTER: confirm   Q/Esc: cancel",
+            ]
+            if state['adding']:
+                legend.insert(0, "ADD MODE: drag a new box")
+            for n, line in enumerate(legend):
+                cv2.putText(frame, line, (10, display_h - 12 - 26 * (len(legend) - 1 - n)),
+                            font, 0.6, (255, 255, 255), 2)
+
+            cv2.imshow(window_name, frame)
+            key = cv2.waitKey(16) & 0xFF
+
+            if key in (ord('q'), ord('Q'), 27):
+                return None
+            elif key in (13, 10):
+                return boxEdit.renumber(state['boxes'])
+            elif key in (ord('d'), ord('D')):
+                if state['selected'] is not None:
+                    del state['boxes'][state['selected']]
+                    state['selected'] = None
+                    state['drag'] = None
+            elif key in (ord('a'), ord('A')):
+                state['adding'] = True
+                state['selected'] = None
+
+            if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
+                return None
+    finally:
+        cv2.destroyAllWindows()
+
+
+def getPlateROIsAndSeeds(conf, images, segFiles):
+    """Propose boxes for every plant, let the user confirm them, then collect a
+    root origin per box. Returns [{'plant', 'bounding box', 'seed'}] with seeds
+    relative to each box, or None if cancelled or no boxes confirmed."""
+    last_image = cv2.imread(images[-1])
+    seg0 = cv2.imread(segFiles[0], 0)
+    if last_image is None or seg0 is None:
+        return None
+    image_shape = seg0.shape[:2]
+
+    centroids = detect_seed_centroids(segFiles)
+    proposed = propose_boxes(centroids, segFiles, image_shape)
+
+    try:
+        boxes = selectPlantROIs(last_image, proposed)
+    except Exception as e:
+        print("ROI selection failed: %s" % e)
+        return None
+    if not boxes:
+        return None
+
+    plants = []
+    for n, bbox in enumerate(boxEdit.renumber(boxes), start=1):
+        seed = selectSeed(images, segFiles, bbox, conf)
+        if seed is None:
+            return None
+        plants.append({'plant': n, 'bounding box': list(bbox), 'seed': list(seed)})
+    return plants
