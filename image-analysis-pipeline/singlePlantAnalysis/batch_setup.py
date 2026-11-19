@@ -9,7 +9,7 @@ import os
 import sys
 
 from analysis.plantAnalysis import plantAnalysis
-from analysis.utils.configPrep import prepare_conf
+from analysis.utils.configPrep import prepare_conf, set_plant
 from analysis.utils.fileUtilities import getImages
 from analysis.utils.getROIandSeed import getPlateROIsAndSeeds
 
@@ -22,7 +22,7 @@ def run_batch(conf, plants, analyse=plantAnalysis):
     """
     failed = []
     for p in plants:
-        plant_conf = dict(conf, plant=str(p['plant']))
+        plant_conf = set_plant(dict(conf), p['plant'])
         plant_conf['bounding box'] = p['bounding box']
         plant_conf['seed'] = p['seed']
         try:

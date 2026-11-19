@@ -281,6 +281,12 @@ class ConfigPrepTests(unittest.TestCase):
         self.assertEqual(conf['fileKey'], 'E')
         self.assertEqual(conf['Plant'], 'Arabidopsis thaliana')
 
+    def test_set_plant_updates_label_and_fields(self):
+        from analysis.utils.configPrep import set_plant
+        conf = set_plant({'Experiment': 'E', 'Images': '/x', 'plant': '1'}, 4)
+        self.assertEqual((conf['plant'], conf['plantField'], conf['sequenceLabel']),
+                         ('4', '4', 'E_/x_4'))
+
     def test_prepare_conf_identifier_fallback(self):
         from analysis.utils.configPrep import prepare_conf
         conf = prepare_conf({'identifierField': 'ID', 'Images': '/x', 'plant': 1,
@@ -301,11 +307,15 @@ class RunBatchTests(unittest.TestCase):
         import batch_setup
         calls = []
 
+        labels = []
+
         def stub(conf, replicate):
             calls.append((conf['plant'], conf['bounding box'], conf['seed'], replicate))
+            labels.append((conf['sequenceLabel'], conf['plantField']))
 
-        failed = batch_setup.run_batch({'Experiment': 'E'}, self.PLANTS, analyse=stub)
+        failed = batch_setup.run_batch({'Experiment': 'E', 'Images': '/x'}, self.PLANTS, analyse=stub)
         self.assertEqual(failed, [])
+        self.assertEqual(labels, [('E_/x_1', '1'), ('E_/x_2', '2'), ('E_/x_3', '3')])
         self.assertEqual(calls, [
             ('1', [0, 10, 0, 10], [1, 1], True),
             ('2', [0, 10, 20, 30], [2, 2], True),
@@ -321,13 +331,13 @@ class RunBatchTests(unittest.TestCase):
             if conf['plant'] == '2':
                 raise RuntimeError("boom")
 
-        failed = batch_setup.run_batch({}, self.PLANTS, analyse=stub)
+        failed = batch_setup.run_batch({'Experiment': 'E', 'Images': '/x'}, self.PLANTS, analyse=stub)
         self.assertEqual(seen, ['1', '2', '3'])
         self.assertEqual(failed, [2])
 
     def test_run_batch_does_not_mutate_shared_conf(self):
         import batch_setup
-        shared = {'Experiment': 'E'}
+        shared = {'Experiment': 'E', 'Images': '/x'}
         snapshots = []
 
         def stub(conf, replicate):
@@ -335,7 +345,7 @@ class RunBatchTests(unittest.TestCase):
             conf['leak'] = True
 
         batch_setup.run_batch(shared, self.PLANTS, analyse=stub)
-        self.assertEqual(shared, {'Experiment': 'E'})
+        self.assertEqual(shared, {'Experiment': 'E', 'Images': '/x'})
         self.assertEqual(snapshots, [p['bounding box'] for p in self.PLANTS])
 
 
