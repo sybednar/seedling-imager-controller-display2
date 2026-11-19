@@ -670,19 +670,23 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         
         return
     
-    def analysis(self):
-        """Run analysis with validation"""
+    def validate_analysis_inputs(self):
+        """
+        Validate everything needed to start an analysis (video folder, images,
+        segmentation files, calibration, ArUco guard). Shows the message box for
+        the first failure and returns None; returns the image list on success.
+        """
         
         # Get and validate video folder
         video_folder = self.videoField.text()
         
         if not video_folder:
             QtWidgets.QMessageBox.warning(None, 'Error', 'Please specify a video folder first!')
-            return
+            return None
             
         if not os.path.exists(video_folder):
             QtWidgets.QMessageBox.warning(None, 'Error', 'Video folder does not exist!\nPlease check the path.')
-            return
+            return None
         
         # Check for images (PNG/TIF/TIFF)
         _img_exts = ("*.png", "*.tif", "*.tiff")
@@ -704,7 +708,7 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
                 None, 'Error', 
                 'No images found in the video folder!\nPlease check the path to the folder where the images are located.'
             )
-            return
+            return None
         
         # Check for segmentation files (required for analysis)
         seg_folder = os.path.join(video_folder, "Segmentation", "Ensemble")
@@ -720,7 +724,7 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
                 'Segmentation is required for analysis.\n'
                 'Please ensure the images have been properly segmented first.'
             )
-            return
+            return None
         
         # Validate calibration settings
         has_auto_calib = self.videoHasArucoButton.isChecked()
@@ -731,23 +735,31 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
                     'Please provide both known distance and pixel distance for manual calibration,\n'
                     'or enable "Video has ArUco markers"!'
                 )
-                return
+                return None
             
             try:
                 known_dist = float(self.knownDistanceField.text())
                 pixel_dist = int(self.pixelDistanceField.text())
                 if known_dist <= 0 or pixel_dist <= 0:
                     QtWidgets.QMessageBox.warning(None, 'Error', 'Calibration values must be positive numbers!')
-                    return
+                    return None
             except ValueError:
                 QtWidgets.QMessageBox.warning(
                     None, 'Error', 
                     'Invalid calibration values!\nKnown distance must be a number, pixel distance must be an integer.'
                 )
-                return
+                return None
         
         # ArUco guard: refuse to run with a scale the analysis cannot trust
         if self.videoHasArucoButton.isChecked() and not self.check_aruco_marker(images):
+            return None
+
+        return images
+
+    def analysis(self):
+        """Run analysis with validation"""
+        images = self.validate_analysis_inputs()
+        if images is None:
             return
 
         # All validations passed, run analysis
