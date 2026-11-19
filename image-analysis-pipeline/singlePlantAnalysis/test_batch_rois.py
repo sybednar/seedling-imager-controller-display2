@@ -192,6 +192,22 @@ class PlateRoisTests(unittest.TestCase):
         out, _, _ = self.run_with(rois, [[5, 6], None])
         self.assertIsNone(out)
 
+    def test_getPlateROIsAndSeeds_resets_module_pos_before_every_seed_call(self):
+        seen = []
+
+        def fake_select_seed(images, segs, bbox, conf):
+            seen.append(gr.pos)
+            gr.pos = [3, 4]   # the real selectSeed leaves the click here
+            return [3, 4]
+
+        gr.pos = [99, 99]     # stale click from a previous run
+        self.addCleanup(setattr, gr, 'pos', None)
+        rois = [[0, 100, 0, 100], [0, 100, 200, 300]]
+        with mock.patch.object(gr, 'selectPlantROIs', return_value=rois), \
+             mock.patch.object(gr, 'selectSeed', side_effect=fake_select_seed):
+            gr.getPlateROIsAndSeeds(self.conf, [self.img], [self.seg])
+        self.assertEqual(seen, [None, None])
+
     def test_getPlateROIsAndSeeds_passes_proposed_boxes(self):
         _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
         proposed = sp.call_args[0][1]

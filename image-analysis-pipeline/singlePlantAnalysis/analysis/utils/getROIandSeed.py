@@ -367,6 +367,7 @@ def getPlateROIsAndSeeds(conf, images, segFiles):
     """Propose boxes for every plant, let the user confirm them, then collect a
     root origin per box. Returns [{'plant', 'bounding box', 'seed'}] with seeds
     relative to each box, or None if cancelled or no boxes confirmed."""
+    global pos
     last_image = cv2.imread(images[-1])
     seg0 = cv2.imread(segFiles[0], 0)
     if last_image is None or seg0 is None:
@@ -386,6 +387,9 @@ def getPlateROIsAndSeeds(conf, images, segFiles):
 
     plants = []
     for n, bbox in enumerate(boxEdit.renumber(boxes), start=1):
+        # selectSeed keeps the last click in module-global ``pos``; clear it so
+        # each plant starts with no origin placed.
+        pos = None
         seed = selectSeed(images, segFiles, bbox, conf)
         if seed is None:
             return None
