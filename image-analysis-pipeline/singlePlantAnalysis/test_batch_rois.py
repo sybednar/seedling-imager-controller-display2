@@ -113,6 +113,29 @@ class BatchRoiTests(unittest.TestCase):
         b = propose_boxes(detect_seed_centroids([p]), [p], (H, W))
         self.assertEqual(b[0][0], 179)
 
+    def test_near_duplicate_seed_centroids_are_merged(self):
+        p = self.write("a.png", seeds=[(100, 50), (110, 50), (300, 50)])
+        c = detect_seed_centroids([p])
+        self.assertEqual(len(c), 3)
+        b = propose_boxes(c, [p], (H, W))
+        self.assertEqual(len(b), 2)
+        self.assertLess(b[0][2], 110)
+        self.assertGreaterEqual(b[0][3], 110)
+
+    def test_roots_only_above_seed_means_no_root_below(self):
+        p0 = self.write("a.png", seeds=[(100, 200)])
+        p1 = self.write("b.png", seeds=[(100, 200)], roots=[(100, 20, 150)])
+        b = propose_boxes(detect_seed_centroids([p0]), [p0, p1], (H, W))
+        self.assertEqual(b[0][1], H)
+
+    def test_every_proposed_box_meets_min_size(self):
+        p = self.write("a.png", seeds=[(15, 395)])
+        for shape, margin in (((H, 30), 20), ((H, W), 2)):
+            for y0, y1, x0, x1 in propose_boxes(detect_seed_centroids([p]), [p], shape, margin=margin):
+                self.assertGreaterEqual(x1 - x0, boxEdit.MIN_SIZE)
+                self.assertGreaterEqual(y1 - y0, boxEdit.MIN_SIZE)
+                self.assertTrue(0 <= x0 and x1 <= shape[1] and 0 <= y0 and y1 <= shape[0])
+
     def test_root_of_neighbour_does_not_extend_box(self):
         p0 = self.write("a.png", seeds=[(100, 50), (300, 50)])
         base = propose_boxes(detect_seed_centroids([p0]), [p0], (H, W))

@@ -6,6 +6,8 @@ Segmentation class values: 1=main root, 2=lateral root, 3=seed.
 import cv2
 import numpy as np
 
+from analysis.utils.boxEdit import MIN_SIZE
+
 SEED_CLASS = 3
 ROOT_CLASSES = (1, 2)
 # Hypocotyl, leaf, petiole: shoot structures that grow up from the seed.
@@ -48,17 +50,43 @@ def _x_edges(xs, width):
     return edges
 
 
+def _merge_close(centroids, min_gap=MIN_SIZE):
+    """Collapse centroids (sorted by x) closer than ``min_gap`` px in x into
+    one at their mean, so a split seed never yields a degenerate box."""
+    groups = []
+    for c in sorted(centroids, key=lambda c: c[0]):
+        if groups and c[0] - groups[-1][-1][0] < min_gap:
+            groups[-1].append(c)
+        else:
+            groups.append([c])
+    return [(float(np.mean([g[0] for g in grp])), float(np.mean([g[1] for g in grp])))
+            for grp in groups]
+
+
+def _span(lo, hi, limit, min_size=MIN_SIZE):
+    """Widen [lo, hi) to at least min_size inside [0, limit]."""
+    if hi - lo < min_size:
+        hi = min(limit, lo + min_size)
+        lo = max(0, hi - min_size)
+    return lo, hi
+
+
 def propose_boxes(centroids, seg_paths, image_shape, margin=20):
-    """One [y_min, y_max, x_min, x_max] per centroid, in centroid order."""
+    """One [y_min, y_max, x_min, x_max] per (merged) centroid, left to right.
+
+    Centroids closer than boxEdit.MIN_SIZE in x are merged, and every box is
+    at least MIN_SIZE wide and tall.
+    """
     h, w = int(image_shape[0]), int(image_shape[1])
     if not centroids:
         return []
+    centroids = _merge_close(centroids)
     xs = [c[0] for c in centroids]
     bounds = []
     for left, right in _x_edges(xs, w):
         x0 = int(np.clip(np.floor(left + 0.5), 0, w - 1))
         x1 = int(np.clip(np.floor(right + 0.5), x0 + 1, w))
-        bounds.append((x0, x1))
+        bounds.append(_span(x0, x1, w))
 
     lowest = [-1] * len(bounds)
     topmost = [h] * len(bounds)
@@ -82,7 +110,8 @@ def propose_boxes(centroids, seg_paths, image_shape, margin=20):
         # The hypocotyl grows up from the seed, so start above its topmost
         # pixel; never start lower than the seed margin.
         y0 = max(0, min(top, int(cy)) - margin)
-        y1 = h if low < 0 else min(h, low + margin)
-        y1 = max(y1, min(h, y0 + 1))
+        # Root pixels at or above the seed row mean no root below the seed yet.
+        y1 = h if low <= cy else min(h, low + margin)
+        y0, y1 = _span(y0, y1, h)
         boxes.append([y0, y1, x0, x1])
     return boxes
