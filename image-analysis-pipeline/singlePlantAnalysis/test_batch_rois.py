@@ -370,6 +370,30 @@ class BatchSetupMainTests(unittest.TestCase):
             code = batch_setup.main(["--config", self.cfg])
         return code, analyse
 
+    def _limited_lists(self, limit):
+        import batch_setup, json
+        with open(self.cfg) as f:
+            c = json.load(f)
+        if limit is not None:
+            c['processingLimit'] = limit
+        with open(self.cfg, 'w') as f:
+            json.dump(c, f)
+        imgs = ['i%d.png' % n for n in range(300)]
+        segs = ['s%d.png' % n for n in range(300)]
+        with mock.patch.object(batch_setup, 'getImages', return_value=(imgs, segs)), \
+             mock.patch.object(batch_setup, 'getPlateROIsAndSeeds', return_value=None) as g:
+            batch_setup.main(["--config", self.cfg])
+        return g.call_args[0][1], g.call_args[0][2]
+
+    def test_main_applies_processing_limit_like_single_plant(self):
+        imgs, segs = self._limited_lists(2)       # 2 days * 24 * 4 = 192
+        self.assertEqual((len(imgs), len(segs)), (192, 192))
+
+    def test_main_no_limit_keeps_everything(self):
+        for limit in (0, None):
+            imgs, segs = self._limited_lists(limit)
+            self.assertEqual((len(imgs), len(segs)), (300, 300))
+
     def test_main_cancel_exits_zero_without_analysing(self):
         code, analyse = self.run_main(rois=None)
         self.assertEqual(code, 0)

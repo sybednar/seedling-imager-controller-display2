@@ -33,6 +33,15 @@ def run_batch(conf, plants, analyse=plantAnalysis):
     return failed
 
 
+def apply_processing_limit(conf, images, seg_files):
+    """Slice the image lists exactly as plantAnalysis does (days * 24 * 4)."""
+    limit = conf.get('processingLimit')
+    if limit:
+        images = images[: limit * 24 * 4]
+        seg_files = seg_files[: limit * 24 * 4]
+    return images, seg_files
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Batch analyse all plants on a plate')
     parser.add_argument('--config', type=str, required=True,
@@ -45,6 +54,7 @@ def main(argv=None):
 
     try:
         images, seg_files = getImages(conf)
+        images, seg_files = apply_processing_limit(conf, images, seg_files)
         plants = getPlateROIsAndSeeds(conf, images, seg_files)
     except Exception as e:
         print(f"Batch setup failed before analysis: {type(e).__name__}: {e}", file=sys.stderr)
