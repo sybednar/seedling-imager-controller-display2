@@ -16,6 +16,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
+import time
+
 import cv2
 import numpy as np
 
@@ -250,8 +252,8 @@ def selectPlantROIs(image, boxes):
     """Interactive confirm screen for per-plant boxes on the plate image.
 
     Click/drag a box body to move it, drag an edge to resize, D deletes the
-    selected box, A then drag adds a box, Enter confirms, Q/Esc/window close
-    cancels. Returns boxes sorted left to right, or None if cancelled.
+    selected box, A then drag adds a box (A or Esc leaves add mode), Enter confirms,
+    Q/Esc/window close cancels. Returns boxes sorted left to right, or None if cancelled.
     Box logic lives in boxEdit; this function only wires up the window.
     """
     window_name = "Confirm Plant ROIs"
@@ -269,6 +271,7 @@ def selectPlantROIs(image, boxes):
         'adding': False,
         'add_start': None,
         'add_end': None,
+        'message': None,   # (text, expires_at) short on-screen notice
     }
 
     def to_img(x, y):
@@ -305,7 +308,11 @@ def selectPlantROIs(image, boxes):
                 if new is not None:
                     st['boxes'].append(new)
                     st['selected'] = len(st['boxes']) - 1
-                    st['adding'] = False
+                else:
+                    st['message'] = ("Box too small (min %d px): add cancelled" % boxEdit.MIN_SIZE,
+                                     time.time() + 3.0)
+                # Leave add mode either way so a stray drag can't keep it armed.
+                st['adding'] = False
             st['drag'] = None
 
     font = cv2.FONT_HERSHEY_SIMPLEX
@@ -336,7 +343,10 @@ def selectPlantROIs(image, boxes):
                 "A then drag: add box   ENTER: confirm   Q/Esc: cancel",
             ]
             if state['adding']:
-                legend.insert(0, "ADD MODE: drag a new box")
+                legend.insert(0, "ADD MODE: drag a new box (A or Esc: leave add mode)")
+            msg = state['message']
+            if msg is not None and time.time() < msg[1]:
+                cv2.putText(frame, msg[0], (10, 28), font, 0.7, (0, 0, 255), 2)
             for n, line in enumerate(legend):
                 cv2.putText(frame, line, (10, display_h - 12 - 26 * (len(legend) - 1 - n)),
                             font, 0.6, (255, 255, 255), 2)
@@ -344,18 +354,22 @@ def selectPlantROIs(image, boxes):
             cv2.imshow(window_name, frame)
             key = cv2.waitKey(16) & 0xFF
 
-            if key in (ord('q'), ord('Q'), 27):
+            action = boxEdit.key_action(key, state['adding'])
+            if action == 'cancel':
                 return None
-            elif key in (13, 10):
+            elif action == 'confirm':
                 return boxEdit.renumber(state['boxes'])
-            elif key in (ord('d'), ord('D')):
+            elif action == 'delete':
                 if state['selected'] is not None:
                     del state['boxes'][state['selected']]
                     state['selected'] = None
                     state['drag'] = None
-            elif key in (ord('a'), ord('A')):
+            elif action == 'enter_add':
                 state['adding'] = True
                 state['selected'] = None
+            elif action == 'exit_add':
+                state['adding'] = False
+                state['add_start'] = state['add_end'] = None
 
             if cv2.getWindowProperty(window_name, cv2.WND_PROP_VISIBLE) < 1:
                 return None

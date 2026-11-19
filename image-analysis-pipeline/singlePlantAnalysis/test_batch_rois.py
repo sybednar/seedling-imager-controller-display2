@@ -195,6 +195,25 @@ class BoxEditTests(unittest.TestCase):
         r = boxEdit.resize_box([100, 200, 100, 200], 'l', -500, 0, self.SHAPE)
         self.assertEqual(r[2], 0)
 
+    def test_key_action_outside_add_mode(self):
+        k = boxEdit.key_action
+        self.assertEqual(k(27, False), 'cancel')
+        self.assertEqual(k(ord('q'), False), 'cancel')
+        self.assertEqual(k(ord('Q'), False), 'cancel')
+        self.assertEqual(k(13, False), 'confirm')
+        self.assertEqual(k(ord('d'), False), 'delete')
+        self.assertEqual(k(ord('a'), False), 'enter_add')
+        self.assertIsNone(k(ord('x'), False))
+        self.assertIsNone(k(255, False))
+
+    def test_key_action_in_add_mode_esc_and_a_leave_add_mode(self):
+        k = boxEdit.key_action
+        self.assertEqual(k(27, True), 'exit_add')
+        self.assertEqual(k(ord('a'), True), 'exit_add')
+        self.assertEqual(k(ord('A'), True), 'exit_add')
+        self.assertEqual(k(ord('q'), True), 'cancel')
+        self.assertEqual(k(13, True), 'confirm')
+
     def test_renumber_sorts_by_x(self):
         boxes = [[0, 10, 300, 350], [0, 10, 10, 60], [0, 10, 150, 200]]
         self.assertEqual([b[2] for b in boxEdit.renumber(boxes)], [10, 150, 300])

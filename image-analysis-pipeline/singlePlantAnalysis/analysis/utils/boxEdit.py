@@ -56,3 +56,23 @@ def resize_box(box, part, dx, dy, image_shape, min_size=MIN_SIZE):
 def renumber(boxes):
     """Sort boxes left to right by x_min (plant 1 is leftmost)."""
     return [list(b) for b in sorted(boxes, key=lambda b: b[2])]
+
+
+def key_action(key, adding):
+    """Map a key code to a confirm-screen action, given whether add mode is on.
+
+    Returns 'cancel', 'confirm', 'delete', 'enter_add', 'exit_add' or None.
+    In add mode Esc and A leave add mode instead of cancelling the screen;
+    Q still cancels.
+    """
+    if key in (ord('q'), ord('Q')):
+        return 'cancel'
+    if key == 27:
+        return 'exit_add' if adding else 'cancel'
+    if key in (13, 10):
+        return 'confirm'
+    if key in (ord('d'), ord('D')):
+        return 'delete'
+    if key in (ord('a'), ord('A')):
+        return 'exit_add' if adding else 'enter_add'
+    return None
