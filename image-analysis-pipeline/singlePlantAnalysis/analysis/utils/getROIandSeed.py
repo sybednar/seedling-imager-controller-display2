@@ -273,7 +273,7 @@ def selectPlantROIs(image, boxes, notice=None, seg=None):
     click_tol = max(1, int(round(4 / scale)))  # 4 display px: click, not drag
 
     state = {
-        'boxes': boxEdit.renumber(boxes),
+        'boxes': boxEdit.renumber(boxes, h_orig),
         'selected': None,
         'drag': None,      # (index, part, last_x, last_y) in image px
         'adding': False,
@@ -335,9 +335,9 @@ def selectPlantROIs(image, boxes, notice=None, seg=None):
 
         while True:
             frame = (seg_small if state['show_seg'] and seg_small is not None else img_small).copy()
-            # Number plants with the same rule as the final renumber (bottom row
+            # Number plants with the same rule as the final renumber (bottom half
             # first, then left to right) without reordering the list mid-drag.
-            order = boxEdit.plant_order(state['boxes'])
+            order = boxEdit.plant_order(state['boxes'], h_orig)
             for rank, k in enumerate(order, start=1):
                 y0, y1, x0, x1 = state['boxes'][k]
                 color = (0, 255, 255) if k == state['selected'] else (0, 255, 0)
@@ -368,7 +368,7 @@ def selectPlantROIs(image, boxes, notice=None, seg=None):
             if action == 'cancel':
                 return None
             elif action == 'confirm':
-                return boxEdit.renumber(state['boxes'])
+                return boxEdit.renumber(state['boxes'], h_orig)
             elif action == 'delete':
                 if state['selected'] is not None:
                     del state['boxes'][state['selected']]
@@ -419,7 +419,7 @@ def getPlateROIsAndSeeds(conf, images, segFiles):
         return None
 
     plants = []
-    for n, bbox in enumerate(boxEdit.renumber(boxes), start=1):
+    for n, bbox in enumerate(boxEdit.renumber(boxes, last_image.shape[0]), start=1):
         # selectSeed keeps the last click in module-global ``pos``; clear it so
         # each plant starts with no origin placed.
         pos = None

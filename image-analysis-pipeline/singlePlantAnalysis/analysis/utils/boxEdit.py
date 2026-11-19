@@ -4,9 +4,6 @@ Boxes are [y_min, y_max, x_min, x_max] in image pixels.
 """
 
 MIN_SIZE = 20
-# A new plate row starts when y_min jumps by more than this fraction of the
-# median box height.
-ROW_GAP_FRACTION = 0.25
 
 
 def hit_test(boxes, x, y, handle=8):
@@ -56,35 +53,25 @@ def resize_box(box, part, dx, dy, image_shape, min_size=MIN_SIZE):
     return [int(y0), int(y1), int(x0), int(x1)]
 
 
-def plant_order(boxes):
+def plant_order(boxes, image_height):
     """Indices of ``boxes`` in plant-number order (plant 1 first).
 
-    Rows come first: boxes are sorted by y_min and a new row starts when y_min
-    exceeds the previous box's y_min by more than ROW_GAP_FRACTION of the median
-    box height. The bottom row of the plate (largest y) gets the lowest numbers;
-    within a row plants run left to right by x_min.
+    Two rows, split at the middle of the image: a box whose vertical midpoint
+    (y_min + y_max) / 2 is below the middle (greater than image_height / 2) is in
+    the bottom row; otherwise (above, or exactly on the middle) it is in the top
+    row. Bottom-row plants get the lowest numbers, then the top row continues;
+    within a row plants run left to right by x_min. ``image_height`` is required.
     """
-    if not boxes:
-        return []
-    by_y = sorted(range(len(boxes)), key=lambda i: boxes[i][0])
-    heights = sorted(b[1] - b[0] for b in boxes)
-    m = len(heights)
-    median = heights[m // 2] if m % 2 else (heights[m // 2 - 1] + heights[m // 2]) / 2.0
-    gap = ROW_GAP_FRACTION * median
-    rows = [[by_y[0]]]
-    for prev, cur in zip(by_y, by_y[1:]):
-        if boxes[cur][0] - boxes[prev][0] > gap:
-            rows.append([])
-        rows[-1].append(cur)
-    order = []
-    for row in reversed(rows):
-        order += sorted(row, key=lambda i: boxes[i][2])
-    return order
+    mid = image_height / 2.0
+    bottom = [i for i, b in enumerate(boxes) if (b[0] + b[1]) / 2.0 > mid]
+    top = [i for i, b in enumerate(boxes) if (b[0] + b[1]) / 2.0 <= mid]
+    return (sorted(bottom, key=lambda i: boxes[i][2]) +
+            sorted(top, key=lambda i: boxes[i][2]))
 
 
-def renumber(boxes):
+def renumber(boxes, image_height):
     """Return copies of ``boxes`` in plant-number order (see plant_order)."""
-    return [list(boxes[i]) for i in plant_order(boxes)]
+    return [list(boxes[i]) for i in plant_order(boxes, image_height)]
 
 
 def press_action(boxes, x, y, handle, adding):

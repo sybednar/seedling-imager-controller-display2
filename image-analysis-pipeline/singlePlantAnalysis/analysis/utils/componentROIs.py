@@ -101,7 +101,7 @@ def propose_component_boxes_detail(seg_path, min_seed_area=30, margin=20,
 
     boxes = [[max(0, e[0] - margin), min(h, e[1] + margin),
               max(0, e[2] - margin), min(w, e[3] + margin)] for e in extent.values()]
-    out['boxes'] = boxEdit.renumber(boxes)
+    out['boxes'] = boxEdit.renumber(boxes, h)
     return out
 
 

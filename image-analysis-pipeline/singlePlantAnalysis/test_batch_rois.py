@@ -195,12 +195,12 @@ class ComponentRoiTests(unittest.TestCase):
         self.assertEqual(cr.propose_component_boxes_info(self.save()), ([], 0))
         self.assertEqual(cr.propose_component_boxes_info(os.path.join(self.dir, "nope.png")), ([], 0))
 
-    def test_boxes_ordered_with_plant_order(self):
+    def test_boxes_ordered_with_two_row_rule(self):
         self.seed(50, 100)     # top-left
         self.seed(300, 300)    # bottom-right
         self.seed(300, 50)     # bottom-left
         boxes = cr.propose_component_boxes(self.save())
-        self.assertEqual(boxes, boxEdit.renumber(boxes))
+        self.assertEqual(boxes, boxEdit.renumber(boxes, H))
         self.assertEqual([b[2] for b in boxes], [30, 280, 80])
 
 
@@ -357,58 +357,52 @@ class BoxEditTests(unittest.TestCase):
         self.assertFalse(boxEdit.is_click((50, 60), (56, 60), 5))
         self.assertFalse(boxEdit.is_click((50, 60), (50, 70), 5))
 
-    def test_renumber_sorts_by_x(self):
-        boxes = [[0, 10, 300, 350], [0, 10, 10, 60], [0, 10, 150, 200]]
-        self.assertEqual([b[2] for b in boxEdit.renumber(boxes)], [10, 150, 300])
-
-    def test_plant_order_single_row_left_to_right(self):
-        boxes = [[100, 200, 300, 350], [100, 200, 10, 60], [100, 200, 150, 200]]
-        self.assertEqual(boxEdit.plant_order(boxes), [1, 2, 0])
+    def test_plant_order_one_half_is_plain_left_to_right(self):
+        boxes = [[300, 380, 300, 350], [300, 380, 10, 60], [300, 380, 150, 200]]
+        self.assertEqual(boxEdit.plant_order(boxes, 400), [1, 2, 0])
+        top = [[10, 90, 300, 350], [10, 90, 10, 60], [10, 90, 150, 200]]
+        self.assertEqual(boxEdit.plant_order(top, 400), [1, 2, 0])
+        self.assertEqual([b[2] for b in boxEdit.renumber(boxes, 400)], [10, 150, 300])
 
     def test_plant_order_empty_and_single(self):
-        self.assertEqual(boxEdit.plant_order([]), [])
-        self.assertEqual(boxEdit.plant_order([[5, 105, 5, 50]]), [0])
-        self.assertEqual(boxEdit.renumber([]), [])
+        self.assertEqual(boxEdit.plant_order([], 400), [])
+        self.assertEqual(boxEdit.plant_order([[5, 105, 5, 50]], 400), [0])
+        self.assertEqual(boxEdit.renumber([], 400), [])
 
-    def test_plant_order_bottom_row_first_then_top_row(self):
-        # top row: y 0-100, bottom row: y 300-400 (height 100)
+    def test_plant_order_bottom_half_first_then_top_half(self):
         boxes = [
-            [0, 100, 50, 100],     # 0 top, x small
-            [300, 400, 400, 450],  # 1 bottom, rightmost
-            [0, 100, 600, 650],    # 2 top, x larger than every bottom box
-            [300, 400, 200, 250],  # 3 bottom, left
+            [20, 120, 50, 100],      # 0 top, x smaller than all bottom boxes
+            [300, 390, 400, 450],    # 1 bottom, rightmost bottom
+            [20, 120, 600, 650],     # 2 top, x larger than all bottom boxes
+            [300, 390, 200, 250],    # 3 bottom, left
         ]
-        self.assertEqual(boxEdit.plant_order(boxes), [3, 1, 0, 2])
-        self.assertEqual(boxEdit.renumber(boxes), [boxes[i] for i in [3, 1, 0, 2]])
+        self.assertEqual(boxEdit.plant_order(boxes, 400), [3, 1, 0, 2])
+        self.assertEqual(boxEdit.renumber(boxes, 400), [boxes[i] for i in [3, 1, 0, 2]])
 
-    def test_plant_order_higher_x_lower_row_still_indexed_lower(self):
-        boxes = [[0, 100, 10, 60], [300, 400, 900, 950]]
-        self.assertEqual(boxEdit.plant_order(boxes), [1, 0])
+    def test_plant_order_straddling_box_decided_by_midpoint_only(self):
+        # tall boxes crossing y=200; midpoints 220 (bottom) and 180 (top)
+        low = [100, 340, 500, 550]     # mid 220
+        high = [60, 300, 10, 60]       # mid 180
+        self.assertEqual(boxEdit.plant_order([high, low], 400), [1, 0])
 
-    def test_plant_order_jitter_within_row_does_not_split(self):
-        # height 100 -> threshold 25 px; jitter of 10 px stays one row
-        boxes = [[310, 410, 300, 350], [300, 400, 10, 60], [305, 405, 150, 200]]
-        self.assertEqual(boxEdit.plant_order(boxes), [1, 2, 0])
+    def test_plant_order_midpoint_exactly_at_middle_is_top_row(self):
+        on_middle = [150, 250, 10, 60]    # mid 200
+        bottom = [300, 380, 500, 550]
+        self.assertEqual(boxEdit.plant_order([on_middle, bottom], 400), [1, 0])
 
-    def test_plant_order_gap_just_over_threshold_splits_rows(self):
-        boxes = [[0, 100, 10, 60], [26, 126, 200, 250]]
-        self.assertEqual(boxEdit.plant_order(boxes), [1, 0])
-        boxes = [[0, 100, 10, 60], [25, 125, 200, 250]]
-        self.assertEqual(boxEdit.plant_order(boxes), [0, 1])
+    def test_plant_order_box_at_image_edge(self):
+        top_edge = [0, 40, 100, 150]
+        bottom_edge = [360, 400, 300, 350]
+        self.assertEqual(boxEdit.plant_order([top_edge, bottom_edge], 400), [1, 0])
 
-    def test_plant_order_three_rows(self):
-        boxes = [
-            [0, 100, 500, 550],     # 0 top-right
-            [150, 250, 100, 150],   # 1 middle-left
-            [300, 400, 300, 350],   # 2 bottom-right
-            [300, 400, 20, 70],     # 3 bottom-left
-            [150, 250, 700, 750],   # 4 middle-right
-            [0, 100, 40, 90],       # 5 top-left
-        ]
-        self.assertEqual(boxEdit.plant_order(boxes), [3, 2, 1, 4, 5, 0])
+    def test_image_height_is_required(self):
+        with self.assertRaises(TypeError):
+            boxEdit.plant_order([[0, 10, 0, 10]])
+        with self.assertRaises(TypeError):
+            boxEdit.renumber([[0, 10, 0, 10]])
 
-    def test_row_gap_fraction_is_named_constant(self):
-        self.assertEqual(boxEdit.ROW_GAP_FRACTION, 0.25)
+    def test_row_gap_fraction_removed(self):
+        self.assertFalse(hasattr(boxEdit, 'ROW_GAP_FRACTION'))
 
 
 class PlateRoisTests(unittest.TestCase):
@@ -449,6 +443,12 @@ class PlateRoisTests(unittest.TestCase):
         self.assertEqual(out[0]['seed'], [5, 6])
         self.assertEqual(out[1]['seed'], [7, 8])
         self.assertEqual(ss.call_args_list[0][0][2], [0, 100, 0, 100])
+
+    def test_getPlateROIsAndSeeds_midpoint_rule_straddling_box(self):
+        high = [60, 300, 0, 100]        # mid 180 -> top row, despite reaching low
+        low = [100, 340, 200, 300]      # mid 220 -> bottom row
+        out, _, _ = self.run_with([high, low], [[1, 1], [2, 2]])
+        self.assertEqual([d['bounding box'] for d in out], [low, high])
 
     def test_getPlateROIsAndSeeds_numbers_bottom_row_first(self):
         top_left = [0, 100, 0, 100]

@@ -107,13 +107,15 @@ are any.
 - Plant numbers are shown live on each box and come from the same function
   (`boxEdit.plant_order`) as the final numbers, so what you see is what is saved.
 
-**Plant indexing** (`boxEdit.plant_order` / `renumber`, pure): by row first, then
-left to right. Sort boxes by y_min; start a new row when a box's y_min exceeds the
-previous box's y_min (in that order) by more than `ROW_GAP_FRACTION` (0.25) of the
-median box height (y_max - y_min); within a row sort by x_min. Rows are numbered
-bottom row first (largest y_min), so the bottom row of the plate gets the lowest
-numbers: a plant clearly lower in the image is indexed lower even if its x is
-higher. A single row is plain left to right.
+**Plant indexing** (`boxEdit.plant_order(boxes, image_height)` / `renumber(boxes,
+image_height)`, pure; `image_height` is required so nothing uses a wrong split):
+two rows, split at the middle of the image. A box whose vertical midpoint
+(y_min + y_max) / 2 is below the middle (greater than image_height / 2) is in the
+bottom row; a midpoint above the middle, or exactly on it, is in the top row. The
+bottom row gets the lowest plant numbers, left to right by x_min, then the top row
+continues the numbering, left to right. Only the midpoint decides, so a tall box
+straddling the middle goes by its midpoint. Callers pass the real image height
+(`selectPlantROIs`, `getPlateROIsAndSeeds`, the proposal's mask height).
 
 **Origin click:** for each confirmed box, call the existing `selectSeed()`.
 Cancelling aborts the batch before any analysis starts; nothing is saved.
@@ -130,8 +132,8 @@ both scripts use one copy.
 
 ## Testing
 `test_batch_rois.py` (unittest, headless like `test_aruco_guard.py`): pure box
-helpers (hit test, move/resize, key and press actions, legend, row-aware numbering incl. jitter, three rows,
-empty and single box);
+helpers (hit test, move/resize, key and press actions, legend, two-row midpoint numbering incl. straddling box, midpoint on the middle,
+edge box, empty and single box);
 `getPlateROIsAndSeeds` with patched `selectPlantROIs`/`selectSeed` (starts with no
 boxes, numbers plants, cancel paths, `pos` reset). The cv2 window itself is not
 unit-tested. The GUI guard test pattern is reused to check that the button runs the
@@ -142,4 +144,4 @@ Handle size and key bindings; exact button position.
 
 ## Calls I made (not discussed)
 - Run the analyses automatically after confirmation (name implies it).
-- Plant numbers are 1..N bottom row first then left to right, overwriting the Plant Number field.
+- Plant numbers are 1..N bottom half first then left to right, overwriting the Plant Number field.
