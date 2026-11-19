@@ -345,11 +345,12 @@ def selectPlantROIs(image, boxes, notice=None):
                               (int(b[0] * scale), int(b[1] * scale)), (255, 0, 255), 2)
 
             legend = boxEdit.legend_lines(state['adding'], len(state['boxes']))
-            if notice and time.time() < state['notice_until']:
-                cv2.putText(frame, notice, (10, 28), font, 0.7, (0, 255, 255), 2)
+            notice_lines = notice.split("\n") if notice and time.time() < state['notice_until'] else []
+            for n, line in enumerate(notice_lines):
+                cv2.putText(frame, line, (10, 28 + 26 * n), font, 0.7, (0, 255, 255), 2)
             msg = state['message']
             if msg is not None and time.time() < msg[1]:
-                cv2.putText(frame, msg[0], (10, 56), font, 0.7, (0, 0, 255), 2)
+                cv2.putText(frame, msg[0], (10, 28 + 26 * len(notice_lines)), font, 0.7, (0, 0, 255), 2)
             for n, line in enumerate(legend):
                 cv2.putText(frame, line, (10, display_h - 12 - 26 * (len(legend) - 1 - n)),
                             font, 0.6, (255, 255, 255), 2)
@@ -392,11 +393,9 @@ def getPlateROIsAndSeeds(conf, images, segFiles):
 
     proposed, notice = [], None
     try:
-        proposed, n_seeds = componentROIs.propose_component_boxes_info(segFiles[-1])
-        if proposed:
-            notice = "Auto-proposed %d boxes from %d seeds" % (len(proposed), n_seeds)
-            if n_seeds > len(proposed):
-                notice += " (some plants touch and were merged: split or redraw by hand)"
+        detail = componentROIs.propose_component_boxes_detail(segFiles[-1])
+        proposed = detail['boxes']
+        notice = componentROIs.proposal_notice(detail)
     except Exception as e:
         print("Box proposal failed (%s); draw boxes by hand" % e)
         proposed, notice = [], None

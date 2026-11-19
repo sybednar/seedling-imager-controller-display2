@@ -61,21 +61,30 @@ the connected-component rule under Design.
 
 ## Design
 **Box proposal** (`analysis/utils/componentROIs.py`, pure numpy/cv2):
-`propose_component_boxes_info(seg_path)` reads the LAST frame's mask (the last
-entry of the processing-limited seg list). Plant mask = classes 1-6 (root, lateral,
-seed, hypocotyl, leaf, petiole); background 0 and ignore 7 are not plant, so class 7
-never bridges two plants. Label with 8-connectivity. Seeds are class-3 blobs of
-area >= 30 px. Each seed maps to the plant-mask component containing it; the box is
-that component's bounding box (leftmost, rightmost, topmost, bottommost pixel) plus
-a 20 px margin, clipped to the image. One box per distinct component, so several
-seeds in one component (touching plants) give one box; components without a seed
-(noise) give none. It returns `(boxes, n_seeds)` and boxes are ordered with
-`boxEdit.renumber`. Any failure or unreadable mask falls back to manual drawing.
+`propose_component_boxes_detail(seg_path)` reads the LAST frame's mask (the last
+entry of the processing-limited seg list).
+- Plant mask = classes 1-6 (root, lateral, seed, hypocotyl, leaf, petiole);
+  background 0 and ignore 7 are not plant, so class 7 never bridges two plants.
+  Label with 8-connectivity.
+- Seeds are class-3 blobs of area >= 30 px. Each maps to the plant-mask
+  component containing it; the box is that component's bounding box (leftmost,
+  rightmost, topmost, bottommost pixel) plus a 20 px margin, clipped to the image.
+- One box per distinct component. Components without a seed (noise) give none. A
+  component whose bounding box is under `boxEdit.MIN_SIZE` in both dimensions is a
+  seed fragment cut off from its plant: skipped and counted, not boxed.
+- Returns a dict: `boxes` (ordered like `boxEdit.renumber`), `n_seed_blobs`,
+  `n_components_with_seed`, `n_merged_components` (components holding more than
+  one seed blob: touching plants or one seed split into pieces) and
+  `n_skipped_fragments`. `propose_component_boxes_info` (boxes, blob count) and
+  `propose_component_boxes` (boxes) are thin wrappers.
+- Any failure or unreadable mask falls back to manual drawing.
 
 **Confirm screen** (`selectPlantROIs(image, boxes, notice=None)` in
-`getROIandSeed.py`; `getPlateROIsAndSeeds` passes the proposals and a notice such
-as "Auto-proposed N boxes from M seeds" plus, when M > N, "(some plants touch and
-were merged: split or redraw by hand)", shown for ~8 s):
+`getROIandSeed.py`; `getPlateROIsAndSeeds` passes the proposals and
+`proposal_notice(detail)`, shown for ~8 s over up to four short lines): it says how
+many boxes were proposed, mentions merging only as "several seed blobs share a box:
+touching plants or a split seed - check them" when `n_merged_components` > 0, and
+mentions skipped seed fragments when there are any.
 - Drag on empty space draws a new box (no add mode needed; `A` add mode and
   `Esc` to leave it still work). Click a box to select, drag its body to move,
   drag an edge to resize, `D` delete, `Enter` confirm, `Q` cancel. A drag under

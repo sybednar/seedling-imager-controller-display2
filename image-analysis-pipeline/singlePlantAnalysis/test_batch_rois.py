@@ -15,6 +15,14 @@ from analysis.utils import getROIandSeed as gr
 H, W = 400, 400
 
 
+def setUpModule():
+    # Tests read deliberately missing masks; keep cv2's warning out of the output.
+    try:
+        cv2.utils.logging.setLogLevel(cv2.utils.logging.LOG_LEVEL_ERROR)
+    except AttributeError:
+        pass
+
+
 class ComponentRoiTests(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp()
@@ -26,14 +34,15 @@ class ComponentRoiTests(unittest.TestCase):
         cv2.imwrite(p, self.m)
         return p
 
-    def seed(self, y, x, size=8):
+    def seed(self, y, x, size=20):
+        # size >= MIN_SIZE so a bare seed is a real plant, not a fragment
         self.m[y:y + size, x:x + size] = 3
 
     def test_two_separate_plants_two_boxes_with_exact_bounds(self):
-        self.seed(200, 100)                 # left plant seed
+        self.seed(200, 100, size=8)         # left plant seed
         self.m[150:200, 103] = 4            # hypocotyl above
         self.m[208:260, 103] = 1            # root below
-        self.seed(200, 300)
+        self.seed(200, 300, size=8)
         self.m[208:240, 303] = 1
         boxes, n_seeds = cr.propose_component_boxes_info(self.save(), margin=20)
         self.assertEqual(n_seeds, 2)
@@ -56,16 +65,49 @@ class ComponentRoiTests(unittest.TestCase):
 
     def test_touching_plants_merge_into_one_box_but_count_two_seeds(self):
         self.seed(200, 100)
-        self.seed(200, 120)
-        self.m[203, 108:120] = 1            # bridge
+        self.seed(200, 130)
+        self.m[203, 120:130] = 1            # bridge
         boxes, n_seeds = cr.propose_component_boxes_info(self.save())
         self.assertEqual(n_seeds, 2)
         self.assertEqual(len(boxes), 1)
 
+    def test_detail_counts_split_seed_as_merged_component(self):
+        self.m[200:206, 100:108] = 3
+        self.m[208:214, 100:108] = 3      # second blob of the same seed
+        self.m[206:240, 100] = 1          # joined by a root pixel column
+        d = cr.propose_component_boxes_detail(self.save())
+        self.assertEqual(d['n_seed_blobs'], 2)
+        self.assertEqual(d['n_components_with_seed'], 1)
+        self.assertEqual(d['n_merged_components'], 1)
+        self.assertEqual(len(d['boxes']), 1)
+
+    def test_detail_separate_plants_not_merged(self):
+        self.seed(200, 100)
+        self.seed(200, 300)
+        d = cr.propose_component_boxes_detail(self.save())
+        self.assertEqual((d['n_seed_blobs'], d['n_components_with_seed'],
+                          d['n_merged_components'], d['n_skipped_fragments']), (2, 2, 0, 0))
+
+    def test_seed_only_fragment_skipped_and_counted(self):
+        self.seed(200, 100)
+        self.m[150:200, 103] = 4          # real plant, tall
+        self.m[300:306, 300:310] = 3      # 6x10 fragment, < MIN_SIZE both ways, area 60
+        d = cr.propose_component_boxes_detail(self.save())
+        self.assertEqual(len(d['boxes']), 1)
+        self.assertEqual(d['n_skipped_fragments'], 1)
+        self.assertEqual(d['n_seed_blobs'], 2)
+
+    def test_small_but_real_plant_keeps_its_box(self):
+        self.m[200:208, 100:108] = 3      # 8 wide
+        self.m[208:240, 103] = 1          # 40 tall >= MIN_SIZE
+        d = cr.propose_component_boxes_detail(self.save())
+        self.assertEqual(len(d['boxes']), 1)
+        self.assertEqual(d['n_skipped_fragments'], 0)
+
     def test_ignore_class_does_not_bridge_plants(self):
         self.seed(200, 100)
-        self.seed(200, 120)
-        self.m[203, 108:120] = 7
+        self.seed(200, 130)
+        self.m[203, 120:130] = 7
         boxes, n_seeds = cr.propose_component_boxes_info(self.save())
         self.assertEqual((len(boxes), n_seeds), (2, 2))
 
@@ -80,9 +122,9 @@ class ComponentRoiTests(unittest.TestCase):
 
     def test_box_clipped_at_image_borders(self):
         self.seed(0, 0)
-        self.seed(H - 8, W - 8)
+        self.seed(H - 20, W - 20)
         boxes = cr.propose_component_boxes(self.save(), margin=20)
-        self.assertEqual(sorted(boxes), [[0, 28, 0, 28], [H - 28, H, W - 28, W]])
+        self.assertEqual(sorted(boxes), [[0, 40, 0, 40], [H - 40, H, W - 40, W]])
 
     def test_empty_and_unreadable_mask_give_no_boxes(self):
         self.assertEqual(cr.propose_component_boxes_info(self.save()), ([], 0))
@@ -95,6 +137,29 @@ class ComponentRoiTests(unittest.TestCase):
         boxes = cr.propose_component_boxes(self.save())
         self.assertEqual(boxes, boxEdit.renumber(boxes))
         self.assertEqual([b[2] for b in boxes], [30, 280, 80])
+
+
+class NoticeTests(unittest.TestCase):
+    def d(self, n, merged=0, skipped=0):
+        return {'boxes': [[0, 1, 0, 1]] * n, 'n_seed_blobs': n, 'n_components_with_seed': n,
+                'n_merged_components': merged, 'n_skipped_fragments': skipped}
+
+    def test_plain_notice_has_no_warnings(self):
+        t = cr.proposal_notice(self.d(3))
+        self.assertIn("3 boxes", t)
+        self.assertNotIn("share", t)
+        self.assertNotIn("kipped", t)
+
+    def test_merge_and_skip_mentioned_only_when_present(self):
+        t = cr.proposal_notice(self.d(2, merged=1, skipped=2))
+        self.assertIn("seed blobs share a box", t)
+        self.assertIn("2 seed fragments skipped", t)
+        self.assertIn("1 box", cr.proposal_notice(self.d(1)))
+
+    def test_notice_lines_short_and_none_when_no_boxes(self):
+        t = cr.proposal_notice(self.d(11, merged=7, skipped=12))
+        self.assertTrue(all(len(line) <= 60 for line in t.split("\n")))
+        self.assertIsNone(cr.proposal_notice(self.d(0, skipped=3)))
 
 
 class BoxEditTests(unittest.TestCase):
@@ -249,6 +314,7 @@ class PlateRoisTests(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, True)
         m = np.zeros((H, W), np.uint8)
         m[46:54, 96:104] = 3
+        m[54:100, 99] = 1
         self.seg = os.path.join(self.dir, "s.png")
         cv2.imwrite(self.seg, m)
         self.img = os.path.join(self.dir, "i.png")
@@ -313,38 +379,43 @@ class PlateRoisTests(unittest.TestCase):
             gr.getPlateROIsAndSeeds(self.conf, [self.img], [self.seg])
         self.assertEqual(seen, [None, None])
 
+    @staticmethod
+    def detail(boxes, blobs=None, merged=0, skipped=0):
+        return {'boxes': boxes, 'n_seed_blobs': blobs if blobs is not None else len(boxes),
+                'n_components_with_seed': len(boxes), 'n_merged_components': merged,
+                'n_skipped_fragments': skipped}
+
+    def patch_detail(self, **kw):
+        return mock.patch.object(gr.componentROIs, 'propose_component_boxes_detail', **kw)
+
     def test_getPlateROIsAndSeeds_passes_proposals_and_notice(self):
         boxes = [[10, 60, 10, 60], [10, 60, 100, 150]]
-        with mock.patch.object(gr.componentROIs, 'propose_component_boxes_info',
-                               return_value=(boxes, 3)) as pr:
+        with self.patch_detail(return_value=self.detail(boxes, blobs=3, merged=1)) as pr:
             _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
         self.assertEqual(pr.call_args[0][0], self.seg)
         self.assertEqual(sp.call_args[0][1], boxes)
         notice = sp.call_args[1]['notice']
-        self.assertIn("2 boxes from 3 seeds", notice)
-        self.assertIn("merged", notice)
+        self.assertIn("2 boxes", notice)
+        self.assertIn("seed blobs share a box", notice)
 
-    def test_getPlateROIsAndSeeds_no_merge_warning_when_counts_match(self):
-        with mock.patch.object(gr.componentROIs, 'propose_component_boxes_info',
-                               return_value=([[10, 60, 10, 60]], 1)):
+    def test_getPlateROIsAndSeeds_real_mask_gives_one_box(self):
+        _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
+        self.assertEqual(len(sp.call_args[0][1]), 1)
+
+    def test_getPlateROIsAndSeeds_no_seeds_found_starts_empty(self):
+        with self.patch_detail(return_value=self.detail([])):
             _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
-        self.assertNotIn("merged", sp.call_args[1]['notice'])
+        self.assertEqual(sp.call_args[0][1], [])
+        self.assertIsNone(sp.call_args[1]['notice'])
 
     def test_getPlateROIsAndSeeds_falls_back_to_manual_when_proposal_raises(self):
-        with mock.patch.object(gr.componentROIs, 'propose_component_boxes_info',
-                               side_effect=RuntimeError("boom")):
+        with self.patch_detail(side_effect=RuntimeError("boom")), \
+             mock.patch('builtins.print') as pr:
             out, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
+        self.assertIn("boom", str(pr.call_args))
         self.assertEqual(sp.call_args[0][1], [])
         self.assertIsNone(sp.call_args[1].get('notice'))
         self.assertEqual(len(out), 1)
-
-    def test_getPlateROIsAndSeeds_no_seeds_found_starts_empty(self):
-        _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])   # fixture mask has 8x8 seed
-        self.assertEqual(len(sp.call_args[0][1]), 1)
-        with mock.patch.object(gr.componentROIs, 'propose_component_boxes_info',
-                               return_value=([], 0)):
-            _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
-        self.assertEqual(sp.call_args[0][1], [])
 
     def test_getPlateROIsAndSeeds_unreadable_seg_mask_gives_manual_start(self):
         missing = os.path.join(self.dir, "nope.png")
