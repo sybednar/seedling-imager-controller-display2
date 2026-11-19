@@ -222,5 +222,104 @@ class ConfigPrepTests(unittest.TestCase):
         self.assertEqual(conf['fileKey'], 'ID')
 
 
+
+class RunBatchTests(unittest.TestCase):
+    PLANTS = [
+        {'plant': 1, 'bounding box': [0, 10, 0, 10], 'seed': [1, 1]},
+        {'plant': 2, 'bounding box': [0, 10, 20, 30], 'seed': [2, 2]},
+        {'plant': 3, 'bounding box': [0, 10, 40, 50], 'seed': [3, 3]},
+    ]
+
+    def test_run_batch_runs_every_plant_with_its_own_box_and_seed(self):
+        import batch_setup
+        calls = []
+
+        def stub(conf, replicate):
+            calls.append((conf['plant'], conf['bounding box'], conf['seed'], replicate))
+
+        failed = batch_setup.run_batch({'Experiment': 'E'}, self.PLANTS, analyse=stub)
+        self.assertEqual(failed, [])
+        self.assertEqual(calls, [
+            ('1', [0, 10, 0, 10], [1, 1], True),
+            ('2', [0, 10, 20, 30], [2, 2], True),
+            ('3', [0, 10, 40, 50], [3, 3], True),
+        ])
+
+    def test_run_batch_continues_after_failure(self):
+        import batch_setup
+        seen = []
+
+        def stub(conf, replicate):
+            seen.append(conf['plant'])
+            if conf['plant'] == '2':
+                raise RuntimeError("boom")
+
+        failed = batch_setup.run_batch({}, self.PLANTS, analyse=stub)
+        self.assertEqual(seen, ['1', '2', '3'])
+        self.assertEqual(failed, [2])
+
+    def test_run_batch_does_not_mutate_shared_conf(self):
+        import batch_setup
+        shared = {'Experiment': 'E'}
+        snapshots = []
+
+        def stub(conf, replicate):
+            snapshots.append('bounding box' in conf and conf['bounding box'])
+            conf['leak'] = True
+
+        batch_setup.run_batch(shared, self.PLANTS, analyse=stub)
+        self.assertEqual(shared, {'Experiment': 'E'})
+        self.assertEqual(snapshots, [p['bounding box'] for p in self.PLANTS])
+
+
+class BatchSetupMainTests(unittest.TestCase):
+    def setUp(self):
+        import json
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.cfg = os.path.join(self.dir, "project.json")
+        with open(self.cfg, "w") as f:
+            json.dump({'Experiment': 'E', 'Images': '/x', 'plant': 1,
+                       'knownDistance': 15, 'pixelDistance': 300,
+                       'MainFolder': self.dir}, f)
+
+    def run_main(self, rois=None, raises=None):
+        import batch_setup
+        analyse = mock.Mock()
+        with mock.patch.object(batch_setup, 'getImages', return_value=(['a.png'], ['a_seg.png'])), \
+             mock.patch.object(batch_setup, 'getPlateROIsAndSeeds',
+                               side_effect=raises, return_value=rois), \
+             mock.patch.object(batch_setup, 'plantAnalysis', analyse):
+            code = batch_setup.main(["--config", self.cfg])
+        return code, analyse
+
+    def test_main_cancel_exits_zero_without_analysing(self):
+        code, analyse = self.run_main(rois=None)
+        self.assertEqual(code, 0)
+        analyse.assert_not_called()
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "batch_plants.json")))
+
+    def test_main_error_in_roi_selection_exits_nonzero_without_analysing(self):
+        import io
+        from contextlib import redirect_stdout, redirect_stderr
+        buf = io.StringIO()
+        with redirect_stdout(buf), redirect_stderr(buf):
+            code, analyse = self.run_main(raises=IndexError("empty"))
+        self.assertNotEqual(code, 0)
+        analyse.assert_not_called()
+        self.assertIn("empty", buf.getvalue())
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "batch_plants.json")))
+
+    def test_main_writes_batch_plants_and_analyses_each(self):
+        import json
+        plants = [{'plant': 1, 'bounding box': [0, 1, 0, 1], 'seed': [1, 1]},
+                  {'plant': 2, 'bounding box': [0, 1, 2, 3], 'seed': [2, 2]}]
+        code, analyse = self.run_main(rois=plants)
+        self.assertEqual(code, 0)
+        self.assertEqual(analyse.call_count, 2)
+        with open(os.path.join(self.dir, "batch_plants.json")) as f:
+            self.assertEqual(json.load(f), plants)
+
+
 if __name__ == "__main__":
     unittest.main()
