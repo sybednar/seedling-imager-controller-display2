@@ -100,6 +100,12 @@ class BoxEditTests(unittest.TestCase):
         self.assertNotIn("No boxes yet", text)
         self.assertTrue(boxEdit.legend_lines(True, 2)[0].startswith("ADD MODE"))
 
+    def test_is_click_identical_within_and_beyond_tolerance(self):
+        self.assertTrue(boxEdit.is_click((50, 60), (50, 60), 5))
+        self.assertTrue(boxEdit.is_click((50, 60), (53, 64), 5))
+        self.assertFalse(boxEdit.is_click((50, 60), (56, 60), 5))
+        self.assertFalse(boxEdit.is_click((50, 60), (50, 70), 5))
+
     def test_renumber_sorts_by_x(self):
         boxes = [[0, 10, 300, 350], [0, 10, 10, 60], [0, 10, 150, 200]]
         self.assertEqual([b[2] for b in boxEdit.renumber(boxes)], [10, 150, 300])

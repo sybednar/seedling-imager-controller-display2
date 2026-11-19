@@ -101,6 +101,12 @@ def press_action(boxes, x, y, handle, adding):
     return ('drag', hit[0], hit[1])
 
 
+def is_click(p0, p1, tol):
+    """True if press and release points are within ``tol`` px on both axes,
+    i.e. a plain click rather than a drag."""
+    return abs(p1[0] - p0[0]) <= tol and abs(p1[1] - p0[1]) <= tol
+
+
 def legend_lines(adding, n_boxes):
     """On-screen instruction lines for the confirm screen (top line first)."""
     lines = []
