@@ -198,5 +198,29 @@ class PlateRoisTests(unittest.TestCase):
         self.assertEqual(len(proposed), 1)
 
 
+
+class ConfigPrepTests(unittest.TestCase):
+    def test_prepare_conf_manual_calibration_sets_pixel_size(self):
+        from analysis.utils.configPrep import prepare_conf
+        conf = prepare_conf({'Experiment': 'E', 'Images': '/x', 'plant': 1,
+                             'knownDistance': 15, 'pixelDistance': 300})
+        self.assertAlmostEqual(conf['pixel_size'], 0.05)
+
+    def test_prepare_conf_sequence_label(self):
+        from analysis.utils.configPrep import prepare_conf
+        conf = prepare_conf({'Experiment': 'E', 'Images': '/x', 'plant': 2,
+                             'knownDistance': 15, 'pixelDistance': 300})
+        self.assertEqual(conf['sequenceLabel'], 'E_/x_2')
+        self.assertEqual(conf['fileKey'], 'E')
+        self.assertEqual(conf['Plant'], 'Arabidopsis thaliana')
+
+    def test_prepare_conf_identifier_fallback(self):
+        from analysis.utils.configPrep import prepare_conf
+        conf = prepare_conf({'identifierField': 'ID', 'Images': '/x', 'plant': 1,
+                             'knownDistance': 15, 'pixelDistance': 300})
+        self.assertEqual(conf['Experiment'], 'ID')
+        self.assertEqual(conf['fileKey'], 'ID')
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -19,6 +19,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from analysis.plantAnalysis import plantAnalysis
 from analysis.qr import aruco_detect, aruco_get_pixel_size
 from analysis.utils.fileUtilities import getImages
+from analysis.utils.configPrep import prepare_conf
 import argparse
 import json
 
@@ -36,18 +37,7 @@ if __name__ == "__main__":
         del conf['bounding box']
         del conf['seed']
     
-    try:
-        conf['fileKey'] = conf["Experiment"]
-    except:
-        conf['fileKey'] = conf["identifierField"]
-        conf['Experiment'] = conf["identifierField"]
-        
-    conf['sequenceLabel'] = conf['Experiment'] + "_" + conf['Images'] + "_" + str(conf['plant'])
-    conf['Plant'] = 'Arabidopsis thaliana'
-    
-    if not conf.get('videoHasQRbutton', False) and not conf.get('videoHasArucoButton', False):
-        pixel_size = float(conf['knownDistance']) / float(conf['pixelDistance'])
-        conf['pixel_size'] = pixel_size
+    prepare_conf(conf)
 
     # --- ArUco debug: print the detected marker pixel width ---
     if conf.get('videoHasArucoButton', False) or conf.get('videoHasAruco', False):
