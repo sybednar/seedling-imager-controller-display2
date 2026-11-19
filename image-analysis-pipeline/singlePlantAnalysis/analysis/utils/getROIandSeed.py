@@ -335,7 +335,7 @@ def selectPlantROIs(image, boxes, notice=None, seg=None):
 
         while True:
             frame = (seg_small if state['show_seg'] and seg_small is not None else img_small).copy()
-            # Number plants with the same rule as the final renumber (bottom half
+            # Number plants with the same rule as the final renumber (top half
             # first, then left to right) without reordering the list mid-drag.
             order = boxEdit.plant_order(state['boxes'], h_orig)
             for rank, k in enumerate(order, start=1):

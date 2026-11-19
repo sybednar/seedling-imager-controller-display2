@@ -201,7 +201,7 @@ class ComponentRoiTests(unittest.TestCase):
         self.seed(300, 50)     # bottom-left
         boxes = cr.propose_component_boxes(self.save())
         self.assertEqual(boxes, boxEdit.renumber(boxes, H))
-        self.assertEqual([b[2] for b in boxes], [30, 280, 80])
+        self.assertEqual([b[2] for b in boxes], [80, 30, 280])
 
 
 class NoticeTests(unittest.TestCase):
@@ -369,31 +369,31 @@ class BoxEditTests(unittest.TestCase):
         self.assertEqual(boxEdit.plant_order([[5, 105, 5, 50]], 400), [0])
         self.assertEqual(boxEdit.renumber([], 400), [])
 
-    def test_plant_order_bottom_half_first_then_top_half(self):
+    def test_plant_order_top_half_first_then_bottom_half(self):
         boxes = [
             [20, 120, 50, 100],      # 0 top, x smaller than all bottom boxes
             [300, 390, 400, 450],    # 1 bottom, rightmost bottom
             [20, 120, 600, 650],     # 2 top, x larger than all bottom boxes
             [300, 390, 200, 250],    # 3 bottom, left
         ]
-        self.assertEqual(boxEdit.plant_order(boxes, 400), [3, 1, 0, 2])
-        self.assertEqual(boxEdit.renumber(boxes, 400), [boxes[i] for i in [3, 1, 0, 2]])
+        self.assertEqual(boxEdit.plant_order(boxes, 400), [0, 2, 3, 1])
+        self.assertEqual(boxEdit.renumber(boxes, 400), [boxes[i] for i in [0, 2, 3, 1]])
 
     def test_plant_order_straddling_box_decided_by_midpoint_only(self):
         # tall boxes crossing y=200; midpoints 220 (bottom) and 180 (top)
         low = [100, 340, 500, 550]     # mid 220
         high = [60, 300, 10, 60]       # mid 180
-        self.assertEqual(boxEdit.plant_order([high, low], 400), [1, 0])
+        self.assertEqual(boxEdit.plant_order([high, low], 400), [0, 1])
 
     def test_plant_order_midpoint_exactly_at_middle_is_top_row(self):
         on_middle = [150, 250, 10, 60]    # mid 200
         bottom = [300, 380, 500, 550]
-        self.assertEqual(boxEdit.plant_order([on_middle, bottom], 400), [1, 0])
+        self.assertEqual(boxEdit.plant_order([on_middle, bottom], 400), [0, 1])
 
     def test_plant_order_box_at_image_edge(self):
         top_edge = [0, 40, 100, 150]
         bottom_edge = [360, 400, 300, 350]
-        self.assertEqual(boxEdit.plant_order([top_edge, bottom_edge], 400), [1, 0])
+        self.assertEqual(boxEdit.plant_order([top_edge, bottom_edge], 400), [0, 1])
 
     def test_image_height_is_required(self):
         with self.assertRaises(TypeError):
@@ -445,12 +445,12 @@ class PlateRoisTests(unittest.TestCase):
         self.assertEqual(ss.call_args_list[0][0][2], [0, 100, 0, 100])
 
     def test_getPlateROIsAndSeeds_midpoint_rule_straddling_box(self):
-        high = [60, 300, 0, 100]        # mid 180 -> top row, despite reaching low
-        low = [100, 340, 200, 300]      # mid 220 -> bottom row
+        high = [60, 300, 0, 100]        # mid 180 -> top row (plant 1), despite reaching low
+        low = [100, 340, 200, 300]      # mid 220 -> bottom row (plant 2)
         out, _, _ = self.run_with([high, low], [[1, 1], [2, 2]])
-        self.assertEqual([d['bounding box'] for d in out], [low, high])
+        self.assertEqual([d['bounding box'] for d in out], [high, low])
 
-    def test_getPlateROIsAndSeeds_numbers_bottom_row_first(self):
+    def test_getPlateROIsAndSeeds_numbers_top_row_first(self):
         top_left = [0, 100, 0, 100]
         bottom_right = [300, 400, 200, 300]
         bottom_left = [300, 400, 0, 100]
@@ -458,7 +458,7 @@ class PlateRoisTests(unittest.TestCase):
                                    [[1, 1], [2, 2], [3, 3]])
         self.assertEqual([d['plant'] for d in out], [1, 2, 3])
         self.assertEqual([d['bounding box'] for d in out],
-                         [bottom_left, bottom_right, top_left])
+                         [top_left, bottom_left, bottom_right])
         self.assertEqual([d['seed'] for d in out], [[1, 1], [2, 2], [3, 3]])
 
     def test_getPlateROIsAndSeeds_cancel_during_origin_click_returns_none(self):

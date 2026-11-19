@@ -59,14 +59,15 @@ def plant_order(boxes, image_height):
     Two rows, split at the middle of the image: a box whose vertical midpoint
     (y_min + y_max) / 2 is below the middle (greater than image_height / 2) is in
     the bottom row; otherwise (above, or exactly on the middle) it is in the top
-    row. Bottom-row plants get the lowest numbers, then the top row continues;
-    within a row plants run left to right by x_min. ``image_height`` is required.
+    row. Top-row plants get the lowest numbers (a box exactly on the middle
+    therefore numbers with the top row), then the bottom row continues; within a
+    row plants run left to right by x_min. ``image_height`` is required.
     """
     mid = image_height / 2.0
     bottom = [i for i, b in enumerate(boxes) if (b[0] + b[1]) / 2.0 > mid]
     top = [i for i, b in enumerate(boxes) if (b[0] + b[1]) / 2.0 <= mid]
-    return (sorted(bottom, key=lambda i: boxes[i][2]) +
-            sorted(top, key=lambda i: boxes[i][2]))
+    return (sorted(top, key=lambda i: boxes[i][2]) +
+            sorted(bottom, key=lambda i: boxes[i][2]))
 
 
 def renumber(boxes, image_height):

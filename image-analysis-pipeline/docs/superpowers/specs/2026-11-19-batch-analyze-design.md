@@ -112,8 +112,9 @@ image_height)`, pure; `image_height` is required so nothing uses a wrong split):
 two rows, split at the middle of the image. A box whose vertical midpoint
 (y_min + y_max) / 2 is below the middle (greater than image_height / 2) is in the
 bottom row; a midpoint above the middle, or exactly on it, is in the top row. The
-bottom row gets the lowest plant numbers, left to right by x_min, then the top row
-continues the numbering, left to right. Only the midpoint decides, so a tall box
+TOP row gets the lowest plant numbers, left to right by x_min (a box exactly on the
+middle numbers with the top row), then the bottom row continues the numbering, left
+to right. Only the midpoint decides, so a tall box
 straddling the middle goes by its midpoint. Callers pass the real image height
 (`selectPlantROIs`, `getPlateROIsAndSeeds`, the proposal's mask height).
 
@@ -144,4 +145,4 @@ Handle size and key bindings; exact button position.
 
 ## Calls I made (not discussed)
 - Run the analyses automatically after confirmation (name implies it).
-- Plant numbers are 1..N bottom half first then left to right, overwriting the Plant Number field.
+- Plant numbers are 1..N top half first then left to right, overwriting the Plant Number field.

@@ -1,4 +1,4 @@
-> **Superseded:** Task 1 (automatic box proposal, `proposeROIs.py`) was dropped in favour of manual ROI drawing plus row-aware plant indexing (bottom row first, then left to right). See `../specs/2026-11-19-batch-analyze-design.md`. The rest of this plan is unchanged.
+> **Superseded:** Task 1 (automatic box proposal, `proposeROIs.py`) was dropped in favour of manual ROI drawing plus row-aware plant indexing (top row first, then bottom row, each left to right). See `../specs/2026-11-19-batch-analyze-design.md`. The rest of this plan is unchanged.
 
 # Batch Analyze Implementation Plan
 
