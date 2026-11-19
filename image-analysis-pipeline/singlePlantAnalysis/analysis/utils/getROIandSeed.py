@@ -22,7 +22,6 @@ import cv2
 import numpy as np
 
 from analysis.utils import boxEdit
-from analysis.utils.proposeROIs import detect_seed_centroids, propose_boxes
 
 # State for custom ROI selector
 _roi_state = {
@@ -251,9 +250,10 @@ def _clamp_new_box(p0, p1, image_shape):
 def selectPlantROIs(image, boxes):
     """Interactive confirm screen for per-plant boxes on the plate image.
 
-    Click/drag a box body to move it, drag an edge to resize, D deletes the
-    selected box, A then drag adds a box (A or Esc leaves add mode), Enter confirms,
-    Q/Esc/window close cancels. Returns boxes sorted left to right, or None if cancelled.
+    Drag on empty space to draw a box (A add mode still works but is not needed),
+    drag a box body to move it, drag an edge to resize, D deletes the selected box,
+    Enter confirms, Q/Esc/window close cancels. ``boxes`` are the starting boxes
+    (empty for manual selection). Returns boxes in plant order, or None if cancelled.
     Box logic lives in boxEdit; this function only wires up the window.
     """
     window_name = "Confirm Plant ROIs"
@@ -281,17 +281,15 @@ def selectPlantROIs(image, boxes):
         ix, iy = to_img(x, y)
         st = state
         if event == cv2.EVENT_LBUTTONDOWN:
-            if st['adding']:
-                st['add_start'] = st['add_end'] = (ix, iy)
-                return
-            hit = boxEdit.hit_test(st['boxes'], ix, iy, handle)
-            if hit is None:
+            act = boxEdit.press_action(st['boxes'], ix, iy, handle, st['adding'])
+            if act[0] == 'draw':
                 st['selected'] = None
+                st['add_start'] = st['add_end'] = (ix, iy)
             else:
-                st['selected'] = hit[0]
-                st['drag'] = (hit[0], hit[1], ix, iy)
+                st['selected'] = act[1]
+                st['drag'] = (act[1], act[2], ix, iy)
         elif event == cv2.EVENT_MOUSEMOVE:
-            if st['adding'] and st['add_start'] is not None:
+            if st['add_start'] is not None:
                 st['add_end'] = (ix, iy)
             elif st['drag'] is not None:
                 i, part, lx, ly = st['drag']
@@ -302,7 +300,7 @@ def selectPlantROIs(image, boxes):
                     st['boxes'][i] = boxEdit.resize_box(st['boxes'][i], part, dx, dy, image.shape)
                 st['drag'] = (i, part, ix, iy)
         elif event == cv2.EVENT_LBUTTONUP:
-            if st['adding'] and st['add_start'] is not None:
+            if st['add_start'] is not None:
                 new = _clamp_new_box(st['add_start'], (ix, iy), image.shape)
                 st['add_start'] = st['add_end'] = None
                 if new is not None:
@@ -333,17 +331,12 @@ def selectPlantROIs(image, boxes):
                 p1 = (int(x1 * scale), int(y1 * scale))
                 cv2.rectangle(frame, p0, p1, color, 2)
                 cv2.putText(frame, str(rank), (p0[0] + 6, p0[1] + 28), font, 0.9, color, 2)
-            if state['adding'] and state['add_start'] is not None:
+            if state['add_start'] is not None:
                 a, b = state['add_start'], state['add_end']
                 cv2.rectangle(frame, (int(a[0] * scale), int(a[1] * scale)),
                               (int(b[0] * scale), int(b[1] * scale)), (255, 0, 255), 2)
 
-            legend = [
-                "Drag box: move   Drag edge: resize   D: delete selected",
-                "A then drag: add box   ENTER: confirm   Q/Esc: cancel",
-            ]
-            if state['adding']:
-                legend.insert(0, "ADD MODE: drag a new box (A or Esc: leave add mode)")
+            legend = boxEdit.legend_lines(state['adding'], len(state['boxes']))
             msg = state['message']
             if msg is not None and time.time() < msg[1]:
                 cv2.putText(frame, msg[0], (10, 28), font, 0.7, (0, 0, 255), 2)
@@ -378,21 +371,16 @@ def selectPlantROIs(image, boxes):
 
 
 def getPlateROIsAndSeeds(conf, images, segFiles):
-    """Propose boxes for every plant, let the user confirm them, then collect a
+    """Let the user draw a box for every plant on the last frame, then collect a
     root origin per box. Returns [{'plant', 'bounding box', 'seed'}] with seeds
     relative to each box, or None if cancelled or no boxes confirmed."""
     global pos
     last_image = cv2.imread(images[-1])
-    seg0 = cv2.imread(segFiles[0], 0)
-    if last_image is None or seg0 is None:
+    if last_image is None:
         return None
-    image_shape = seg0.shape[:2]
-
-    centroids = detect_seed_centroids(segFiles)
-    proposed = propose_boxes(centroids, segFiles, image_shape)
 
     try:
-        boxes = selectPlantROIs(last_image, proposed)
+        boxes = selectPlantROIs(last_image, [])
     except Exception as e:
         print("ROI selection failed: %s" % e)
         return None

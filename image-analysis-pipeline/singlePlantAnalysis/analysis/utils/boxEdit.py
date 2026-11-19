@@ -58,6 +58,34 @@ def renumber(boxes):
     return [list(b) for b in sorted(boxes, key=lambda b: b[2])]
 
 
+def press_action(boxes, x, y, handle, adding):
+    """Decide what a left-button press means on the confirm screen.
+
+    Returns ('draw',) to start a new box (add mode, or empty space), or
+    ('drag', index, part) when the press lands on an existing box.
+    """
+    if adding:
+        return ('draw',)
+    hit = hit_test(boxes, x, y, handle)
+    if hit is None:
+        return ('draw',)
+    return ('drag', hit[0], hit[1])
+
+
+def legend_lines(adding, n_boxes):
+    """On-screen instruction lines for the confirm screen (top line first)."""
+    lines = []
+    if adding:
+        lines.append("ADD MODE: drag a new box (A or Esc: leave add mode)")
+    if n_boxes == 0:
+        lines.append("No boxes yet: drag on the plate to draw a box around each plant")
+    lines += [
+        "Drag on empty space to draw a plant box   Drag box: move   Drag edge: resize",
+        "D: delete selected   ENTER: confirm   Q/Esc: cancel",
+    ]
+    return lines
+
+
 def key_action(key, adding):
     """Map a key code to a confirm-screen action, given whether add mode is on.
 

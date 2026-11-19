@@ -8,147 +8,10 @@ import numpy as np
 
 from unittest import mock
 
-from analysis.utils.proposeROIs import detect_seed_centroids, propose_boxes
 from analysis.utils import boxEdit
 from analysis.utils import getROIandSeed as gr
 
 H, W = 400, 400
-
-
-class BatchRoiTests(unittest.TestCase):
-    def setUp(self):
-        self.dir = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, self.dir, True)
-
-    def write(self, name, seeds=(), roots=(), size=8, hypo=()):
-        """seeds: (x, y) centres drawn as class 3; roots: (x, y_top, y_bottom) class 1;
-        hypo: (x, y_top, y_bottom, cls) column of class cls (4/5/6)."""
-        m = np.zeros((H, W), np.uint8)
-        for x, y in seeds:
-            m[y - size // 2:y + size // 2, x - size // 2:x + size // 2] = 3
-        for x, y0, y1 in roots:
-            m[y0:y1 + 1, x] = 1
-        for x, y0, y1, cls in hypo:
-            m[y0:y1 + 1, x] = cls
-        p = os.path.join(self.dir, name)
-        cv2.imwrite(p, m)
-        return p
-
-    def test_three_seeds_sorted_left_to_right(self):
-        p = self.write("a.png", seeds=[(250, 50), (50, 50), (150, 50)])
-        c = detect_seed_centroids([p])
-        self.assertEqual(len(c), 3)
-        xs = [x for x, _ in c]
-        self.assertEqual(xs, sorted(xs))
-        for got, want in zip(xs, [50, 150, 250]):
-            self.assertAlmostEqual(got, want, delta=1.0)
-
-    def test_tiny_blob_ignored(self):
-        p = self.write("a.png", seeds=[(100, 50)], size=2)
-        self.assertEqual(detect_seed_centroids([p], min_area=30), [])
-
-    def test_no_seeds_returns_empty(self):
-        p = self.write("a.png")
-        self.assertEqual(detect_seed_centroids([p]), [])
-
-    def test_seed_found_in_later_frame(self):
-        p0 = self.write("a.png")
-        p1 = self.write("b.png", seeds=[(100, 50)])
-        c = detect_seed_centroids([p0, p1])
-        self.assertEqual(len(c), 1)
-        self.assertAlmostEqual(c[0][0], 100, delta=1.0)
-
-    def test_boxes_split_at_midpoints(self):
-        p = self.write("a.png", seeds=[(100, 50), (300, 50)])
-        c = detect_seed_centroids([p])
-        b = propose_boxes(c, [p], (H, W))
-        self.assertEqual(b[0][3], 200)
-        self.assertEqual(b[1][2], 200)
-
-    def test_single_seed_box_nonzero_width_inside_image(self):
-        p = self.write("a.png", seeds=[(200, 50)])
-        b = propose_boxes(detect_seed_centroids([p]), [p], (H, W))
-        self.assertEqual(len(b), 1)
-        self.assertTrue(0 <= b[0][2] < b[0][3] <= W)
-
-    def test_boxes_clipped_to_image_and_ordered(self):
-        p = self.write("a.png", seeds=[(5, 5), (200, 50), (395, 395)])
-        b = propose_boxes(detect_seed_centroids([p]), [p], (H, W))
-        self.assertGreaterEqual(b[0][2], 0)
-        for y0, y1, x0, x1 in b:
-            self.assertLess(y0, y1)
-            self.assertLess(x0, x1)
-            self.assertTrue(0 <= y0 and y1 <= H and 0 <= x0 and x1 <= W)
-
-    def test_box_extends_to_lowest_root_pixel(self):
-        p0 = self.write("a.png", seeds=[(100, 50), (300, 50)])
-        p1 = self.write("b.png", seeds=[(100, 50), (300, 50)], roots=[(100, 55, 300)])
-        c = detect_seed_centroids([p0, p1])
-        b = propose_boxes(c, [p0, p1], (H, W))
-        self.assertGreaterEqual(b[0][1], 300)
-        self.assertLessEqual(b[0][1], H)
-
-    def test_box_extends_above_topmost_hypocotyl_pixel(self):
-        p0 = self.write("a.png", seeds=[(100, 200), (300, 200)])
-        p1 = self.write("b.png", seeds=[(100, 200), (300, 200)],
-                        hypo=[(100, 120, 195, 4)])
-        b = propose_boxes(detect_seed_centroids([p0, p1]), [p0, p1], (H, W))
-        self.assertEqual(b[0][0], 100)   # 120 - margin 20
-        self.assertEqual(b[1][0], 179)   # neighbour: int(centroid y 199.5) - margin
-
-    def test_box_top_counts_leaf_and_petiole_classes(self):
-        p = self.write("a.png", seeds=[(100, 200)],
-                       hypo=[(100, 150, 195, 4), (102, 90, 140, 5), (104, 110, 140, 6)])
-        b = propose_boxes(detect_seed_centroids([p]), [p], (H, W))
-        self.assertEqual(b[0][0], 70)
-
-    def test_box_top_takes_topmost_across_frames_and_clips_to_zero(self):
-        p0 = self.write("a.png", seeds=[(100, 200)], hypo=[(100, 150, 195, 4)])
-        p1 = self.write("b.png", seeds=[(100, 200)], hypo=[(100, 10, 195, 4)])
-        b = propose_boxes(detect_seed_centroids([p0]), [p0, p1], (H, W))
-        self.assertEqual(b[0][0], 0)
-
-    def test_box_top_falls_back_when_hypocotyl_is_below_seed(self):
-        p = self.write("a.png", seeds=[(100, 200)], hypo=[(100, 230, 260, 4)])
-        b = propose_boxes(detect_seed_centroids([p]), [p], (H, W))
-        self.assertEqual(b[0][0], 179)
-
-    def test_near_duplicate_seed_centroids_are_merged(self):
-        p = self.write("a.png", seeds=[(100, 50), (110, 50), (300, 50)])
-        c = detect_seed_centroids([p])
-        self.assertEqual(len(c), 3)
-        b = propose_boxes(c, [p], (H, W))
-        self.assertEqual(len(b), 2)
-        self.assertLess(b[0][2], 110)
-        self.assertGreaterEqual(b[0][3], 110)
-
-    def test_roots_only_above_seed_means_no_root_below(self):
-        p0 = self.write("a.png", seeds=[(100, 200)])
-        p1 = self.write("b.png", seeds=[(100, 200)], roots=[(100, 20, 150)])
-        b = propose_boxes(detect_seed_centroids([p0]), [p0, p1], (H, W))
-        self.assertEqual(b[0][1], H)
-
-    def test_every_proposed_box_meets_min_size(self):
-        p = self.write("a.png", seeds=[(15, 395)])
-        for shape, margin in (((H, 30), 20), ((H, W), 2)):
-            for y0, y1, x0, x1 in propose_boxes(detect_seed_centroids([p]), [p], shape, margin=margin):
-                self.assertGreaterEqual(x1 - x0, boxEdit.MIN_SIZE)
-                self.assertGreaterEqual(y1 - y0, boxEdit.MIN_SIZE)
-                self.assertTrue(0 <= x0 and x1 <= shape[1] and 0 <= y0 and y1 <= shape[0])
-
-    def test_root_of_neighbour_does_not_extend_box(self):
-        p0 = self.write("a.png", seeds=[(100, 50), (300, 50)])
-        base = propose_boxes(detect_seed_centroids([p0]), [p0], (H, W))
-        p1 = self.write("b.png", seeds=[(100, 50), (300, 50)], roots=[(300, 55, 380)])
-        b = propose_boxes(detect_seed_centroids([p0]), [p0, p1], (H, W))
-        self.assertEqual(b[0][1], base[0][1])
-        self.assertGreaterEqual(b[1][1], 380)
-
-    def test_merged_seeds_give_one_box(self):
-        p = self.write("a.png", seeds=[(100, 50), (108, 50)])
-        c = detect_seed_centroids([p])
-        self.assertEqual(len(c), 1)
-        self.assertEqual(len(propose_boxes(c, [p], (H, W))), 1)
 
 
 class BoxEditTests(unittest.TestCase):
@@ -214,6 +77,29 @@ class BoxEditTests(unittest.TestCase):
         self.assertEqual(k(ord('q'), True), 'cancel')
         self.assertEqual(k(13, True), 'confirm')
 
+    def test_press_action_empty_space_draws_without_add_mode(self):
+        boxes = [[10, 60, 10, 60]]
+        self.assertEqual(boxEdit.press_action(boxes, 200, 200, 8, False), ('draw',))
+        self.assertEqual(boxEdit.press_action([], 5, 5, 8, False), ('draw',))
+
+    def test_press_action_add_mode_always_draws(self):
+        boxes = [[10, 60, 10, 60]]
+        self.assertEqual(boxEdit.press_action(boxes, 30, 30, 8, True), ('draw',))
+
+    def test_press_action_on_box_drags_it(self):
+        boxes = [[10, 60, 10, 60]]
+        self.assertEqual(boxEdit.press_action(boxes, 30, 30, 8, False), ('drag', 0, 'body'))
+        self.assertEqual(boxEdit.press_action(boxes, 10, 30, 8, False), ('drag', 0, 'l'))
+
+    def test_legend_mentions_drag_to_draw_and_hints_when_empty(self):
+        text = " ".join(boxEdit.legend_lines(False, 0))
+        self.assertIn("Drag on empty space to draw a plant box", text)
+        self.assertIn("No boxes yet", text)
+        text = " ".join(boxEdit.legend_lines(False, 2))
+        self.assertIn("Drag on empty space to draw a plant box", text)
+        self.assertNotIn("No boxes yet", text)
+        self.assertTrue(boxEdit.legend_lines(True, 2)[0].startswith("ADD MODE"))
+
     def test_renumber_sorts_by_x(self):
         boxes = [[0, 10, 300, 350], [0, 10, 10, 60], [0, 10, 150, 200]]
         self.assertEqual([b[2] for b in boxEdit.renumber(boxes)], [10, 150, 300])
@@ -278,11 +164,16 @@ class PlateRoisTests(unittest.TestCase):
             gr.getPlateROIsAndSeeds(self.conf, [self.img], [self.seg])
         self.assertEqual(seen, [None, None])
 
-    def test_getPlateROIsAndSeeds_passes_proposed_boxes(self):
+    def test_getPlateROIsAndSeeds_starts_with_no_boxes(self):
         _, sp, _ = self.run_with([[0, 100, 0, 100]], [[1, 1]])
-        proposed = sp.call_args[0][1]
-        self.assertEqual(len(proposed), 1)
+        self.assertEqual(sp.call_args[0][1], [])
 
+    def test_getPlateROIsAndSeeds_does_not_need_readable_seg_masks(self):
+        missing = os.path.join(self.dir, "nope.png")
+        with mock.patch.object(gr, 'selectPlantROIs', return_value=[[0, 100, 0, 100]]), \
+             mock.patch.object(gr, 'selectSeed', return_value=[1, 1]):
+            out = gr.getPlateROIsAndSeeds(self.conf, [self.img], [missing])
+        self.assertEqual(len(out), 1)
 
 
 class ConfigPrepTests(unittest.TestCase):

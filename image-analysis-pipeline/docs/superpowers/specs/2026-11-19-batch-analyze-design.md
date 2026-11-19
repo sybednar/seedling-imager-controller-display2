@@ -1,20 +1,21 @@
-# Batch Analyze: auto-proposed plant ROIs with manual root origin
+# Batch Analyze: manually drawn plant ROIs with manual root origin
 
 Branch: `feature/batch-analyze`
 
 ## Intent
 Today each plant on a plate needs its own run: drag an ROI, click the root
 origin, repeat per Plant Number. For a plate of N plants that is N ROI drags and
-N separate GUI runs. Batch Analyze proposes every plant's ROI automatically from
-the segmentation, lets the user confirm/fix them on one screen, then has them
-click the root origin in each confirmed ROI (kept manual so segmentation errors
-cannot skew `fixed_seed_position` and hence the measurements).
+N separate GUI runs. Batch Analyze shows the plate once, lets the user draw every
+plant's ROI on one screen, then has them click the root origin in each ROI (kept
+manual so segmentation errors cannot skew `fixed_seed_position` and hence the
+measurements). An automatic box proposal from the seed segmentation was tried and
+dropped as not accurate enough; boxes are always drawn by hand.
 
 ## Goals
 - New **Batch Analyze** button in Tab 1, next to the existing **Analyze Plant**
   (which is unchanged).
-- Propose one ROI per plant for the whole plate; user can move/resize, delete
-  and add boxes before confirming.
+- Draw one ROI per plant for the whole plate on the last frame; user can move,
+  resize, delete and add boxes before confirming. No boxes are pre-drawn.
 - Root origin is always a manual click per confirmed ROI, using the existing
   `selectSeed()` UI.
 - After confirmation, analyse each plant in turn with the same code path as a
@@ -26,8 +27,7 @@ cannot skew `fixed_seed_position` and hence the measurements).
 - No change to single-plant `analysis()` behaviour, `plantAnalysis()` internals
   or the saved `metadata.json` format.
 - Not parallel processing; plants run sequentially.
-- Not a fix for segmentation misses: a plant with no detected seed is added by
-  hand on the confirm screen.
+- No automatic ROI proposal and no reading of segmentation masks to place boxes.
 
 ## Constraints
 - `plantAnalysis()` is one plant per run and reads `conf['bounding box']` /
@@ -44,31 +44,25 @@ cannot skew `fixed_seed_position` and hence the measurements).
   under a divider line (see CLAUDE.md Qt stacking note).
 
 ## Approaches considered
-1. Replace the manual drag in `getROIandSeed()` with proposed boxes, one run per
-   plant. Smallest, but repeats detection/confirmation per plant.
-2. **Chosen (user picked):** a plate-level step. Detect seeds, one confirm screen
-   for all boxes, origin click per box, then analyse each plant.
+1. Replace the manual drag in `getROIandSeed()` with one run per plant. Smallest,
+   but repeats ROI selection per plant.
+2. **Chosen (user picked):** a plate-level step. One confirm screen for all boxes,
+   origin click per box, then analyse each plant.
 3. Option 2 plus automatic batch run. The user's button name ("Batch Analyze")
    implies running the analyses, so the run-after-confirm part of 3 is included.
+4. Rejected: propose boxes from seed-class segmentation (`proposeROIs.py`). Not
+   accurate enough, so removed.
 
 ## Design
-**Detection** (`analysis/utils/proposeROIs.py`, pure numpy/cv2, no GUI):
-- Take the seed class (value 3) from the first frame that has any; if none, the
-  first 10 frames combined. Connected components, drop blobs under a minimum
-  area, centroid per blob, sort by x. Index + 1 = proposed Plant Number.
-- Box per plant: x range from the midpoint to each neighbouring seed (outermost
-  boxes use half the typical spacing, clipped to the image); y from the topmost
-  hypocotyl/leaf/petiole pixel (classes 4-6) in that x band across all frames,
-  minus a margin, to the lowest root-class pixel in that band plus a margin
-  (capped at the image bottom). The top is never lower than seed y minus the
-  margin (also the fallback when no shoot pixels exist), because the hypocotyl
-  grows up from the seed and a crop that starts at the seed would cut it off. Midpoint limits stop a neighbour's
-  hypocotyl being pulled in (the earlier `extract_hypocotyl_length` bug).
-
-**Confirm screen** (`selectPlantROIs(image, proposals)` in `getROIandSeed.py`):
-- Last frame with numbered boxes. Click a box to select, drag handles to resize or
-  drag the body to move, `D` delete, `A` then drag to add, `Enter` confirm,
-  `Q` cancel. Boxes are renumbered left to right on confirm.
+**Confirm screen** (`selectPlantROIs(image, boxes)` in `getROIandSeed.py`;
+`getPlateROIsAndSeeds` passes `[]` so it opens with no boxes on the last frame):
+- Drag on empty space draws a new box (no add mode needed; `A` add mode and
+  `Esc` to leave it still work). Click a box to select, drag its body to move,
+  drag an edge to resize, `D` delete, `Enter` confirm, `Q` cancel. A drag under
+  the minimum size is rejected with an on-screen message. With no boxes a hint
+  says to drag on the plate. Decisions (press meaning, legend text, numbering)
+  live in pure helpers in `boxEdit.py` so the window code stays thin.
+- Plant numbers are shown on each box (left to right in this commit).
 
 **Origin click:** for each confirmed box, call the existing `selectSeed()`.
 Cancelling aborts the batch before any analysis starts; nothing is saved.
@@ -84,16 +78,16 @@ both scripts use one copy.
 `analysis()` is factored into a shared method so both buttons check identically.
 
 ## Testing
-`test_batch_rois.py` (unittest, headless like `test_aruco_guard.py`):
-synthetic seed masks give the right count/order, tiny blobs are ignored, boxes
-split at midpoints and stay inside the image, merged/missing seeds degrade
-without crashing. The GUI guard test pattern is reused to check that the button
-runs the same validation and does not launch on failure.
+`test_batch_rois.py` (unittest, headless like `test_aruco_guard.py`): pure box
+helpers (hit test, move/resize, key and press actions, legend, numbering);
+`getPlateROIsAndSeeds` with patched `selectPlantROIs`/`selectSeed` (starts with no
+boxes, numbers plants, cancel paths, `pos` reset). The cv2 window itself is not
+unit-tested. The GUI guard test pattern is reused to check that the button runs the
+same validation and does not launch on failure.
 
 ## Left to the builder
-Minimum blob area, margins, handle size and key bindings; exact button position.
+Handle size and key bindings; exact button position.
 
 ## Calls I made (not discussed)
 - Run the analyses automatically after confirmation (name implies it).
-- Seeds detected from early frames, box length from all frames.
-- Plant numbers are 1..N left to right, overwriting the Plant Number field.
+- Plant numbers are 1..N by box position, overwriting the Plant Number field.
