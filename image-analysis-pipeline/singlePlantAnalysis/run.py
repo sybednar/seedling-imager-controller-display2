@@ -1142,39 +1142,39 @@ class Ui_ChronoRootAnalysis(QtWidgets.QMainWindow):
         self.emergenceDistanceExp.setObjectName("emergenceDistanceExp")
 
         self.saveButton = QtWidgets.QPushButton(self.tab1)
-        self.saveButton.setGeometry(QtCore.QRect(660, 0, 141, 81))
+        self.saveButton.setGeometry(QtCore.QRect(660, 0, 141, 76))
         self.saveButton.setObjectName("saveButton")
         self.saveButton.clicked.connect(self.saveFieldsIntoJson)
 
         self.previewAnalysisButton = QtWidgets.QPushButton(self.tab1)
-        self.previewAnalysisButton.setGeometry(QtCore.QRect(660, 100, 141, 81))
+        self.previewAnalysisButton.setGeometry(QtCore.QRect(660, 88, 141, 76))
         self.previewAnalysisButton.setObjectName("previewAnalysisButton")
         self.previewAnalysisButton.clicked.connect(self.preview)
 
         self.analysisButton = QtWidgets.QPushButton(self.tab1)
-        self.analysisButton.setGeometry(QtCore.QRect(660, 200, 141, 81))
+        self.analysisButton.setGeometry(QtCore.QRect(660, 176, 141, 76))
         self.analysisButton.setObjectName("analysisButton")
         self.analysisButton.clicked.connect(self.analysis)
 
-        # Right column is full (y=0..581, 19px gaps), so this sits in the 36px strip
-        # below it, clear of every divider QFrame (line_2 ends at x=660).
+        # Right column: seven 141x76 buttons, 88px stride, 12px gap (y=0..604); x stays at 660 so
+        # it is clear of every divider QFrame (line_2 ends at x=660).
         self.batchAnalysisButton = QtWidgets.QPushButton(self.tab1)
-        self.batchAnalysisButton.setGeometry(QtCore.QRect(660, 586, 141, 28))
+        self.batchAnalysisButton.setGeometry(QtCore.QRect(660, 264, 141, 76))
         self.batchAnalysisButton.setObjectName("batchAnalysisButton")
         self.batchAnalysisButton.clicked.connect(self.batch_analysis)
 
         self.PostProcessButton = QtWidgets.QPushButton(self.tab1)
-        self.PostProcessButton.setGeometry(QtCore.QRect(660, 300, 141, 81))
+        self.PostProcessButton.setGeometry(QtCore.QRect(660, 352, 141, 76))
         self.PostProcessButton.setObjectName("PostProcessButton")
         self.PostProcessButton.clicked.connect(self.PostProcess)
 
         self.loadConfigFileButton = QtWidgets.QPushButton(self.tab1)
-        self.loadConfigFileButton.setGeometry(QtCore.QRect(660, 400, 141, 81))
+        self.loadConfigFileButton.setGeometry(QtCore.QRect(660, 440, 141, 76))
         self.loadConfigFileButton.setObjectName("loadLastConfigButton")
         self.loadConfigFileButton.clicked.connect(self.read_config_from_file)
 
         self.loadLastConfigButton = QtWidgets.QPushButton(self.tab1)
-        self.loadLastConfigButton.setGeometry(QtCore.QRect(660, 500, 141, 81))
+        self.loadLastConfigButton.setGeometry(QtCore.QRect(660, 528, 141, 76))
         self.loadLastConfigButton.setObjectName("loadLastConfigButton")
         self.loadLastConfigButton.clicked.connect(self.loadJsonIntoFields)
 
