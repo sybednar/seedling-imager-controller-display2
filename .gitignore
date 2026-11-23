@@ -11,3 +11,6 @@ motion_cal.json
 # Files over GitHub 100 MB limit: distribute via GitHub Release (see hardware/README.md)
 hardware/seedling imager_full assembly.step
 hardware/seedling imager_full assembly.f3z
+
+# Local Claude-generated outputs
+image-analysis-pipeline/Claude outputs/
