@@ -177,18 +177,23 @@ def selectSeed(images, segFiles, bbox, conf):
             cv2.line(img, (0, pos[1]), (w, pos[1]), (0, 255, 255), 5)
             cv2.putText(img, "Root Start", (w-250, pos[1]+35), 0, 1.0, (255, 255, 0), 3)
 
-        # Bottom Overlay: Large Instructions in Rows
-        row1 = "ENTER: CONFIRM"
-        row2 = "S: TOGGLE SEGMENTATION"
-        row3 = "ESC/C/Q: CANCEL"
+        # Instruction panel next to the image (not drawn over it)
+        panel_h = max(h,300)
+        padded_h = panel_h - h
+        if padded_h > 0:
+            padded_img = cv2.copyMakeBorder(img, 0, padded_h, 0, 0, cv2.BORDER_CONSTANT, value=(0,0,0))
+        else:
+            padded_img = img
+        panel = np.zeros((panel_h, 450, 3), dtype=np.uint8)   # black strip, same width
 
-        cv2.putText(img, "Day: %2d" % days[i], (10, h-230), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 5)
-        cv2.putText(img, "Time: %2d:%2d" % (hours[i], minutes[i]), (10, h-175), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 5)
-        cv2.putText(img, row1, (10, h-130), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
-        cv2.putText(img, row2, (10, h-85), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
-        cv2.putText(img, row3, (10, h-40), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255), 3)
+        cv2.putText(panel, "Day: %2d" % days[i], (10, 55), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(panel, "Time: %2d:%2d" % (hours[i], minutes[i]), (10, 110), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        cv2.putText(panel, "ENTER: CONFIRM", (10, 160), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(panel, "S: TOGGLE SEGMENTATION", (10, 205), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        cv2.putText(panel, "ESC/C/Q: CANCEL", (10, 250), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
 
-        cv2.imshow(window_name, img)
+        canvas = np.hstack([padded_img, panel])
+        cv2.imshow(window_name, canvas)
         key = cv2.waitKey(1) & 0xFF
 
         # Return None on cancel keys
