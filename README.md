@@ -518,9 +518,9 @@ Software: MIT — see `LICENSE` file. Hardware design files (`hardware/`): CERN-
 
 If you use this hardware or software, please cite:
 
-> Bednarek, S. Y., Yong, C. W. J., Hoey, E. A., Murua, K., Vidali, L. and Rojas-Pierce, M. (2026). *seedling-imager-controller-display2: control, image-acquisition and image-analysis software and hardware design files for an open-source six-plate infrared seedling imaging robot* [Software and hardware design files]. Zenodo. https://doi.org/10.5281/zenodo.20738657
+> Bednarek, S. Y., Yong, C. W. J., Hoey, E. A., Murua, K., Vidali, L. and Rojas-Pierce, M. (2026). *seedling-imager-controller-display2: control, image-acquisition and image-analysis software and hardware design files for an open-source six-plate infrared seedling imaging robot* (v1.4.0) [Software and hardware design files]. Zenodo. https://doi.org/10.5281/zenodo.24514031
 
-The DOI above always resolves to the latest archived release; each release also has its own version-specific DOI, listed on the Zenodo page. Machine-readable citation metadata are in [`CITATION.cff`](CITATION.cff) (GitHub's "Cite this repository" button) and `.zenodo.json`. Previous release: v1.3.2, https://doi.org/10.5281/zenodo.23144486.
+The DOI above is for release v1.4.0. To cite all versions (always resolves to the latest release), use https://doi.org/10.5281/zenodo.20738657. Machine-readable citation metadata are in [`CITATION.cff`](CITATION.cff) (GitHub's "Cite this repository" button) and `.zenodo.json`. Previous release: v1.3.2, https://doi.org/10.5281/zenodo.23144486.
 
 ## Acknowledgements
 

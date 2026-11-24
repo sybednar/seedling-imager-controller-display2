@@ -26,7 +26,15 @@ authors:
     given-names: Marcela
     affiliation: North Carolina State University
 version: 1.4.0
-doi: 10.5281/zenodo.20738657
+doi: 10.5281/zenodo.24514031
+date-released: "2026-11-24"
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.20738657
+    description: Concept DOI (all versions; resolves to the latest release)
+  - type: doi
+    value: 10.5281/zenodo.24514031
+    description: Version DOI for v1.4.0
 repository-code: "https://github.com/sybednar/seedling-imager-controller-display2"
 url: "https://sybednar.github.io/seedling-imager-controller-display2/"
 license: MIT
