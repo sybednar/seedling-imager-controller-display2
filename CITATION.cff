@@ -1,0 +1,57 @@
+cff-version: 1.2.0
+message: "If you use this software or hardware design, please cite it as below."
+type: software
+title: >-
+  seedling-imager-controller-display2: control, image-acquisition and
+  image-analysis software and hardware design files for an open-source
+  six-plate infrared seedling imaging robot
+authors:
+  - family-names: Bednarek
+    given-names: Sebastian Y.
+    affiliation: University of Wisconsin–Madison
+    email: sybednar@wisc.edu
+  - family-names: Yong
+    given-names: C. W. J.
+    affiliation: University of Wisconsin–Madison
+  - family-names: Hoey
+    given-names: E. A.
+    affiliation: University of Wisconsin–Madison
+  - family-names: Murua
+    given-names: K.
+    affiliation: University of Wisconsin–Madison
+  - family-names: Vidali
+    given-names: Luis
+    affiliation: Worcester Polytechnic Institute
+  - family-names: Rojas-Pierce
+    given-names: Marcela
+    affiliation: North Carolina State University
+version: 1.4.0
+doi: 10.5281/zenodo.20738657
+repository-code: "https://github.com/sybednar/seedling-imager-controller-display2"
+url: "https://sybednar.github.io/seedling-imager-controller-display2/"
+license: MIT
+keywords:
+  - plant phenotyping
+  - seedling imaging
+  - Arabidopsis
+  - time-lapse imaging
+  - root system architecture
+  - Raspberry Pi
+  - open hardware
+  - nnU-Net
+references:
+  - type: software
+    title: ChronoRoot2
+    url: "https://github.com/ngaggion/ChronoRoot2"
+    authors:
+      - family-names: Gaggion
+        given-names: Nicolás
+    notes: >-
+      The image-analysis-pipeline/ folder is a fork of ChronoRoot2 (GPL-3.0).
+  - type: article
+    title: "SPIRO: the Smart Plate Imaging Robot"
+    doi: 10.1111/tpj.16587
+    authors:
+      - family-names: Ohlsson
+        given-names: Jonas A.
+    journal: The Plant Journal

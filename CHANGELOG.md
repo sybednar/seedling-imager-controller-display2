@@ -1,6 +1,12 @@
 <
 # Changelog
 
+## Unreleased — 2026-11-24 (citation and funding metadata; planned v1.4.0)
+- Added `image-analysis-pipeline/` (root-phenotyping software forked from ChronoRoot2, GPL-3.0; developed by C. W. J. Yong) to the archived project.
+- Citation updated: L. Vidali and M. Rojas-Pierce added as authors; title now covers the image-analysis software.
+- Added NSF funding acknowledgement (MCB-2439581, MCB-2439582, MCB-2439580) to the README, `hardware/README.md` and `image-analysis-pipeline/README.md`.
+- Added `CITATION.cff` (GitHub "Cite this repository") and `.zenodo.json` (metadata Zenodo uses when archiving a GitHub release).
+
 ## Unreleased — 2026-10-26 (camera stall handling, new System 1 hardware)
 - **Live View no longer freezes the GUI if the camera stalls.** Frames are now fetched on a background thread (`_LiveFrameWorker` in `gui.py`); previously a stalled Arducam blocked the screen for 10 s per frame and queued-up taps (e.g. on Home) were replayed as start/stop pairs.
 - **Automatic camera reconnect** (`recover_camera()` in `camera_arducam_usb3.py`, re-exported by `camera.py`): reads time out after 4 s, and after 2 consecutive failed reads the stream is released, the device re-detected and reopened (at most once per 30 s). Status line shows "Camera not responding … reconnecting" / "Camera reconnected".

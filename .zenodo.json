@@ -1,0 +1,22 @@
+{
+  "title": "seedling-imager-controller-display2: control, image-acquisition and image-analysis software and hardware design files for an open-source six-plate infrared seedling imaging robot",
+  "upload_type": "software",
+  "version": "1.4.0",
+  "description": "<p>Software and hardware design files for the Seedling Imager, an open-source Raspberry Pi 5-based robot that time-lapse images Arabidopsis seedlings on six agar plates under infrared illumination, with programmable germination/photomorphogenesis LEDs and automated experiment scheduling.</p><p>The repository contains: (1) the Raspberry Pi controller and image-acquisition/registration software (MIT licence); (2) hardware design files, including STEP models, KiCad boards and bill of materials (CERN-OHL-S v2); and (3) <code>image-analysis-pipeline/</code>, a root-phenotyping package for the imager's time-lapse images (image alignment, nnU-Net segmentation and root system architecture analysis), forked from ChronoRoot2 (GPL-3.0).</p><p>This work was supported by the National Science Foundation (MCB-2439581 to S.Y. Bednarek, MCB-2439582 to L. Vidali and MCB-2439580 to M. Rojas-Pierce).</p>",
+  "creators": [
+    {"name": "Bednarek, Sebastian Y.", "affiliation": "University of Wisconsin–Madison"},
+    {"name": "Yong, C. W. J.", "affiliation": "University of Wisconsin–Madison"},
+    {"name": "Hoey, E. A.", "affiliation": "University of Wisconsin–Madison"},
+    {"name": "Murua, K.", "affiliation": "University of Wisconsin–Madison"},
+    {"name": "Vidali, Luis", "affiliation": "Worcester Polytechnic Institute"},
+    {"name": "Rojas-Pierce, Marcela", "affiliation": "North Carolina State University"}
+  ],
+  "license": "MIT",
+  "keywords": ["plant phenotyping", "seedling imaging", "Arabidopsis", "time-lapse imaging", "root system architecture", "Raspberry Pi", "open hardware", "nnU-Net"],
+  "notes": "Funding: National Science Foundation awards MCB-2439581 (S.Y. Bednarek, University of Wisconsin–Madison), MCB-2439582 (L. Vidali) and MCB-2439580 (M. Rojas-Pierce). Licensing: controller software MIT; hardware design files CERN-OHL-S v2 (hardware/); image-analysis-pipeline/ GPL-3.0 (fork of ChronoRoot2).",
+  "related_identifiers": [
+    {"identifier": "https://github.com/ngaggion/ChronoRoot2", "relation": "isDerivedFrom", "resource_type": "software", "scheme": "url"},
+    {"identifier": "10.1111/tpj.16587", "relation": "references", "resource_type": "publication-article", "scheme": "doi"},
+    {"identifier": "https://sybednar.github.io/seedling-imager-controller-display2/", "relation": "isDocumentedBy", "resource_type": "other", "scheme": "url"}
+  ]
+}

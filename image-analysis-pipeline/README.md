@@ -174,3 +174,15 @@ Expected on macOS — nnU-Net runs on CPU (MPS acceleration is available for sup
 
 **App won't open / "damaged" warning**
 Run `xattr -cr ~/Desktop/"ChronoRoot Analysis.app"` (or the Segmentation or Image Aligner app) in the terminal to clear the quarantine flag, then try opening again.
+
+---
+
+## Citation and acknowledgements
+
+This pipeline is part of the Seedling Imager project. If you use it, please cite:
+
+> Bednarek, S. Y., Yong, C. W. J., Hoey, E. A., Murua, K., Vidali, L. and Rojas-Pierce, M. (2026). *seedling-imager-controller-display2: control, image-acquisition and image-analysis software and hardware design files for an open-source six-plate infrared seedling imaging robot* [Software and hardware design files]. Zenodo. https://doi.org/10.5281/zenodo.20738657
+
+and the upstream [ChronoRoot2](https://github.com/ngaggion/ChronoRoot2) project from which it is forked.
+
+This work was supported by the National Science Foundation (MCB-2439581 to S.Y. Bednarek, MCB-2439582 to L. Vidali and MCB-2439580 to M. Rojas-Pierce).

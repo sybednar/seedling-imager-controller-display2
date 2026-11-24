@@ -99,7 +99,7 @@ repository root (`README.md`, `Camera configuration_user guide`,
 
 ## Licensing
 
-This project uses two licenses:
+This project uses three licenses:
 
 - **Hardware design files** (CAD, STEP, KiCad, BOM) in this folder are licensed under the
   **CERN Open Hardware Licence Version 2 — Strongly Reciprocal (CERN-OHL-S v2)**.
@@ -107,17 +107,21 @@ This project uses two licenses:
 - **Software** (the Raspberry Pi controller and image-acquisition/registration code) in
   the repository root is licensed under the **MIT** license.
   See the `LICENSE` file at the repository root.
+- **Image-analysis pipeline** (`image-analysis-pipeline/`, a fork of ChronoRoot2) is licensed
+  under **GPL-3.0**. See `image-analysis-pipeline/LICENSE`.
 
 ## Citation
 
-If you use this hardware or software, please cite the archived release:
+If you use this hardware or software, please cite:
 
-> Bednarek, S. Y., Yong, C. W. J., Hoey, E. A. and Murua, K. (2026). *seedling-imager-controller-display2: control and image-acquisition
-> software and hardware design files for an open-source six-plate infrared seedling imaging
-> robot* (v1.3.2) [Software and hardware design files]. Zenodo. https://doi.org/10.5281/zenodo.23144486
+> Bednarek, S. Y., Yong, C. W. J., Hoey, E. A., Murua, K., Vidali, L. and Rojas-Pierce, M. (2026). *seedling-imager-controller-display2: control, image-acquisition and image-analysis software and hardware design files for an open-source six-plate infrared seedling imaging robot* [Software and hardware design files]. Zenodo. https://doi.org/10.5281/zenodo.20738657
 >
-> The DOI above is for release v1.3.2. To cite all versions (always resolves to the latest
-> release), use https://doi.org/10.5281/zenodo.20738657.
+> This DOI always resolves to the latest archived release. The previous release, v1.3.2, is
+> https://doi.org/10.5281/zenodo.23144486.
+
+## Acknowledgements
+
+This work was supported by the National Science Foundation (MCB-2439581 to S.Y. Bednarek, MCB-2439582 to L. Vidali and MCB-2439580 to M. Rojas-Pierce).
 
 ## Contact
 
